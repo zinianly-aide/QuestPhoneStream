@@ -1,0 +1,12 @@
+{
+  "name": "quest-phone-stream",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:signaling": "pnpm --dir apps/signaling-server dev",
+    "test:signaling": "pnpm --dir apps/signaling-server test",
+    "build:signaling": "pnpm --dir apps/signaling-server build"
+  },
+  "packageManager": "pnpm@9.12.0"
+}
+

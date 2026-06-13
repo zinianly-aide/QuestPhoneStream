@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+set -eu
+
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+fi
+
+GRADLE_VERSION="${GRADLE_VERSION:-8.10.2}"
+BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+DIST_DIR="$BASE_DIR/.gradle/local"
+GRADLE_HOME="$DIST_DIR/gradle-$GRADLE_VERSION"
+GRADLE_BIN="$GRADLE_HOME/bin/gradle"
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  if ! command -v curl >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
+    echo "Install Gradle, or install curl and unzip so this bootstrap can download Gradle $GRADLE_VERSION." >&2
+    exit 127
+  fi
+  mkdir -p "$DIST_DIR"
+  ZIP="$DIST_DIR/gradle-$GRADLE_VERSION-bin.zip"
+  echo "Downloading Gradle $GRADLE_VERSION to $DIST_DIR" >&2
+  curl -L "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" -o "$ZIP"
+  unzip -q "$ZIP" -d "$DIST_DIR"
+fi
+
+exec "$GRADLE_BIN" "$@"

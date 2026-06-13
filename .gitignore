@@ -1,0 +1,17 @@
+.DS_Store
+node_modules/
+dist/
+.env
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+

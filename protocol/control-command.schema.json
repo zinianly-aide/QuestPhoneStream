@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/control-command.schema.json",
+  "title": "QuestPhoneStream Control Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "sessionId", "deviceId", "timestamp"],
+  "properties": {
+    "version": { "const": "1.0" },
+    "type": {
+      "type": "string",
+      "enum": ["click", "swipe", "long_press", "back", "home", "text_input"]
+    },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "x": { "type": "integer", "minimum": 0 },
+    "y": { "type": "integer", "minimum": 0 },
+    "startX": { "type": "integer", "minimum": 0 },
+    "startY": { "type": "integer", "minimum": 0 },
+    "endX": { "type": "integer", "minimum": 0 },
+    "endY": { "type": "integer", "minimum": 0 },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "text": { "type": "string" },
+    "timestamp": { "type": "integer", "minimum": 0 }
+  }
+}
+

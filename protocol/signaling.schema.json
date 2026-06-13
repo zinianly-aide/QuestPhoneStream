@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/signaling.schema.json",
+  "title": "QuestPhoneStream Signaling Message",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token", "role", "deviceId"],
+      "properties": {
+        "type": { "const": "register" },
+        "token": { "type": "string" },
+        "role": { "enum": ["android", "quest"] },
+        "deviceId": { "type": "string" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token", "sessionId", "androidDeviceId", "questDeviceId"],
+      "properties": {
+        "type": { "const": "create_session" },
+        "token": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "androidDeviceId": { "type": "string" },
+        "questDeviceId": { "type": "string" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token", "sessionId", "from", "to"],
+      "properties": {
+        "type": { "enum": ["offer", "answer"] },
+        "token": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "sdp": { "type": "string" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token", "sessionId", "from", "to", "candidate"],
+      "properties": {
+        "type": { "const": "ice" },
+        "token": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "candidate": { "type": "object" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token", "deviceId", "timestamp"],
+      "properties": {
+        "type": { "const": "heartbeat" },
+        "token": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "timestamp": { "type": "integer" }
+      }
+    }
+  ]
+}
+
