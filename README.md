@@ -19,6 +19,12 @@ Quest 3S Unity Client
 
 ## Quick Start
 
+Check local tooling:
+
+```bash
+scripts/doctor.sh
+```
+
 Start signaling:
 
 ```bash
@@ -57,4 +63,3 @@ Unity Quest client:
 - Quest sees the Android screen in a floating panel.
 - Video runs at 720p/1080p and 30fps.
 - End-to-end latency target is below 300ms on a local Wi-Fi network.
-

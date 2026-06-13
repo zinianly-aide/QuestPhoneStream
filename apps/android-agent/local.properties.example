@@ -1,0 +1,6 @@
+# Copy this file to local.properties and update sdk.dir.
+# Common paths:
+# macOS Android Studio: /Users/<you>/Library/Android/sdk
+# Unity Android module: /Applications/Unity/Hub/Editor/<version>/PlaybackEngines/AndroidPlayer/SDK
+sdk.dir=/Users/anshi/Library/Android/sdk
+
