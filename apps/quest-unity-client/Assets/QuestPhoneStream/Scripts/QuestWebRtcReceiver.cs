@@ -18,7 +18,6 @@ namespace QuestPhoneStream
 
         private void Awake()
         {
-            WebRTC.Initialize();
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
         }
 
@@ -36,7 +35,6 @@ namespace QuestPhoneStream
             _peer?.Close();
             _peer?.Dispose();
             if (_webRtcUpdate != null) StopCoroutine(_webRtcUpdate);
-            WebRTC.Dispose();
         }
 
         private void CreatePeerConnection()
@@ -55,7 +53,7 @@ namespace QuestPhoneStream
                 {
                     candidate = candidate.Candidate,
                     sdpMid = candidate.SdpMid,
-                    sdpMLineIndex = candidate.SdpMLineIndex
+                    sdpMLineIndex = candidate.SdpMLineIndex ?? 0
                 });
             };
             _peer.OnDataChannel = channel =>

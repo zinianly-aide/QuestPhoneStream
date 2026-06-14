@@ -70,8 +70,12 @@ class WebRtcStreamer(
 
                 override fun onDataChannel(channel: DataChannel) = Unit
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
-                override fun onSignalingChange(state: PeerConnection.SignalingState) = Log.i(TAG, "Signaling $state")
-                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Log.i(TAG, "ICE $state")
+                override fun onSignalingChange(state: PeerConnection.SignalingState) {
+                    Log.i(TAG, "Signaling $state")
+                }
+                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                    Log.i(TAG, "ICE $state")
+                }
                 override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) = Unit
                 override fun onAddStream(stream: MediaStream) = Unit
@@ -84,7 +88,9 @@ class WebRtcStreamer(
         controlChannel = peerConnection.createDataChannel("control", DataChannel.Init()).apply {
             registerObserver(object : DataChannel.Observer {
                 override fun onBufferedAmountChange(previousAmount: Long) = Unit
-                override fun onStateChange() = Log.i(TAG, "Control DataChannel ${state()}")
+                override fun onStateChange() {
+                    Log.i(TAG, "Control DataChannel ${state()}")
+                }
                 override fun onMessage(buffer: DataChannel.Buffer) {
                     val bytes = ByteArray(buffer.data.remaining())
                     buffer.data.get(bytes)

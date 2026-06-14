@@ -62,44 +62,53 @@ class MainActivity : AppCompatActivity() {
         questDeviceId = field("quest-3s-001")
         sessionId = field("local-session-001")
 
-        val startButton = Button(this).apply {
-            text = "Start Screen Stream"
-            setOnClickListener { requestMediaProjection() }
-        }
-        val stopButton = Button(this).apply {
-            text = "Stop"
-            setOnClickListener {
-                stopService(Intent(this@MainActivity, ScreenStreamService::class.java))
-                statusView.text = "Stopped"
-            }
-        }
-        val accessibilityButton = Button(this).apply {
-            text = "Open Accessibility Settings"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-        }
-        val appSettingsButton = Button(this).apply {
-            text = "Open App Settings"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:$packageName")
-                })
-            }
+        val startButton = Button(this)
+        startButton.text = "Start Screen Stream"
+        startButton.setOnClickListener { requestMediaProjection() }
+
+        val stopButton = Button(this)
+        stopButton.text = "Stop"
+        stopButton.setOnClickListener {
+            val serviceIntent = Intent()
+            serviceIntent.setClassName(packageName, "com.questphonestream.agent.ScreenStreamService")
+            stopService(serviceIntent)
+            statusView.text = "Stopped"
         }
 
-        setContentView(
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(32, 48, 32, 32)
-                addView(label("Signaling URL")); addView(signalingUrl)
-                addView(label("Token")); addView(token)
-                addView(label("Android Device ID")); addView(deviceId)
-                addView(label("Quest Device ID")); addView(questDeviceId)
-                addView(label("Session ID")); addView(sessionId)
-                addView(startButton); addView(stopButton); addView(accessibilityButton); addView(appSettingsButton)
-                addView(statusView)
-            }
-        )
+        val accessibilityButton = Button(this)
+        accessibilityButton.text = "Open Accessibility Settings"
+        accessibilityButton.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
+        val appSettingsButton = Button(this)
+        appSettingsButton.text = "Open App Settings"
+        appSettingsButton.setOnClickListener {
+            val settingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            settingsIntent.data = Uri.parse("package:$packageName")
+            startActivity(settingsIntent)
+        }
+
+        val layout = LinearLayout(this)
+        layout.orientation = LinearLayout.VERTICAL
+        layout.gravity = Gravity.CENTER_HORIZONTAL
+        layout.setPadding(32, 48, 32, 32)
+        layout.addView(label("Signaling URL"))
+        layout.addView(signalingUrl)
+        layout.addView(label("Token"))
+        layout.addView(token)
+        layout.addView(label("Android Device ID"))
+        layout.addView(deviceId)
+        layout.addView(label("Quest Device ID"))
+        layout.addView(questDeviceId)
+        layout.addView(label("Session ID"))
+        layout.addView(sessionId)
+        layout.addView(startButton)
+        layout.addView(stopButton)
+        layout.addView(accessibilityButton)
+        layout.addView(appSettingsButton)
+        layout.addView(statusView)
+        setContentView(layout)
     }
 
     private fun requestMediaProjection() {
@@ -121,4 +130,3 @@ class MainActivity : AppCompatActivity() {
 
     private fun label(text: String) = TextView(this).apply { this.text = text }
 }
-

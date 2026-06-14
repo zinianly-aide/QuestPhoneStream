@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .gradle/
+.kotlin/
 build/
 local.properties
 *.apk
@@ -14,4 +15,4 @@ Build/
 Builds/
 Logs/
 UserSettings/
-
+.tools/

@@ -39,13 +39,15 @@ fi
 
 echo
 check_path "Android SDK" "$ANDROID_SDK"
-check_path "Android 35 platform" "$ANDROID_SDK/platforms/android-35/android.jar"
-check_path "Android build-tools 35" "$ANDROID_SDK/build-tools/35.0.0"
+check_path "Android 36 platform" "$ANDROID_SDK/platforms/android-36/android.jar"
+check_path "Android 36.1 platform" "$ANDROID_SDK/platforms/android-36.1/android.jar"
+check_path "Android build-tools 36.1" "$ANDROID_SDK/build-tools/36.1.0"
 
 echo
 UNITY_PATHS=(
   "/Applications/Unity/Hub/Editor"
   "$HOME/Applications/Unity/Hub/Editor"
+  "$HOME/ssd/Applications/Unity"
 )
 FOUND_UNITY=0
 for base in "${UNITY_PATHS[@]}"; do
