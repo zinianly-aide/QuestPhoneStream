@@ -29,6 +29,8 @@ class SignalingClient(
         fun onSessionCreated(sessionId: String, androidDeviceId: String, questDeviceId: String) {}
         fun onRemoteDescription(type: String, sdp: String) {}
         fun onIceCandidate(candidate: IceCandidateMessage) {}
+        fun onStateChanged(state: ConnectionState) {}
+        fun onError(message: String) {}
     }
 
     private val client = OkHttpClient.Builder()
@@ -37,11 +39,22 @@ class SignalingClient(
     private var socket: WebSocket? = null
     private var heartbeat: Timer? = null
 
+    val currentState: ConnectionState
+        get() = _state
+
+    private var _state: ConnectionState = ConnectionState.IDLE
+        set(value) {
+            field = value
+            listener.onStateChanged(value)
+        }
+
     fun connect() {
+        _state = ConnectionState.CONNECTING
         val request = Request.Builder().url(url).build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "Signaling connected")
+                Log.i(TAG, "Signaling connected to $url")
+                _state = ConnectionState.CONNECTED
                 send(
                     JSONObject()
                         .put("type", "register")
@@ -58,7 +71,15 @@ class SignalingClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Signaling failure", t)
+                val msg = "Signaling failure: ${t.message}"
+                Log.e(TAG, msg, t)
+                _state = ConnectionState.FAILED
+                listener.onError(msg)
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.i(TAG, "Signaling closed: $code $reason")
+                _state = ConnectionState.CLOSED
             }
         })
     }
@@ -107,6 +128,7 @@ class SignalingClient(
     fun close() {
         heartbeat?.cancel()
         socket?.close(1000, "closed")
+        _state = ConnectionState.CLOSED
         client.dispatcher.executorService.shutdown()
     }
 
@@ -132,7 +154,11 @@ class SignalingClient(
                     )
                 )
             }
-            "error" -> Log.e(TAG, "Signaling error: ${message.optString("code")} ${message.optString("message")}")
+            "error" -> {
+                val errMsg = "Signaling error: ${message.optString("code")} ${message.optString("message")}"
+                Log.e(TAG, errMsg)
+                listener.onError(errMsg)
+            }
         }
     }
 
@@ -157,4 +183,3 @@ class SignalingClient(
         }
     }
 }
-

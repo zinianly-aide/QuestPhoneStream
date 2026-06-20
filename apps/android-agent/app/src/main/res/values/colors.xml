@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#1976D2</color>
+    <color name="colorPrimaryDark">#0D47A1</color>
+    <color name="colorAccent">#FF6F00</color>
+    <color name="status_ok">#2E7D32</color>
+    <color name="status_warn">#F57F17</color>
+    <color name="status_error">#C62828</color>
+    <color name="status_idle">#757575</color>
+    <color name="card_bg">#F5F5F5</color>
+    <color name="section_bg">#EEEEEE</color>
+    <color name="log_bg">#263238</color>
+    <color name="log_text">#B2FF59</color>
+    <color name="btn_cert">#6A1B9A</color>
+</resources>
