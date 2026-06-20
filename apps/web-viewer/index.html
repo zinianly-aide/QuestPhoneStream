@@ -1,22 +1,360 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>QuestPhoneStream Viewer</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #0a0a0a;
-        color: #e0e0e0;
-        min-height: 100vh;
-      }
-      #root { width: 100%; min-height: 100vh; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuestPhoneStream Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 20px;
+  }
+  h1 { font-size: 1.2rem; color: #58a6ff; margin-bottom: 16px; }
+
+  #status-bar {
+    display: flex; gap: 12px; align-items: center;
+    margin-bottom: 16px; flex-wrap: wrap; justify-content: center;
+  }
+  .badge {
+    padding: 4px 12px; border-radius: 12px; font-size: 0.8rem;
+    background: #21262d; color: #8b949e;
+  }
+  .badge.ok   { background: #1a3a2a; color: #3fb950; }
+  .badge.warn { background: #3a2a1a; color: #d29922; }
+  .badge.err  { background: #3a1a1a; color: #f85149; }
+
+  #video-container {
+    width: 100%; max-width: 720px;
+    background: #161b22; border-radius: 8px;
+    border: 2px solid #30363d; position: relative;
+    aspect-ratio: 16/10; overflow: hidden;
+  }
+  #remote-video {
+    width: 100%; height: 100%; object-fit: contain;
+  }
+  #placeholder {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; color: #8b949e; pointer-events: none;
+  }
+  #placeholder .icon { font-size: 3rem; margin-bottom: 8px; }
+  #placeholder .text { font-size: 0.9rem; }
+
+  #log {
+    width: 100%; max-width: 720px; margin-top: 16px;
+    background: #161b22; border-radius: 8px; border: 1px solid #30363d;
+    padding: 12px; max-height: 200px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem;
+  }
+  .log-line { padding: 2px 0; }
+  .log-info  { color: #8b949e; }
+  .log-event { color: #58a6ff; }
+  .log-err   { color: #f85149; }
+
+  #config-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85); display: flex;
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  #config-panel {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 24px; width: 100%; max-width: 400px;
+  }
+  #config-panel h2 { color: #58a6ff; margin-bottom: 16px; font-size: 1rem; }
+  #config-panel label { display: block; margin: 8px 0 4px; font-size: 0.8rem; color: #8b949e; }
+  #config-panel input, #config-panel select {
+    width: 100%; padding: 8px; border: 1px solid #30363d; border-radius: 4px;
+    background: #0d1117; color: #c9d1d9; font-size: 0.9rem;
+  }
+  #config-panel button {
+    width: 100%; margin-top: 16px; padding: 10px;
+    background: #238636; color: #fff; border: none; border-radius: 4px;
+    font-size: 0.9rem; cursor: pointer;
+  }
+  #config-panel button:hover { background: #2ea043; }
+</style>
+</head>
+<body>
+
+<h1>QuestPhoneStream Viewer</h1>
+
+<div id="status-bar">
+  <span id="badge-signal" class="badge">signaling</span>
+  <span id="badge-webrtc" class="badge">webrtc</span>
+  <span id="badge-video"  class="badge">video</span>
+</div>
+
+<div id="video-container">
+  <video id="remote-video" autoplay playsinline muted></video>
+  <div id="placeholder">
+    <div class="icon">&#128250;</div>
+    <div class="text">等待手机推流...</div>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<div id="config-overlay">
+  <div id="config-panel">
+    <h2>连接配置</h2>
+    <label>Signaling Server URL</label>
+    <input id="cfg-url" type="text" value="ws://127.0.0.1:8787" placeholder="ws://host:port or wss://host:port">
+
+    <label>Token</label>
+    <input id="cfg-token" type="text" value="dev-token">
+
+    <label>Quest Device ID</label>
+    <input id="cfg-device-id" type="text" value="quest-3s-001">
+
+    <label>Session ID</label>
+    <input id="cfg-session-id" type="text" value="local-session-001">
+
+    <button onclick="connect()">连接</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const badgeSignal = $('badge-signal');
+const badgeWebrtc = $('badge-webrtc');
+const badgeVideo  = $('badge-video');
+const videoEl     = $('remote-video');
+const placeholder = $('placeholder');
+const logEl       = $('log');
+const configOverlay = $('config-overlay');
+
+let pc = null;
+let ws = null;
+let makingOffer = false;
+let polite = true;  // quest is polite peer
+
+const pcConfig = {
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+};
+
+function log(msg, cls = 'log-info') {
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setBadge(el, text, cls) {
+  el.textContent = text;
+  el.className = 'badge ' + cls;
+}
+
+// --- WebSocket Signaling ---
+
+function connect() {
+  const url       = $('cfg-url').value.trim();
+  const token     = $('cfg-token').value.trim();
+  const deviceId  = $('cfg-device-id').value.trim();
+  const sessionId = $('cfg-session-id').value.trim();
+
+  if (!url || !token || !deviceId || !sessionId) {
+    alert('请填写所有配置项');
+    return;
+  }
+
+  configOverlay.style.display = 'none';
+  setBadge(badgeSignal, 'connecting...', 'warn');
+  log('连接信令服务器: ' + url, 'log-event');
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setBadge(badgeSignal, 'registered', 'ok');
+    log('WebSocket 已连接，注册为 quest', 'log-event');
+    ws.send(JSON.stringify({
+      type: 'register', token, role: 'quest', deviceId
+    }));
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    handleSignal(msg, deviceId, sessionId);
+  };
+
+  ws.onclose = (event) => {
+    setBadge(badgeSignal, 'disconnected', 'err');
+    log('信令断开 (code=' + event.code + ')', 'log-err');
+    closePeer();
+    // Re-show config for reconnect
+    setTimeout(() => { if (!ws || ws.readyState > 1) configOverlay.style.display = 'flex'; }, 2000);
+  };
+
+  ws.onerror = () => {
+    setBadge(badgeSignal, 'error', 'err');
+    log('WebSocket 连接错误', 'log-err');
+  };
+}
+
+function sendSignal(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function handleSignal(msg, deviceId, sessionId) {
+  switch (msg.type) {
+    case 'registered':
+      log('已注册为 quest: ' + msg.deviceId, 'log-info');
+      break;
+
+    case 'session_created':
+      log('Session 已创建: ' + msg.sessionId, 'log-event');
+      break;
+
+    case 'offer':
+      handleOffer(msg);
+      break;
+
+    case 'ice':
+      handleRemoteIce(msg);
+      break;
+
+    case 'peer_unavailable':
+      log('对端不在线: ' + msg.deviceId, 'log-err');
+      break;
+
+    case 'error':
+      log('信令错误: ' + msg.code + ' ' + msg.message, 'log-err');
+      break;
+
+    default:
+      log('未知消息: ' + msg.type, 'log-info');
+  }
+}
+
+// --- WebRTC ---
+
+async function handleOffer(msg) {
+  log('收到 SDP offer', 'log-event');
+
+  const offerCollision =
+    makingOffer || (pc && pc.signalingState !== 'stable');
+
+  if (offerCollision && !polite) {
+    log('offer 冲突 (impolite), 忽略', 'log-err');
+    return;
+  }
+
+  closePeer();
+  pc = new RTCPeerConnection(pcConfig);
+
+  pc.ontrack = (event) => {
+    log('收到视频轨道: ' + event.track.kind, 'log-event');
+    if (event.track.kind === 'video') {
+      videoEl.srcObject = event.streams[0];
+      videoEl.onloadedmetadata = () => {
+        placeholder.style.display = 'none';
+        setBadge(badgeVideo, 'streaming', 'ok');
+        log('视频播放开始: ' + videoEl.videoWidth + 'x' + videoEl.videoHeight, 'log-event');
+      };
+    }
+  };
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      log('发送 ICE candidate', 'log-info');
+      sendSignal({
+        type: 'ice',
+        token: $('cfg-token').value.trim(),
+        sessionId: $('cfg-session-id').value.trim(),
+        from: $('cfg-device-id').value.trim(),
+        to: 'android-phone-001',
+        candidate: {
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex
+        }
+      });
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const state = pc.iceConnectionState;
+    log('ICE 状态: ' + state, 'log-info');
+    if (state === 'connected' || state === 'completed') {
+      setBadge(badgeWebrtc, 'P2P connected', 'ok');
+    } else if (state === 'failed' || state === 'disconnected') {
+      setBadge(badgeWebrtc, state, 'err');
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    log('连接状态: ' + pc.connectionState, 'log-info');
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      setBadge(badgeVideo, 'stopped', 'err');
+      placeholder.style.display = '';
+    }
+  };
+
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(msg));
+    log('远程描述已设置, 创建 answer', 'log-event');
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    sendSignal({
+      type: 'answer',
+      token: $('cfg-token').value.trim(),
+      sessionId: $('cfg-session-id').value.trim(),
+      from: $('cfg-device-id').value.trim(),
+      to: 'android-phone-001',
+      sdp: pc.localDescription.sdp
+    });
+
+    setBadge(badgeWebrtc, 'answer sent', 'ok');
+    log('SDP answer 已发送', 'log-event');
+  } catch (err) {
+    log('WebRTC 错误: ' + err.message, 'log-err');
+    setBadge(badgeWebrtc, 'error', 'err');
+  }
+}
+
+async function handleRemoteIce(msg) {
+  if (!pc) return;
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate({
+      candidate: msg.candidate.candidate,
+      sdpMid: msg.candidate.sdpMid,
+      sdpMLineIndex: msg.candidate.sdpMLineIndex
+    }));
+  } catch (err) {
+    if (err.message !== 'Invalid remote ice candidate') {
+      log('ICE 添加失败: ' + err.message, 'log-err');
+    }
+  }
+}
+
+function closePeer() {
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  videoEl.srcObject = null;
+  setBadge(badgeWebrtc, 'webrtc', '');
+  setBadge(badgeVideo, 'video', '');
+  placeholder.style.display = '';
+}
+
+// Pre-fill URL from query param
+const params = new URLSearchParams(location.search);
+const paramUrl = params.get('url');
+if (paramUrl) $('cfg-url').value = paramUrl;
+const paramToken = params.get('token');
+if (paramToken) $('cfg-token').value = paramToken;
+const paramDev = params.get('deviceId');
+if (paramDev) $('cfg-device-id').value = paramDev;
+const paramSid = params.get('sessionId');
+if (paramSid) $('cfg-session-id').value = paramSid;
+</script>
+
+</body>
 </html>
