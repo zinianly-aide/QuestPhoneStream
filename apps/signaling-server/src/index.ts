@@ -1,4 +1,4 @@
-import "dotenv/config";
+import https from "node:https";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseClientMessage, serialize, type ClientMessage, type ClientRole, type RelayMessage, type ServerMessage } from "./protocol.js";
 
@@ -21,6 +21,7 @@ export interface SignalingServerOptions {
   token?: string;
   heartbeatTimeoutMs?: number;
   pingIntervalMs?: number;
+  server?: https.Server;
 }
 
 export interface RunningSignalingServer {
@@ -33,13 +34,38 @@ export interface RunningSignalingServer {
 const DEFAULT_TOKEN = "dev-token";
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  startSignalingServer({
-    host: process.env.SIGNALING_HOST ?? "0.0.0.0",
-    port: Number(process.env.SIGNALING_PORT ?? 8787),
-    token: process.env.SIGNALING_TOKEN ?? DEFAULT_TOKEN,
-    heartbeatTimeoutMs: Number(process.env.HEARTBEAT_TIMEOUT_MS ?? 45_000),
-    pingIntervalMs: Number(process.env.PING_INTERVAL_MS ?? 15_000)
-  });
+  // Load dotenv only in standalone mode
+  import("dotenv/config").catch(() => {});
+  const certPath = process.env.SIGNALING_CERT;
+  const keyPath = process.env.SIGNALING_KEY;
+  const host = process.env.SIGNALING_HOST ?? "0.0.0.0";
+  const port = Number(process.env.SIGNALING_PORT ?? 8787);
+
+  if (certPath && keyPath) {
+    import("node:fs").then((fs) => {
+      const server = https.createServer({
+        cert: fs.readFileSync(certPath),
+        key: fs.readFileSync(keyPath),
+      });
+      server.listen(port, host, () => {
+        console.log(`[QuestPhoneStream] WSS signaling server listening on wss://${host}:${port}`);
+      });
+      startSignalingServer({
+        token: process.env.SIGNALING_TOKEN ?? DEFAULT_TOKEN,
+        heartbeatTimeoutMs: Number(process.env.HEARTBEAT_TIMEOUT_MS ?? 45_000),
+        pingIntervalMs: Number(process.env.PING_INTERVAL_MS ?? 15_000),
+        server,
+      });
+    });
+  } else {
+    startSignalingServer({
+      host,
+      port,
+      token: process.env.SIGNALING_TOKEN ?? DEFAULT_TOKEN,
+      heartbeatTimeoutMs: Number(process.env.HEARTBEAT_TIMEOUT_MS ?? 45_000),
+      pingIntervalMs: Number(process.env.PING_INTERVAL_MS ?? 15_000),
+    });
+  }
 }
 
 export function startSignalingServer(options: SignalingServerOptions = {}): RunningSignalingServer {
@@ -51,19 +77,29 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
 
   const clients = new Map<string, RegisteredClient>();
   const sessions = new Map<string, Session>();
-  const wss = new WebSocketServer({ host, port });
+  const existingServer = options.server;
+  const wss = existingServer
+    ? new WebSocketServer({ server: existingServer })
+    : new WebSocketServer({ host, port });
 
   wss.on("connection", (socket) => {
+    const remoteAddr = (socket as any)._socket?.remoteAddress || "unknown";
+    console.log(`[connection] new client from ${remoteAddr}`);
+
     socket.on("message", (raw) => {
+      const preview = String(raw).slice(0, 5000);
+      console.log(`[message] from ${remoteAddr}: ${preview}`);
       try {
         const message = parseClientMessage(raw);
         if (message.token !== token) {
+          console.log(`[auth] rejected invalid token from ${remoteAddr}`);
           send(socket, { type: "error", code: "unauthorized", message: "Invalid signaling token" });
           socket.close(1008, "unauthorized");
           return;
         }
         handleMessage(socket, message, clients, sessions);
       } catch (error) {
+        console.log(`[error] parse failed from ${remoteAddr}:`, error instanceof Error ? error.message : error);
         send(socket, {
           type: "error",
           code: "bad_request",
@@ -72,9 +108,13 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
       }
     });
 
-    socket.on("close", () => {
+    socket.on("close", (code) => {
+      console.log(`[close] client from ${remoteAddr} disconnected (code=${code})`);
       for (const [deviceId, client] of clients) {
-        if (client.socket === socket) clients.delete(deviceId);
+        if (client.socket === socket) {
+          console.log(`[close] removed registered client: ${deviceId}`);
+          clients.delete(deviceId);
+        }
       }
     });
   });
