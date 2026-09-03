@@ -10,22 +10,76 @@ namespace QuestPhoneStream
 {
     public sealed class QuestSignalingClient : MonoBehaviour
     {
-        public string signalingUrl = "ws://192.168.1.10:8787";
+        public string signalingUrl = "ws://192.168.1.11:8787";
         public string token = "dev-token";
         public string questDeviceId = "quest-3s-001";
         public string androidDeviceId = "android-phone-001";
         public string sessionId = "local-session-001";
+
+        private const string UrlPrefKey = "QuestPhoneStream_SignalingUrl";
+        private const string TokenPrefKey = "QuestPhoneStream_Token";
+        private const string QuestIdPrefKey = "QuestPhoneStream_QuestDeviceId";
+        private const string AndroidIdPrefKey = "QuestPhoneStream_AndroidDeviceId";
+        private const string SessionIdPrefKey = "QuestPhoneStream_SessionId";
 
         public event Action<SignalMessage> MessageReceived;
         public bool IsOpen => _socket != null && _socket.State == WebSocketState.Open;
 
         private ClientWebSocket _socket;
         private CancellationTokenSource _cts;
+        private Coroutine _heartbeatCoroutine;
 
         private async void Start()
         {
-            await ConnectAsync();
-            StartCoroutine(HeartbeatLoop());
+            LoadSavedSettings();
+            await TryConnect();
+        }
+
+        private void LoadSavedSettings()
+        {
+            if (PlayerPrefs.HasKey(UrlPrefKey))
+                signalingUrl = PlayerPrefs.GetString(UrlPrefKey);
+            if (PlayerPrefs.HasKey(TokenPrefKey))
+                token = PlayerPrefs.GetString(TokenPrefKey);
+            if (PlayerPrefs.HasKey(QuestIdPrefKey))
+                questDeviceId = PlayerPrefs.GetString(QuestIdPrefKey);
+            if (PlayerPrefs.HasKey(AndroidIdPrefKey))
+                androidDeviceId = PlayerPrefs.GetString(AndroidIdPrefKey);
+            if (PlayerPrefs.HasKey(SessionIdPrefKey))
+                sessionId = PlayerPrefs.GetString(SessionIdPrefKey);
+        }
+
+        public async Task Reconnect()
+        {
+            await Disconnect();
+            await TryConnect();
+        }
+
+        private async Task Disconnect()
+        {
+            _cts?.Cancel();
+            if (_heartbeatCoroutine != null) StopCoroutine(_heartbeatCoroutine);
+            if (_socket != null && _socket.State == WebSocketState.Open)
+            {
+                await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", CancellationToken.None);
+            }
+            _socket?.Dispose();
+            _socket = null;
+        }
+
+        private async Task TryConnect()
+        {
+            try
+            {
+                Debug.Log($"[QuestPhoneStream] Connecting to {signalingUrl}");
+                await ConnectAsync();
+                Debug.Log("[QuestPhoneStream] Signaling connected successfully");
+                _heartbeatCoroutine = StartCoroutine(HeartbeatLoop());
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[QuestPhoneStream] Connection failed: {e.GetType().Name}: {e.Message}");
+            }
         }
 
         private async void OnDestroy()

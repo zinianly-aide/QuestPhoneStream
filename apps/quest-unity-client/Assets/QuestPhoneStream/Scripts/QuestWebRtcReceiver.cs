@@ -1,6 +1,7 @@
 using System.Collections;
 using Unity.WebRTC;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace QuestPhoneStream
 {
@@ -21,12 +22,60 @@ namespace QuestPhoneStream
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
         }
 
+        private SettingsUI _settingsUI;
+        private int _frameCount;
+
         private void Start()
         {
+            Debug.Log("[QuestPhoneStream] QuestWebRtcReceiver.Start() called");
             if (signaling == null) signaling = FindFirstObjectByType<QuestSignalingClient>();
             if (controlChannel == null) controlChannel = FindFirstObjectByType<ControlChannel>();
             signaling.MessageReceived += OnSignalMessage;
             CreatePeerConnection();
+            Debug.Log("[QuestPhoneStream] QuestWebRtcReceiver initialized");
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.JoystickButton0))
+            {
+                Debug.Log("[QuestPhoneStream] Button A pressed - toggling settings");
+                ToggleSettings();
+            }
+        }
+
+        private void ToggleSettings()
+        {
+            if (_settingsUI == null)
+            {
+                Debug.Log("[QuestPhoneStream] Creating SettingsUI");
+                var settingsGo = new GameObject("SettingsUI");
+                settingsGo.transform.SetParent(transform, false);
+                
+                var factory = settingsGo.AddComponent<SettingsUIFactory>();
+                factory.signalingClient = signaling;
+                
+                _settingsUI = settingsGo.GetComponent<SettingsUI>();
+                if (_settingsUI == null)
+                {
+                    Debug.LogError("[QuestPhoneStream] SettingsUI component not found after factory creation");
+                    return;
+                }
+                Debug.Log("[QuestPhoneStream] Showing settings for the first time");
+                _settingsUI.Show();
+                return;
+            }
+
+            if (_settingsUI.gameObject.activeSelf)
+            {
+                Debug.Log("[QuestPhoneStream] Hiding settings");
+                _settingsUI.Hide();
+            }
+            else
+            {
+                Debug.Log("[QuestPhoneStream] Showing settings");
+                _settingsUI.Show();
+            }
         }
 
         private void OnDestroy()

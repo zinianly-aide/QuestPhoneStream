@@ -156,6 +156,28 @@ function handleMessage(
   clients: Map<string, RegisteredClient>,
   sessions: Map<string, Session>
 ): void {
+  // 调试日志:记录所有消息类型和关键字段,帮助排查协商失败问题。
+  // 上线前可移除。
+  switch (message.type) {
+    case "register":
+      console.log(`[register] role=${message.role} deviceId=${message.deviceId}`);
+      break;
+    case "create_session":
+      console.log(`[create_session] sessionId=${message.sessionId} android=${message.androidDeviceId} quest=${message.questDeviceId}`);
+      break;
+    case "offer":
+      console.log(`[offer] session=${message.sessionId} from=${message.from} to=${message.to} sdpLen=${message.sdp.length}`);
+      break;
+    case "answer":
+      console.log(`[answer] session=${message.sessionId} from=${message.from} to=${message.to} sdpLen=${message.sdp.length}`);
+      break;
+    case "ice":
+      console.log(`[ice] session=${message.sessionId} from=${message.from} to=${message.to}`);
+      break;
+    case "heartbeat":
+      // 太频繁,不打印
+      break;
+  }
   switch (message.type) {
     case "register": {
       clients.set(message.deviceId, {
