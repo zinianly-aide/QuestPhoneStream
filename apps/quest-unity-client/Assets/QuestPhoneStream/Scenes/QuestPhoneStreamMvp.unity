@@ -335,6 +335,8 @@ MonoBehaviour:
   controlChannel: {fileID: 1624316268}
   xrCamera: {fileID: 332583113}
   xrUiRig: {fileID: 1624316271}
+  mediaPlayback: {fileID: 0}
+  mediaPanelAnchor: {fileID: 1788554307}
   connectOnStart: 1
   targetMaterial: {fileID: 2100000, guid: 3b6ab603b5778456ebd6098585a220fd, type: 2}
   textureWidth: 1280

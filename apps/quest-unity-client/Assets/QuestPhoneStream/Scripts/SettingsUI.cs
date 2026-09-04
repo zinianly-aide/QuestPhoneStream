@@ -8,14 +8,16 @@ namespace QuestPhoneStream
     {
         public QuestSignalingClient signalingClient { get; private set; }
         public Canvas canvas;
-        public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput;
-        public Button saveButton, connectButton;
+        public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput, mediaBaseUrlInput;
+        public Button saveButton, connectButton, phoneScreenButton, videoLibraryButton;
         public Text statusText;
+        public MediaLibraryUI mediaLibrary;
+        public MediaPlaybackController mediaPlayback;
         public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
         private Camera _xrCamera;
         private bool _initialized, _isConnecting, _reportedMissingCamera;
-        private InputField[] Inputs => new[] { signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput };
+        private InputField[] Inputs => new[] { signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput, mediaBaseUrlInput };
 
         public void Initialize(QuestSignalingClient client, Camera xrCamera)
         {
@@ -28,6 +30,8 @@ namespace QuestPhoneStream
             _initialized = true;
             saveButton.onClick.AddListener(OnSave);
             connectButton.onClick.AddListener(OnConnect);
+            phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
+            videoLibraryButton?.onClick.AddListener(() => mediaLibrary?.Open());
             client.StateChanged += OnStateChanged;
             LoadSettings();
             Hide();
@@ -63,6 +67,7 @@ namespace QuestPhoneStream
             questDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", signalingClient.questDeviceId);
             androidDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", signalingClient.androidDeviceId);
             sessionIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_SessionId", signalingClient.sessionId);
+            if (mediaBaseUrlInput != null) mediaBaseUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", mediaBaseUrlInput.text);
         }
 
         private bool ValidateSettings()
@@ -118,6 +123,7 @@ namespace QuestPhoneStream
             PlayerPrefs.SetString("QuestPhoneStream_QuestDeviceId", questDeviceIdInput.text.Trim());
             PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", androidDeviceIdInput.text.Trim());
             PlayerPrefs.SetString("QuestPhoneStream_SessionId", sessionIdInput.text.Trim());
+            if (mediaBaseUrlInput != null) PlayerPrefs.SetString("QuestPhoneStream_MediaBaseUrl", mediaBaseUrlInput.text.Trim());
             PlayerPrefs.Save();
         }
 

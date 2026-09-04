@@ -11,6 +11,8 @@ namespace QuestPhoneStream
         public ControlChannel controlChannel;
         public Camera xrCamera;
         public QuestXrUiRig xrUiRig;
+        public MediaPlaybackController mediaPlayback;
+        public Transform mediaPanelAnchor;
         public Material targetMaterial;
         public int textureWidth = 1280, textureHeight = 720;
         public bool connectOnStart = true;
@@ -35,10 +37,35 @@ namespace QuestPhoneStream
                 return;
             }
             xrUiRig.Initialize(xrCamera, this);
+            EnsureMediaPlaybackPanel();
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
             if (connectOnStart) _ = signaling.ReconnectAsync();
+        }
+
+        private void EnsureMediaPlaybackPanel()
+        {
+            if (mediaPlayback != null) return;
+            var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            panel.name = "MediaPanel";
+            if (mediaPanelAnchor != null)
+            {
+                panel.transform.position = mediaPanelAnchor.position + mediaPanelAnchor.forward * 0.015f;
+                panel.transform.rotation = mediaPanelAnchor.rotation;
+                panel.transform.localScale = mediaPanelAnchor.lossyScale;
+            }
+            else
+            {
+                panel.transform.SetParent(transform, false);
+                panel.transform.localPosition = new Vector3(0, 1.45f, 1.22f);
+                panel.transform.localScale = new Vector3(.72f, 1.6f, 1f);
+            }
+            var meshRenderer = panel.GetComponent<MeshRenderer>();
+            if (targetMaterial != null) meshRenderer.material = new Material(targetMaterial);
+            mediaPlayback = panel.AddComponent<MediaPlaybackController>();
+            mediaPlayback.renderer.targetRenderer = meshRenderer;
+            panel.SetActive(false);
         }
 
         public void ToggleSettings()
@@ -47,7 +74,7 @@ namespace QuestPhoneStream
             {
                 var settingsGo = new GameObject("SettingsUI");
                 settingsGo.transform.SetParent(transform, false);
-                _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera);
+                _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback);
             }
             _settingsUI.Toggle();
         }

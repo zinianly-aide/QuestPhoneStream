@@ -13,6 +13,7 @@ const factory = read(scripts + "SettingsUIFactory.cs");
 const receiver = read(scripts + "QuestWebRtcReceiver.cs");
 const signaling = read(scripts + "QuestSignalingClient.cs");
 const rig = read(scripts + "QuestXrUiRig.cs");
+const keyboard = read(scripts + "QuestKeyboardInputField.cs");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
@@ -40,6 +41,14 @@ test("canvas uses pixel layout and small world scale with positive input padding
   // Canvas -> panel anchors(.8) -> row(.9 x .1) -> input(.63 x .8) -> padding.
   assert.ok(width * .8 * .9 * .63 - 20 > 0);
   assert.ok(height * .8 * .1 * .8 - 10 > 22);
+});
+
+test("Quest input fields have a native keyboard fallback", () => {
+  assert.match(factory, /AddComponent<QuestKeyboardInputField>/);
+  assert.match(factory, /shouldHideMobileInput = false/);
+  assert.match(keyboard, /TouchScreenKeyboard\.Open/);
+  assert.match(keyboard, /TouchScreenKeyboard\.isSupported/);
+  assert.match(keyboard, /Status\.Done/);
 });
 
 test("scene explicitly wires camera/rig and XR input uses XRI 3 standard components", () => {

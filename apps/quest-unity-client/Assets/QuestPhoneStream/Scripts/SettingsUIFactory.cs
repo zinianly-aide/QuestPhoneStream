@@ -8,17 +8,21 @@ namespace QuestPhoneStream
     {
         private Canvas _canvas;
         private SettingsUI _settingsUI;
+        private MediaLibraryUI _mediaLibrary;
 
-        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera)
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera) =>
+            Initialize(signalingClient, xrCamera, null);
+
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback = null)
         {
             if (signalingClient == null || xrCamera == null)
                 throw new System.ArgumentException("Settings UI requires signaling and XR camera dependencies");
             if (_settingsUI != null) return _settingsUI;
-            CreateUI(signalingClient, xrCamera);
+            CreateUI(signalingClient, xrCamera, playback);
             return _settingsUI;
         }
 
-        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera)
+        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback)
         {
             var canvasGo = new GameObject("SettingsCanvas");
             canvasGo.transform.SetParent(transform, false);
@@ -60,13 +64,27 @@ namespace QuestPhoneStream
             CreateInputField(panel, "Session ID:", "QuestPhoneStream_SessionId", "local-session-001", 4, out var sessionIdInput);
             _settingsUI.sessionIdInput = sessionIdInput;
 
-            CreateButton(panel, "Save", 5, out var saveBtn);
+            CreateInputField(panel, "Media HTTP URL:", "QuestPhoneStream_MediaBaseUrl", "http://192.168.1.11:8788", 5, out var mediaUrlInput);
+            _settingsUI.mediaBaseUrlInput = mediaUrlInput;
+
+            CreateButton(panel, "Save", 6, 0.05f, out var saveBtn);
             _settingsUI.saveButton = saveBtn;
 
-            CreateButton(panel, "Connect / Reconnect", 5, out var connectBtn);
+            CreateButton(panel, "Connect / Reconnect", 6, 0.52f, out var connectBtn);
             _settingsUI.connectButton = connectBtn;
 
-            CreateStatusText(panel, 7, out var statusText);
+            CreateButton(panel, "Phone Screen", 7, 0.05f, out var phoneBtn);
+            CreateButton(panel, "Video Library", 7, 0.52f, out var videoBtn);
+            _settingsUI.phoneScreenButton = phoneBtn;
+            _settingsUI.videoLibraryButton = videoBtn;
+
+            var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
+            _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
+            _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
+            _settingsUI.mediaLibrary = _mediaLibrary;
+            _settingsUI.mediaPlayback = playback;
+
+            CreateStatusText(panel, 8, out var statusText);
             _settingsUI.statusText = statusText;
 
             _settingsUI.Initialize(signalingClient, xrCamera);
@@ -94,8 +112,8 @@ namespace QuestPhoneStream
             row.transform.SetParent(parent, false);
 
             var rowRt = row.AddComponent<RectTransform>();
-            rowRt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.12f);
-            rowRt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.12f + 0.1f);
+            rowRt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.1f);
+            rowRt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.1f + 0.08f);
             rowRt.sizeDelta = Vector2.zero;
 
             var labelGo = new GameObject("Label");
@@ -134,13 +152,18 @@ namespace QuestPhoneStream
             textRt.offsetMin = new Vector2(10, 5);
             textRt.offsetMax = new Vector2(-10, -5);
 
-            inputField = inputGo.AddComponent<InputField>();
+            inputField = inputGo.AddComponent<QuestKeyboardInputField>();
             inputField.textComponent = text;
             inputField.targetGraphic = inputImage;
+            inputField.shouldHideMobileInput = false;
+            inputField.keyboardType = TouchScreenKeyboardType.Default;
+            inputField.lineType = InputField.LineType.SingleLine;
             inputField.text = PlayerPrefs.GetString(prefKey, defaultValue);
         }
 
-        private void CreateButton(Transform parent, string label, int index, out Button button)
+        private void CreateButton(Transform parent, string label, int index, out Button button) => CreateButton(parent, label, index, label == "Save" ? 0.05f : 0.52f, out button);
+
+        private void CreateButton(Transform parent, string label, int index, float xPos, out Button button)
         {
             var btnGo = new GameObject($"Button_{label}");
             btnGo.transform.SetParent(parent, false);
@@ -152,9 +175,8 @@ namespace QuestPhoneStream
             button.targetGraphic = btnImage;
 
             var rt = btnGo.GetComponent<RectTransform>();
-            float xPos = label == "Save" ? 0.05f : 0.52f;
-            rt.anchorMin = new Vector2(xPos, 0.85f - index * 0.12f);
-            rt.anchorMax = new Vector2(xPos + 0.43f, 0.85f - index * 0.12f + 0.1f);
+            rt.anchorMin = new Vector2(xPos, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(xPos + 0.43f, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
 
             var textGo = new GameObject("Text");
@@ -185,8 +207,8 @@ namespace QuestPhoneStream
             statusText.text = "";
 
             var rt = textGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.12f);
-            rt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.12f + 0.1f);
+            rt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
         }
     }

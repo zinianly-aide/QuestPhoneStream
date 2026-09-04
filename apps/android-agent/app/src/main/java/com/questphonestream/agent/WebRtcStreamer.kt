@@ -15,14 +15,14 @@ class WebRtcStreamer(
     private val signaling: SignalingClient
 ) {
     private val main = Handler(Looper.getMainLooper())
-    private val eglBase = EglBase.create()
-    private val factory: PeerConnectionFactory
-    private val videoCapturer: VideoCapturer
-    private val videoSource: VideoSource
-    private val videoTrack: VideoTrack
-    private val audioSource: AudioSource
-    private val audioTrack: AudioTrack
-    private val surfaceTextureHelper: SurfaceTextureHelper
+    private lateinit var eglBase: EglBase
+    private lateinit var factory: PeerConnectionFactory
+    private lateinit var videoCapturer: VideoCapturer
+    private lateinit var videoSource: VideoSource
+    private lateinit var videoTrack: VideoTrack
+    private lateinit var audioSource: AudioSource
+    private lateinit var audioTrack: AudioTrack
+    private lateinit var surfaceTextureHelper: SurfaceTextureHelper
     private var peerConnection: PeerConnection? = null
     private var controlChannel: DataChannel? = null
     private var activeSession: StreamSession? = null
@@ -32,24 +32,30 @@ class WebRtcStreamer(
     private val pendingIce = ArrayDeque<IceCandidateMessage>()
 
     init {
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
-            .createInitializationOptions())
-        factory = PeerConnectionFactory.builder()
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-            .createPeerConnectionFactory()
-        // Capture belongs to the user-authorized projection, not an individual peer negotiation.
-        videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
-            override fun onStop() { main.post { dispose() } }
-        })
-        videoSource = factory.createVideoSource(true)
-        surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
-        videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
-        videoCapturer.startCapture(config.width, config.height, config.fps)
-        videoTrack = factory.createVideoTrack("screen-video", videoSource)
-        audioSource = factory.createAudioSource(MediaConstraints())
-        audioTrack = factory.createAudioTrack("silent-audio", audioSource)
-        audioTrack.setEnabled(false)
+        try {
+            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
+                .createInitializationOptions())
+            eglBase = EglBase.create()
+            factory = PeerConnectionFactory.builder()
+                .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+                .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+                .createPeerConnectionFactory()
+            // Capture belongs to the user-authorized projection, not an individual peer negotiation.
+            videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
+                override fun onStop() { main.post { dispose() } }
+            })
+            videoSource = factory.createVideoSource(true)
+            surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
+            videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
+            videoCapturer.startCapture(config.width, config.height, config.fps)
+            videoTrack = factory.createVideoTrack("screen-video", videoSource)
+            audioSource = factory.createAudioSource(MediaConstraints())
+            audioTrack = factory.createAudioTrack("silent-audio", audioSource)
+            audioTrack.setEnabled(false)
+        } catch (error: Throwable) {
+            disposeInitializedResources()
+            throw error
+        }
     }
 
     fun startSession(session: StreamSession) {
@@ -165,16 +171,20 @@ class WebRtcStreamer(
     fun dispose() {
         if (disposed) return
         disposed = true
+        disposeInitializedResources()
+    }
+
+    private fun disposeInitializedResources() {
         resetPeer()
-        runCatching { videoCapturer.stopCapture() }
-        videoCapturer.dispose()
-        videoTrack.dispose()
-        audioTrack.dispose()
-        videoSource.dispose()
-        audioSource.dispose()
-        surfaceTextureHelper.dispose()
-        factory.dispose()
-        eglBase.release()
+        if (::videoCapturer.isInitialized) runCatching { videoCapturer.stopCapture() }
+        if (::videoCapturer.isInitialized) runCatching { videoCapturer.dispose() }
+        if (::videoTrack.isInitialized) runCatching { videoTrack.dispose() }
+        if (::audioTrack.isInitialized) runCatching { audioTrack.dispose() }
+        if (::videoSource.isInitialized) runCatching { videoSource.dispose() }
+        if (::audioSource.isInitialized) runCatching { audioSource.dispose() }
+        if (::surfaceTextureHelper.isInitialized) runCatching { surfaceTextureHelper.dispose() }
+        if (::factory.isInitialized) runCatching { factory.dispose() }
+        if (::eglBase.isInitialized) runCatching { eglBase.release() }
     }
 }
 

@@ -88,6 +88,8 @@ namespace QuestPhoneStream.Tests
             Assert.IsNotNull(ui.canvas.GetComponent<TrackedDeviceGraphicRaycaster>());
             foreach (var input in ui.GetComponentsInChildren<InputField>(true))
             {
+                Assert.IsNotNull(input.GetComponent<QuestKeyboardInputField>());
+                Assert.IsFalse(input.shouldHideMobileInput);
                 var textRect = input.textComponent.rectTransform.rect;
                 Assert.Greater(textRect.width, 0);
                 Assert.Greater(textRect.height, input.textComponent.fontSize);
