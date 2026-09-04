@@ -20,6 +20,7 @@
       "required": ["type", "token", "sessionId", "androidDeviceId", "questDeviceId"],
       "properties": {
         "type": { "const": "create_session" },
+        "negotiationId": { "type": "string", "pattern": "^[a-zA-Z0-9-]{1,64}$" },
         "token": { "type": "string" },
         "sessionId": { "type": "string" },
         "androidDeviceId": { "type": "string" },
@@ -29,9 +30,10 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "token", "sessionId", "from", "to"],
+      "required": ["type", "token", "sessionId", "from", "to", "sdp"],
       "properties": {
         "type": { "enum": ["offer", "answer"] },
+        "negotiationId": { "type": "string", "pattern": "^[a-zA-Z0-9-]{1,64}$" },
         "token": { "type": "string" },
         "sessionId": { "type": "string" },
         "from": { "type": "string" },
@@ -45,6 +47,7 @@
       "required": ["type", "token", "sessionId", "from", "to", "candidate"],
       "properties": {
         "type": { "const": "ice" },
+        "negotiationId": { "type": "string", "pattern": "^[a-zA-Z0-9-]{1,64}$" },
         "token": { "type": "string" },
         "sessionId": { "type": "string" },
         "from": { "type": "string" },
@@ -65,4 +68,3 @@
     }
   ]
 }
-

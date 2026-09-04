@@ -1,5 +1,7 @@
 package com.questphonestream.agent
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -11,10 +13,13 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.TimeUnit
 
-data class IceCandidateMessage(
-    val candidate: String,
-    val sdpMid: String?,
-    val sdpMLineIndex: Int
+data class IceCandidateMessage(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int)
+
+data class StreamSession(
+    val sessionId: String,
+    val androidDeviceId: String,
+    val questDeviceId: String,
+    val negotiationId: String?
 )
 
 class SignalingClient(
@@ -26,158 +31,155 @@ class SignalingClient(
 ) {
     interface Listener {
         fun onOpen() {}
-        fun onSessionCreated(sessionId: String, androidDeviceId: String, questDeviceId: String) {}
-        fun onRemoteDescription(type: String, sdp: String) {}
-        fun onIceCandidate(candidate: IceCandidateMessage) {}
+        fun onRegistered() {}
+        fun onSessionCreated(session: StreamSession) {}
+        fun onRemoteDescription(session: StreamSession, type: String, sdp: String) {}
+        fun onIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {}
+        fun onSessionEnded() {}
         fun onStateChanged(state: ConnectionState) {}
         fun onError(message: String) {}
     }
 
-    private val client = OkHttpClient.Builder()
-        .pingInterval(15, TimeUnit.SECONDS)
-        .build()
+    private val main = Handler(Looper.getMainLooper())
+    private val client = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build()
     private var socket: WebSocket? = null
     private var heartbeat: Timer? = null
-
-    val currentState: ConnectionState
-        get() = _state
-
-    private var _state: ConnectionState = ConnectionState.IDLE
-        set(value) {
-            field = value
-            listener.onStateChanged(value)
-        }
+    private var activeSession: StreamSession? = null
+    private var closed = false
+    val currentState: ConnectionState get() = state
+    private var state = ConnectionState.IDLE
+        set(value) { field = value; listener.onStateChanged(value) }
 
     fun connect() {
-        _state = ConnectionState.CONNECTING
-        val request = Request.Builder().url(url).build()
-        socket = client.newWebSocket(request, object : WebSocketListener() {
+        state = ConnectionState.CONNECTING
+        socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "Signaling connected to $url")
-                _state = ConnectionState.CONNECTED
-                send(
-                    JSONObject()
-                        .put("type", "register")
-                        .put("token", token)
-                        .put("role", role)
-                        .put("deviceId", deviceId)
-                )
-                startHeartbeat()
-                listener.onOpen()
+                main.post {
+                    if (closed || socket !== webSocket) return@post
+                    send(JSONObject().put("type", "register").put("token", token).put("role", role).put("deviceId", deviceId))
+                    listener.onOpen()
+                }
             }
-
             override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(JSONObject(text))
+                main.post {
+                    if (closed || socket !== webSocket) return@post
+                    runCatching { handleMessage(JSONObject(text)) }.onFailure {
+                        listener.onError("Invalid signaling message")
+                    }
+                }
             }
-
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                val msg = "Signaling failure: ${t.message}"
-                Log.e(TAG, msg, t)
-                _state = ConnectionState.FAILED
-                listener.onError(msg)
+                main.post {
+                    if (closed || socket !== webSocket) return@post
+                    endSession()
+                    heartbeat?.cancel()
+                    state = ConnectionState.FAILED
+                    listener.onError("Signaling connection failed")
+                }
             }
-
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(code, null)
+            }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "Signaling closed: $code $reason")
-                _state = ConnectionState.CLOSED
+                main.post {
+                    if (closed || socket !== webSocket) return@post
+                    endSession()
+                    heartbeat?.cancel()
+                    state = ConnectionState.CLOSED
+                }
             }
         })
     }
 
     fun createSession(sessionId: String, androidDeviceId: String, questDeviceId: String) {
-        send(
-            JSONObject()
-                .put("type", "create_session")
-                .put("token", token)
-                .put("sessionId", sessionId)
-                .put("androidDeviceId", androidDeviceId)
-                .put("questDeviceId", questDeviceId)
-        )
+        send(JSONObject().put("type", "create_session").put("token", token)
+            .put("sessionId", sessionId).put("androidDeviceId", androidDeviceId).put("questDeviceId", questDeviceId))
     }
 
-    fun sendSdp(type: String, sessionId: String, from: String, to: String, sdp: String) {
-        send(
-            JSONObject()
-                .put("type", type)
-                .put("token", token)
-                .put("sessionId", sessionId)
-                .put("from", from)
-                .put("to", to)
-                .put("sdp", sdp)
-        )
+    private fun relay(type: String, session: StreamSession): JSONObject =
+        JSONObject().put("type", type).put("token", token).put("sessionId", session.sessionId)
+            .put("negotiationId", session.negotiationId).put("from", deviceId).put("to", session.questDeviceId)
+
+    fun sendSdp(type: String, session: StreamSession, sdp: String) {
+        if (session == activeSession && !closed) send(relay(type, session).put("sdp", sdp))
     }
 
-    fun sendIce(sessionId: String, from: String, to: String, candidate: IceCandidateMessage) {
-        send(
-            JSONObject()
-                .put("type", "ice")
-                .put("token", token)
-                .put("sessionId", sessionId)
-                .put("from", from)
-                .put("to", to)
-                .put(
-                    "candidate",
-                    JSONObject()
-                        .put("candidate", candidate.candidate)
-                        .put("sdpMid", candidate.sdpMid)
-                        .put("sdpMLineIndex", candidate.sdpMLineIndex)
-                )
-        )
-    }
-
-    fun close() {
-        heartbeat?.cancel()
-        socket?.close(1000, "closed")
-        _state = ConnectionState.CLOSED
-        client.dispatcher.executorService.shutdown()
+    fun sendIce(session: StreamSession, candidate: IceCandidateMessage) {
+        if (session != activeSession || closed) return
+        send(relay("ice", session).put("candidate", JSONObject()
+            .put("candidate", candidate.candidate).put("sdpMid", candidate.sdpMid).put("sdpMLineIndex", candidate.sdpMLineIndex)))
     }
 
     private fun handleMessage(message: JSONObject) {
         when (message.optString("type")) {
-            "registered" -> Log.i(TAG, "Registered as $deviceId")
-            "session_created" -> listener.onSessionCreated(
-                message.getString("sessionId"),
-                message.getString("androidDeviceId"),
-                message.getString("questDeviceId")
-            )
-            "answer", "offer" -> listener.onRemoteDescription(
-                message.getString("type"),
-                message.getString("sdp")
-            )
-            "ice" -> {
-                val candidate = message.getJSONObject("candidate")
-                listener.onIceCandidate(
-                    IceCandidateMessage(
-                        candidate = candidate.getString("candidate"),
-                        sdpMid = candidate.optString("sdpMid", null),
-                        sdpMLineIndex = candidate.optInt("sdpMLineIndex", 0)
-                    )
-                )
+            "registered" -> {
+                if (message.optString("deviceId") != deviceId || message.optString("role") != role) return
+                state = ConnectionState.CONNECTED
+                startHeartbeat()
+                listener.onRegistered()
+            }
+            "session_created" -> {
+                if (message.optString("androidDeviceId") != deviceId) return
+                val session = StreamSession(message.getString("sessionId"), deviceId,
+                    message.getString("questDeviceId"), message.optString("negotiationId").ifEmpty { null })
+                if (session == activeSession) return
+                activeSession = session
+                listener.onSessionCreated(session)
+            }
+            "answer", "ice" -> {
+                val session = activeSession ?: return
+                if (!matches(message, session) || message.optString("from") != session.questDeviceId ||
+                    message.optString("to") != deviceId) return
+                if (message.optString("type") == "answer")
+                    listener.onRemoteDescription(session, "answer", message.getString("sdp"))
+                else {
+                    val ice = message.getJSONObject("candidate")
+                    listener.onIceCandidate(session, IceCandidateMessage(ice.getString("candidate"),
+                        ice.optString("sdpMid", null), ice.optInt("sdpMLineIndex", 0)))
+                }
+            }
+            "peer_unavailable" -> {
+                val session = activeSession ?: return
+                if (matches(message, session)) endSession()
             }
             "error" -> {
-                val errMsg = "Signaling error: ${message.optString("code")} ${message.optString("message")}"
-                Log.e(TAG, errMsg)
-                listener.onError(errMsg)
+                val session = activeSession
+                if (message.has("sessionId") && (session == null || !matches(message, session))) return
+                val code = message.optString("code")
+                if (code == "session_replaced" || code == "unauthorized") endSession()
+                // Only fixed diagnostic text; never echo a server payload or credential.
+                listener.onError(if (code == "unauthorized") "Authentication failed" else "Signaling request rejected")
             }
         }
     }
 
-    private fun send(payload: JSONObject) {
-        socket?.send(payload.toString())
+    private fun matches(message: JSONObject, session: StreamSession): Boolean =
+        message.optString("sessionId") == session.sessionId &&
+            message.optString("negotiationId").ifEmpty { null } == session.negotiationId
+
+    private fun endSession() {
+        activeSession = null
+        listener.onSessionEnded()
     }
+
+    fun close() {
+        closed = true
+        heartbeat?.cancel()
+        socket?.close(1000, "closed")
+        endSession()
+        state = ConnectionState.CLOSED
+        client.dispatcher.executorService.shutdown()
+    }
+
+    private fun send(payload: JSONObject) { if (!closed) socket?.send(payload.toString()) }
 
     private fun startHeartbeat() {
         heartbeat?.cancel()
         heartbeat = Timer("quest-phone-heartbeat", true).apply {
             scheduleAtFixedRate(object : TimerTask() {
                 override fun run() {
-                    send(
-                        JSONObject()
-                            .put("type", "heartbeat")
-                            .put("token", token)
-                            .put("deviceId", deviceId)
-                            .put("timestamp", System.currentTimeMillis())
-                    )
+                    send(JSONObject().put("type", "heartbeat").put("token", token)
+                        .put("deviceId", deviceId).put("timestamp", System.currentTimeMillis()))
                 }
             }, 5000, 15000)
         }

@@ -1,0 +1,234 @@
+{
+  "name": "QuestUi",
+  "maps": [
+    {
+      "name": "Quest UI",
+      "id": "01e6b55a-63a0-4faa-a232-3d82ac6cd2ee",
+      "actions": [
+        {
+          "name": "Open Settings",
+          "type": "Button",
+          "id": "ce917a64-0cae-4701-9ddb-e1e96a9b220d",
+          "expectedControlType": "Button",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": false
+        },
+        {
+          "name": "Head UI Point Position",
+          "type": "Value",
+          "id": "1e3f5aa3-74d6-41e4-8d1e-98cbd01e78f9",
+          "expectedControlType": "Vector3",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "Head UI Point Rotation",
+          "type": "Value",
+          "id": "655ecd32-07df-432b-9e03-31ae92447ead",
+          "expectedControlType": "Quaternion",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "LeftHand UI Point Position",
+          "type": "Value",
+          "id": "bde3cf60-7785-42e7-b361-c1aee6f6fae8",
+          "expectedControlType": "Vector3",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "LeftHand UI Point Rotation",
+          "type": "Value",
+          "id": "81f605b3-5130-4f5a-bd81-563282084e8d",
+          "expectedControlType": "Quaternion",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "LeftHand UI Click",
+          "type": "Button",
+          "id": "2c95cb0a-f1fc-4f77-844a-1251dd8771ca",
+          "expectedControlType": "Button",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": false
+        },
+        {
+          "name": "LeftHand UI Click Value",
+          "type": "Value",
+          "id": "07c68061-9f49-4ee2-96ae-794227f68053",
+          "expectedControlType": "Axis",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "RightHand UI Point Position",
+          "type": "Value",
+          "id": "8ccf2b85-88c6-4af4-bbcc-6e598f0b59e3",
+          "expectedControlType": "Vector3",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "RightHand UI Point Rotation",
+          "type": "Value",
+          "id": "88e4c84f-3cc9-429c-b5f0-2d663cfd5dfe",
+          "expectedControlType": "Quaternion",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        },
+        {
+          "name": "RightHand UI Click",
+          "type": "Button",
+          "id": "49949de0-ce3c-4037-9514-bb10f35dead0",
+          "expectedControlType": "Button",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": false
+        },
+        {
+          "name": "RightHand UI Click Value",
+          "type": "Value",
+          "id": "efc433fb-b444-4b92-bd3d-a2b68249dd39",
+          "expectedControlType": "Axis",
+          "processors": "",
+          "interactions": "",
+          "initialStateCheck": true
+        }
+      ],
+      "bindings": [
+        {
+          "name": "",
+          "id": "75bbc2d3-6c7d-40c9-99eb-f8f0f47e2f67",
+          "path": "<OculusTouchController>{RightHand}/primaryButton",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "Open Settings",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "628ce64a-e537-4fb1-bbc1-537a45858098",
+          "path": "<XRHMD>/centerEyePosition",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "Head UI Point Position",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "bc92764e-44f9-4065-bee1-5f006638d81d",
+          "path": "<XRHMD>/centerEyeRotation",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "Head UI Point Rotation",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "a802fb78-b711-4a41-a201-bfd0c71bdde8",
+          "path": "<OculusTouchController>{LeftHand}/pointerPosition",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "LeftHand UI Point Position",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "51e3ea4d-9d93-4c61-b2d7-009c7c0600f4",
+          "path": "<OculusTouchController>{LeftHand}/pointerRotation",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "LeftHand UI Point Rotation",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "cc1ef379-2cbc-4579-8d45-4358e2e33ce4",
+          "path": "<OculusTouchController>{LeftHand}/triggerPressed",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "LeftHand UI Click",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "224fe723-bf1f-439f-86d0-79ad5bd190c0",
+          "path": "<OculusTouchController>{LeftHand}/trigger",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "LeftHand UI Click Value",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "fe43cbf4-6712-4afa-94d4-496a847560fc",
+          "path": "<OculusTouchController>{RightHand}/pointerPosition",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "RightHand UI Point Position",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "5a65bc36-235d-47e2-9ff6-91705d9514f8",
+          "path": "<OculusTouchController>{RightHand}/pointerRotation",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "RightHand UI Point Rotation",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "51a90b39-5c27-4be2-af25-f4da548f3e4f",
+          "path": "<OculusTouchController>{RightHand}/triggerPressed",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "RightHand UI Click",
+          "isComposite": false,
+          "isPartOfComposite": false
+        },
+        {
+          "name": "",
+          "id": "0bd1cd0d-fb6b-4989-bcf6-e1214c6a2765",
+          "path": "<OculusTouchController>{RightHand}/trigger",
+          "interactions": "",
+          "processors": "",
+          "groups": "",
+          "action": "RightHand UI Click Value",
+          "isComposite": false,
+          "isPartOfComposite": false
+        }
+      ]
+    }
+  ],
+  "controlSchemes": []
+}

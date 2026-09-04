@@ -311,6 +311,7 @@ GameObject:
   - component: {fileID: 1624316269}
   - component: {fileID: 1624316268}
   - component: {fileID: 1624316267}
+  - component: {fileID: 1624316271}
   m_Layer: 0
   m_Name: QuestPhoneStreamApp
   m_TagString: Untagged
@@ -332,9 +333,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   signaling: {fileID: 1624316269}
   controlChannel: {fileID: 1624316268}
+  xrCamera: {fileID: 332583113}
+  xrUiRig: {fileID: 1624316271}
+  connectOnStart: 1
   targetMaterial: {fileID: 2100000, guid: 3b6ab603b5778456ebd6098585a220fd, type: 2}
   textureWidth: 1280
   textureHeight: 720
+--- !u!114 &1624316271
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1624316266}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4515ca0432c04580a0b46d7d946b316f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  actionAsset: {fileID: -944628639613478452, guid: 7c0a585c07cb4b58bb3fa43a25c55f87, type: 3}
 --- !u!114 &1624316268
 MonoBehaviour:
   m_ObjectHideFlags: 0

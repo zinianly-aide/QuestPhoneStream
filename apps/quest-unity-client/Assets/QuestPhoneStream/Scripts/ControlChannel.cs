@@ -13,9 +13,19 @@ namespace QuestPhoneStream
 
         public void Attach(RTCDataChannel channel)
         {
+            ResetChannel();
             _channel = channel;
             Debug.Log("[QuestPhoneStream] Control DataChannel attached");
         }
+
+        public void ResetChannel()
+        {
+            _channel?.Close();
+            _channel?.Dispose();
+            _channel = null;
+        }
+
+        private void OnDestroy() { ResetChannel(); }
 
         public void SendClick(int x, int y)
         {
@@ -75,9 +85,8 @@ namespace QuestPhoneStream
             }
             else
             {
-                Debug.LogWarning($"[QuestPhoneStream] Control channel is not open. Command: {json}");
+                Debug.LogWarning("[QuestPhoneStream] Control channel is not open");
             }
         }
     }
 }
-

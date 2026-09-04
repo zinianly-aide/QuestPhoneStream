@@ -2,26 +2,10 @@ package com.questphonestream.agent
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import org.webrtc.AudioSource
-import org.webrtc.AudioTrack
-import org.webrtc.DataChannel
-import org.webrtc.DefaultVideoDecoderFactory
-import org.webrtc.DefaultVideoEncoderFactory
-import org.webrtc.EglBase
-import org.webrtc.IceCandidate
-import org.webrtc.MediaConstraints
-import org.webrtc.MediaStream
-import org.webrtc.PeerConnection
-import org.webrtc.PeerConnectionFactory
-import org.webrtc.RtpReceiver
-import org.webrtc.ScreenCapturerAndroid
-import org.webrtc.SdpObserver
-import org.webrtc.SessionDescription
-import org.webrtc.SurfaceTextureHelper
-import org.webrtc.VideoCapturer
-import org.webrtc.VideoSource
-import org.webrtc.VideoTrack
+import org.webrtc.*
 
 class WebRtcStreamer(
     private val context: Context,
@@ -30,138 +14,173 @@ class WebRtcStreamer(
     private val projectionData: Intent,
     private val signaling: SignalingClient
 ) {
+    private val main = Handler(Looper.getMainLooper())
     private val eglBase = EglBase.create()
     private val factory: PeerConnectionFactory
-    private val peerConnection: PeerConnection
     private val videoCapturer: VideoCapturer
     private val videoSource: VideoSource
-    private val controlChannel: DataChannel
+    private val videoTrack: VideoTrack
+    private val audioSource: AudioSource
+    private val audioTrack: AudioTrack
+    private val surfaceTextureHelper: SurfaceTextureHelper
+    private var peerConnection: PeerConnection? = null
+    private var controlChannel: DataChannel? = null
+    private var activeSession: StreamSession? = null
+    private var generation = 0
+    private var disposed = false
+    private var remoteReady = false
+    private val pendingIce = ArrayDeque<IceCandidateMessage>()
 
     init {
-        PeerConnectionFactory.initialize(
-            PeerConnectionFactory.InitializationOptions.builder(context)
-                .setEnableInternalTracer(true)
-                .createInitializationOptions()
-        )
-        val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
-        val decoderFactory = DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
+            .createInitializationOptions())
         factory = PeerConnectionFactory.builder()
-            .setVideoEncoderFactory(encoderFactory)
-            .setVideoDecoderFactory(decoderFactory)
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
+        // Capture belongs to the user-authorized projection, not an individual peer negotiation.
+        videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
+            override fun onStop() { main.post { dispose() } }
+        })
+        videoSource = factory.createVideoSource(true)
+        surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
+        videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
+        videoCapturer.startCapture(config.width, config.height, config.fps)
+        videoTrack = factory.createVideoTrack("screen-video", videoSource)
+        audioSource = factory.createAudioSource(MediaConstraints())
+        audioTrack = factory.createAudioTrack("silent-audio", audioSource)
+        audioTrack.setEnabled(false)
+    }
 
-        val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
-        )
-        peerConnection = factory.createPeerConnection(
-            PeerConnection.RTCConfiguration(iceServers).apply {
-                sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-                continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-            },
-            object : PeerConnection.Observer {
-                override fun onIceCandidate(candidate: IceCandidate) {
-                    signaling.sendIce(
-                        config.sessionId,
-                        config.deviceId,
-                        config.questDeviceId,
-                        IceCandidateMessage(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
-                    )
+    fun startSession(session: StreamSession) {
+        if (disposed || activeSession == session) return
+        resetPeer()
+        activeSession = session
+        val epoch = generation
+        val iceServers = listOf(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+        val peer = factory.createPeerConnection(PeerConnection.RTCConfiguration(iceServers).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+        }, object : PeerConnection.Observer {
+            override fun onIceCandidate(candidate: IceCandidate) {
+                main.post {
+                    if (isCurrent(epoch)) signaling.sendIce(session,
+                        IceCandidateMessage(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex))
                 }
-
-                override fun onDataChannel(channel: DataChannel) = Unit
-                override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
-                override fun onSignalingChange(state: PeerConnection.SignalingState) {
-                    Log.i(TAG, "Signaling $state")
-                }
-                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
-                    Log.i(TAG, "ICE $state")
-                }
-                override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) = Unit
-                override fun onAddStream(stream: MediaStream) = Unit
-                override fun onRemoveStream(stream: MediaStream) = Unit
-                override fun onRenegotiationNeeded() = Unit
-                override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = Unit
             }
-        ) ?: error("Failed to create PeerConnection")
-
-        controlChannel = peerConnection.createDataChannel("control", DataChannel.Init()).apply {
+            override fun onDataChannel(channel: DataChannel) { main.post { channel.close(); channel.dispose() } }
+            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
+            override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
+            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Unit
+            override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
+            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) = Unit
+            override fun onAddStream(stream: MediaStream) = Unit
+            override fun onRemoveStream(stream: MediaStream) = Unit
+            override fun onRenegotiationNeeded() = Unit
+            override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = Unit
+        }) ?: error("Failed to create PeerConnection")
+        peerConnection = peer
+        controlChannel = peer.createDataChannel("control", DataChannel.Init()).apply {
             registerObserver(object : DataChannel.Observer {
                 override fun onBufferedAmountChange(previousAmount: Long) = Unit
-                override fun onStateChange() {
-                    Log.i(TAG, "Control DataChannel ${state()}")
-                }
+                override fun onStateChange() = Unit
                 override fun onMessage(buffer: DataChannel.Buffer) {
+                    if (buffer.binary || buffer.data.remaining() > 65536) return
                     val bytes = ByteArray(buffer.data.remaining())
                     buffer.data.get(bytes)
-                    ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
+                    main.post {
+                        if (isCurrent(epoch)) ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
+                    }
                 }
             })
         }
-
-        videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
-            override fun onStop() {
-                Log.i(TAG, "MediaProjection stopped")
-                dispose()
-            }
-        })
-        videoSource = factory.createVideoSource(false)
-        val surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
-        videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
-        videoCapturer.startCapture(config.width, config.height, config.fps)
-
-        val videoTrack: VideoTrack = factory.createVideoTrack("screen-video", videoSource)
-        peerConnection.addTrack(videoTrack, listOf("screen"))
-
-        val audioSource: AudioSource = factory.createAudioSource(MediaConstraints())
-        val audioTrack: AudioTrack = factory.createAudioTrack("silent-audio", audioSource)
-        audioTrack.setEnabled(false)
-        peerConnection.addTrack(audioTrack, listOf("screen"))
+        peer.addTrack(videoTrack, listOf("screen"))
+        peer.addTrack(audioTrack, listOf("screen"))
+        createOffer(peer, session, epoch)
     }
 
-    fun createOffer() {
+    private fun createOffer(peer: PeerConnection, session: StreamSession, epoch: Int) {
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
         }
-        peerConnection.createOffer(object : SimpleSdpObserver() {
+        peer.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(description: SessionDescription) {
-                val preferred = SessionDescription(description.type, SdpUtils.preferH264(description.description))
-                peerConnection.setLocalDescription(SimpleSdpObserver(), preferred)
-                signaling.sendSdp("offer", config.sessionId, config.deviceId, config.questDeviceId, preferred.description)
+                main.post {
+                    if (!isCurrent(epoch)) return@post
+                    val preferred = SessionDescription(description.type, SdpUtils.preferH264(description.description))
+                    peer.setLocalDescription(object : SimpleSdpObserver() {
+                        override fun onSetSuccess() {
+                            main.post {
+                                if (isCurrent(epoch)) signaling.sendSdp("offer", session, preferred.description)
+                            }
+                        }
+                    }, preferred)
+                }
             }
         }, constraints)
     }
 
-    fun setRemoteDescription(type: String, sdp: String) {
-        val sdpType = SessionDescription.Type.fromCanonicalForm(type)
-        peerConnection.setRemoteDescription(SimpleSdpObserver(), SessionDescription(sdpType, sdp))
+    fun setRemoteDescription(session: StreamSession, type: String, sdp: String) {
+        if (session != activeSession || disposed || type != "answer" || remoteReady) return
+        val peer = peerConnection ?: return
+        val epoch = generation
+        peer.setRemoteDescription(object : SimpleSdpObserver() {
+            override fun onSetSuccess() {
+                main.post {
+                    if (!isCurrent(epoch)) return@post
+                    remoteReady = true
+                    while (pendingIce.isNotEmpty()) addIceCandidate(session, pendingIce.removeFirst())
+                }
+            }
+        }, SessionDescription(SessionDescription.Type.ANSWER, sdp))
     }
 
-    fun addIceCandidate(candidate: IceCandidateMessage) {
-        peerConnection.addIceCandidate(IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.candidate))
+    fun addIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {
+        if (session != activeSession || disposed) return
+        if (!remoteReady) {
+            if (pendingIce.size >= 256) { resetPeer(); return }
+            pendingIce.addLast(candidate)
+            return
+        }
+        peerConnection?.addIceCandidate(IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.candidate))
+    }
+
+    private fun isCurrent(epoch: Int): Boolean = !disposed && epoch == generation && peerConnection != null
+
+    fun resetPeer() {
+        ++generation
+        activeSession = null
+        remoteReady = false
+        pendingIce.clear()
+        controlChannel?.unregisterObserver()
+        controlChannel?.close()
+        controlChannel?.dispose()
+        controlChannel = null
+        peerConnection?.close()
+        peerConnection?.dispose()
+        peerConnection = null
     }
 
     fun dispose() {
-        try {
-            videoCapturer.stopCapture()
-        } catch (_: Exception) {
-        }
-        controlChannel.dispose()
+        if (disposed) return
+        disposed = true
+        resetPeer()
+        runCatching { videoCapturer.stopCapture() }
+        videoCapturer.dispose()
+        videoTrack.dispose()
+        audioTrack.dispose()
         videoSource.dispose()
-        peerConnection.dispose()
+        audioSource.dispose()
+        surfaceTextureHelper.dispose()
         factory.dispose()
         eglBase.release()
     }
 }
 
 open class SimpleSdpObserver : SdpObserver {
-    open override fun onCreateSuccess(description: SessionDescription) = Unit
-    open override fun onSetSuccess() = Unit
-    open override fun onCreateFailure(error: String) {
-        Log.e(TAG, "SDP create failure: $error")
-    }
-    open override fun onSetFailure(error: String) {
-        Log.e(TAG, "SDP set failure: $error")
-    }
+    override fun onCreateSuccess(description: SessionDescription) = Unit
+    override fun onSetSuccess() = Unit
+    override fun onCreateFailure(error: String) { Log.e(TAG, "SDP create failed") }
+    override fun onSetFailure(error: String) { Log.e(TAG, "SDP set failed") }
 }

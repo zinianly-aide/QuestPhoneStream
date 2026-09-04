@@ -1,50 +1,55 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace QuestPhoneStream
 {
     public sealed class SettingsUIFactory : MonoBehaviour
     {
-        public QuestSignalingClient signalingClient;
-
         private Canvas _canvas;
         private SettingsUI _settingsUI;
 
-        private void Awake()
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera)
         {
-            CreateUI();
+            if (signalingClient == null || xrCamera == null)
+                throw new System.ArgumentException("Settings UI requires signaling and XR camera dependencies");
+            if (_settingsUI != null) return _settingsUI;
+            CreateUI(signalingClient, xrCamera);
+            return _settingsUI;
         }
 
-        private void CreateUI()
+        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera)
         {
             var canvasGo = new GameObject("SettingsCanvas");
-            canvasGo.transform.SetParent(null, false);
+            canvasGo.transform.SetParent(transform, false);
+            canvasGo.SetActive(false);
 
             _canvas = canvasGo.AddComponent<Canvas>();
             _canvas.renderMode = RenderMode.WorldSpace;
             _canvas.sortingOrder = 100;
+            _canvas.worldCamera = xrCamera;
 
             var scaler = canvasGo.AddComponent<CanvasScaler>();
-            scaler.dynamicPixelsPerUnit = 10;
+            scaler.dynamicPixelsPerUnit = 1;
 
-            canvasGo.AddComponent<GraphicRaycaster>();
+            canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
 
             var rt = canvasGo.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(2, 1.5f);
-            rt.localPosition = new Vector3(0, 1.5f, 2);
+            rt.sizeDelta = new Vector2(1000, 750);
+            rt.localScale = Vector3.one * 0.002f;
             rt.localRotation = Quaternion.identity;
 
             var panel = CreatePanel(canvasGo.transform);
 
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
-            _settingsUI.signalingClient = signalingClient;
 
             CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl", "ws://192.168.1.11:8787", 0, out var urlInput);
             _settingsUI.signalingUrlInput = urlInput;
 
             CreateInputField(panel, "Token:", "QuestPhoneStream_Token", "dev-token", 1, out var tokenInput);
             _settingsUI.tokenInput = tokenInput;
+            tokenInput.contentType = InputField.ContentType.Password;
 
             CreateInputField(panel, "Quest Device ID:", "QuestPhoneStream_QuestDeviceId", "quest-3s-001", 2, out var questIdInput);
             _settingsUI.questDeviceIdInput = questIdInput;
@@ -58,13 +63,13 @@ namespace QuestPhoneStream
             CreateButton(panel, "Save", 5, out var saveBtn);
             _settingsUI.saveButton = saveBtn;
 
-            CreateButton(panel, "Connect", 6, out var connectBtn);
+            CreateButton(panel, "Connect / Reconnect", 5, out var connectBtn);
             _settingsUI.connectButton = connectBtn;
 
             CreateStatusText(panel, 7, out var statusText);
             _settingsUI.statusText = statusText;
 
-            canvasGo.SetActive(false);
+            _settingsUI.Initialize(signalingClient, xrCamera);
         }
 
         private Transform CreatePanel(Transform parent)
@@ -97,7 +102,8 @@ namespace QuestPhoneStream
             labelGo.transform.SetParent(row.transform, false);
             var labelText = labelGo.AddComponent<Text>();
             labelText.text = label;
-            labelText.fontSize = 18;
+            labelText.fontSize = 24;
+            labelText.raycastTarget = false;
             labelText.color = Color.white;
             labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var labelRt = labelGo.GetComponent<RectTransform>();
@@ -117,7 +123,8 @@ namespace QuestPhoneStream
             var textGo = new GameObject("Text");
             textGo.transform.SetParent(inputGo.transform, false);
             var text = textGo.AddComponent<Text>();
-            text.fontSize = 16;
+            text.fontSize = 22;
+            text.raycastTarget = false;
             text.color = Color.white;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var textRt = textGo.GetComponent<RectTransform>();
@@ -129,6 +136,7 @@ namespace QuestPhoneStream
 
             inputField = inputGo.AddComponent<InputField>();
             inputField.textComponent = text;
+            inputField.targetGraphic = inputImage;
             inputField.text = PlayerPrefs.GetString(prefKey, defaultValue);
         }
 
@@ -138,9 +146,10 @@ namespace QuestPhoneStream
             btnGo.transform.SetParent(parent, false);
 
             var btnImage = btnGo.AddComponent<Image>();
-            btnImage.color = label == "Connect" ? new Color(0.2f, 0.6f, 0.2f, 1f) : new Color(0.3f, 0.3f, 0.4f, 1f);
+            btnImage.color = label == "Save" ? new Color(0.3f, 0.3f, 0.4f, 1f) : new Color(0.2f, 0.6f, 0.2f, 1f);
 
             button = btnGo.AddComponent<Button>();
+            button.targetGraphic = btnImage;
 
             var rt = btnGo.GetComponent<RectTransform>();
             float xPos = label == "Save" ? 0.05f : 0.52f;
@@ -152,7 +161,8 @@ namespace QuestPhoneStream
             textGo.transform.SetParent(btnGo.transform, false);
             var text = textGo.AddComponent<Text>();
             text.text = label;
-            text.fontSize = 18;
+            text.fontSize = 24;
+            text.raycastTarget = false;
             text.color = Color.white;
             text.alignment = TextAnchor.MiddleCenter;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -168,7 +178,8 @@ namespace QuestPhoneStream
             textGo.transform.SetParent(parent, false);
 
             statusText = textGo.AddComponent<Text>();
-            statusText.fontSize = 14;
+            statusText.fontSize = 22;
+            statusText.raycastTarget = false;
             statusText.color = Color.yellow;
             statusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             statusText.text = "";
