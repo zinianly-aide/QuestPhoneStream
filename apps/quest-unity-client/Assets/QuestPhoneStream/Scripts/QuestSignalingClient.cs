@@ -10,7 +10,7 @@ namespace QuestPhoneStream
 {
     public sealed class QuestSignalingClient : MonoBehaviour
     {
-        public string signalingUrl = "ws://192.168.1.11:8787";
+        public string signalingUrl = "ws://192.168.1.9:8787";
         public string token = "dev-token";
         public string questDeviceId = "quest-3s-001";
         public string androidDeviceId = "android-phone-001";

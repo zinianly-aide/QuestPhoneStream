@@ -58,7 +58,7 @@ namespace QuestPhoneStream
 
         private void LoadSettings()
         {
-            signalingUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl", signalingClient.signalingUrl);
+            signalingUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", signalingClient.signalingUrl);
             tokenInput.text = PlayerPrefs.GetString("QuestPhoneStream_Token", signalingClient.token);
             questDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", signalingClient.questDeviceId);
             androidDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", signalingClient.androidDeviceId);
@@ -113,7 +113,7 @@ namespace QuestPhoneStream
 
         private void SaveSettings()
         {
-            PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl", signalingUrlInput.text.Trim());
+            PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl_v2", signalingUrlInput.text.Trim());
             PlayerPrefs.SetString("QuestPhoneStream_Token", tokenInput.text);
             PlayerPrefs.SetString("QuestPhoneStream_QuestDeviceId", questDeviceIdInput.text.Trim());
             PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", androidDeviceIdInput.text.Trim());

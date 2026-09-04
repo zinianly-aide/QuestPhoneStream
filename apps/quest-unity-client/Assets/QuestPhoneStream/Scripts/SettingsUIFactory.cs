@@ -44,7 +44,7 @@ namespace QuestPhoneStream
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
 
-            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl", "ws://192.168.1.11:8787", 0, out var urlInput);
+            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "ws://192.168.1.9:8787", 0, out var urlInput);
             _settingsUI.signalingUrlInput = urlInput;
 
             CreateInputField(panel, "Token:", "QuestPhoneStream_Token", "dev-token", 1, out var tokenInput);
