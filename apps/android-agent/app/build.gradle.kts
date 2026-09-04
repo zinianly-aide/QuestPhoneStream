@@ -32,4 +32,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.webrtc:google-webrtc:1.0.32006")
+    testImplementation("junit:junit:4.13.2")
 }

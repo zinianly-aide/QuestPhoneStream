@@ -28,8 +28,18 @@ class WebRtcStreamer(
     private var activeSession: StreamSession? = null
     private var generation = 0
     private var disposed = false
+    private var resourcesDisposed = false
     private var remoteReady = false
     private val pendingIce = ArrayDeque<IceCandidateMessage>()
+    private val peerDisposals = DeferredDisposalQueue(
+        delayMillis = 250L,
+        schedule = { delay, action -> main.postDelayed({ action() }, delay) },
+        dispose = { peer: PeerConnection ->
+            runCatching { peer.close() }
+            runCatching { peer.dispose() }
+        },
+        onDrained = ::disposeCaptureResources
+    )
 
     // Session switches are coalesced through a short debounce: during a Quest
     // reconnect storm the server may emit several session_created messages in a
@@ -91,7 +101,7 @@ class WebRtcStreamer(
                         IceCandidateMessage(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex))
                 }
             }
-            override fun onDataChannel(channel: DataChannel) { main.post { channel.close(); channel.dispose() } }
+            override fun onDataChannel(channel: DataChannel) { main.post { runCatching { channel.close() } } }
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
             override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Unit
@@ -174,10 +184,14 @@ class WebRtcStreamer(
     fun resetPeer() {
         // Public session-end hook (e.g. peer_unavailable). Also crash-safe:
         // detaches immediately, destroys the native peer after its callbacks drain.
-        teardownPeer()
+        if (!disposed) teardownPeer()
     }
 
     private fun teardownPeer() {
+        peerDisposals.defer(detachCurrentPeer())
+    }
+
+    private fun detachCurrentPeer(): PeerConnection? {
         ++generation
         activeSession = null
         remoteReady = false
@@ -187,16 +201,10 @@ class WebRtcStreamer(
         controlChannel = null
         val oldPeer = peerConnection
         peerConnection = null
-        // Detach immediately; destroy the native peer a moment later so any
-        // signaling-thread callback still in flight for this generation finishes
-        // before close()/dispose() runs. Never dispose synchronously here.
+        // DataChannel is owned by PeerConnection. Closing it is enough here;
+        // disposing it separately can race the peer/factory native teardown.
         runCatching { oldChannel?.close() }
-        if (oldPeer != null) {
-            main.postDelayed({
-                runCatching { oldChannel?.dispose() }
-                runCatching { oldPeer.close(); oldPeer.dispose() }
-            }, 250)
-        }
+        return oldPeer
     }
 
     fun dispose() {
@@ -204,24 +212,22 @@ class WebRtcStreamer(
         disposed = true
         restartDebounce = true
         pendingSession = null
-        ++generation
-        activeSession = null
-        remoteReady = false
-        pendingIce.clear()
-        runCatching { controlChannel?.unregisterObserver() }
-        runCatching { controlChannel?.close(); controlChannel?.dispose() }
-        controlChannel = null
-        runCatching { peerConnection?.close(); peerConnection?.dispose() }
-        peerConnection = null
         runCatching { videoCapturer.stopCapture() }
-        videoCapturer.dispose()
-        videoTrack.dispose()
-        audioTrack.dispose()
-        videoSource.dispose()
-        audioSource.dispose()
-        surfaceTextureHelper.dispose()
-        factory.dispose()
-        eglBase.release()
+        peerDisposals.defer(detachCurrentPeer())
+        peerDisposals.finishWhenDrained()
+    }
+
+    private fun disposeCaptureResources() {
+        if (resourcesDisposed) return
+        resourcesDisposed = true
+        runCatching { videoCapturer.dispose() }
+        runCatching { videoTrack.dispose() }
+        runCatching { audioTrack.dispose() }
+        runCatching { videoSource.dispose() }
+        runCatching { audioSource.dispose() }
+        runCatching { surfaceTextureHelper.dispose() }
+        runCatching { factory.dispose() }
+        runCatching { eglBase.release() }
     }
 }
 
