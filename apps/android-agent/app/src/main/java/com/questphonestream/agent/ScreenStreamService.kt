@@ -39,23 +39,25 @@ class ScreenStreamService : Service() {
             role = "android",
             deviceId = config.deviceId,
             listener = object : SignalingClient.Listener {
-                override fun onSessionCreated(sessionId: String, androidDeviceId: String, questDeviceId: String) {
-                    if (sessionId == config.sessionId) {
-                        streamer?.createOffer()
+                override fun onSessionCreated(session: StreamSession) {
+                    if (session.androidDeviceId == config.deviceId && session.questDeviceId == config.questDeviceId) {
+                        streamer?.startSession(session)
                     }
                 }
 
-                override fun onRemoteDescription(type: String, sdp: String) {
-                    streamer?.setRemoteDescription(type, sdp)
+                override fun onRemoteDescription(session: StreamSession, type: String, sdp: String) {
+                    streamer?.setRemoteDescription(session, type, sdp)
                 }
 
-                override fun onIceCandidate(candidate: IceCandidateMessage) {
-                    streamer?.addIceCandidate(candidate)
+                override fun onIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {
+                    streamer?.addIceCandidate(session, candidate)
                 }
 
-                override fun onOpen() {
+                override fun onRegistered() {
                     signalingClient?.createSession(config.sessionId, config.deviceId, config.questDeviceId)
                 }
+
+                override fun onSessionEnded() { streamer?.resetPeer() }
             }
         )
 
@@ -110,4 +112,3 @@ class ScreenStreamService : Service() {
         }
     }
 }
-

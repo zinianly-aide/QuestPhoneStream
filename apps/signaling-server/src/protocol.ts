@@ -17,8 +17,9 @@ export type ClientMessage =
       sessionId: string;
       androidDeviceId: string;
       questDeviceId: string;
+      negotiationId?: string;
     }
-  | { type: "offer" | "answer"; token: string; sessionId: string; from: string; to: string; sdp: string }
+  | { type: "offer" | "answer"; token: string; sessionId: string; from: string; to: string; sdp: string; negotiationId?: string }
   | {
       type: "ice";
       token: string;
@@ -26,24 +27,26 @@ export type ClientMessage =
       from: string;
       to: string;
       candidate: RTCIceCandidateInitLike;
+      negotiationId?: string;
     }
   | { type: "heartbeat"; token: string; deviceId: string; timestamp: number };
 
 export type RelayMessage =
-  | { type: "offer" | "answer"; sessionId: string; from: string; to: string; sdp: string }
+  | { type: "offer" | "answer"; sessionId: string; from: string; to: string; sdp: string; negotiationId?: string }
   | {
       type: "ice";
       sessionId: string;
       from: string;
       to: string;
       candidate: RTCIceCandidateInitLike;
+      negotiationId?: string;
     };
 
 export type ServerMessage =
   | { type: "registered"; role: ClientRole; deviceId: string }
-  | { type: "session_created"; sessionId: string; androidDeviceId: string; questDeviceId: string }
-  | { type: "peer_unavailable"; sessionId?: string; deviceId: string }
-  | { type: "error"; code: string; message: string }
+  | { type: "session_created"; sessionId: string; androidDeviceId: string; questDeviceId: string; negotiationId?: string }
+  | { type: "peer_unavailable"; sessionId?: string; deviceId: string; negotiationId?: string }
+  | { type: "error"; code: string; message: string; sessionId?: string; negotiationId?: string }
   | RelayMessage;
 
 export function parseClientMessage(raw: RawData): ClientMessage {
@@ -56,6 +59,10 @@ export function parseClientMessage(raw: RawData): ClientMessage {
 
   if (!isRecord(parsed) || typeof parsed.type !== "string") {
     throw new Error("invalid_message");
+  }
+  if (parsed.negotiationId !== undefined &&
+      (typeof parsed.negotiationId !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(parsed.negotiationId))) {
+    throw new Error("invalid_negotiationId");
   }
 
   switch (parsed.type) {

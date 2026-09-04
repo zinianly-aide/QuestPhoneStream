@@ -11,8 +11,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:label="QuestPhoneStream Agent"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/AppTheme">
 
         <activity
             android:name=".MainActivity"
@@ -41,4 +40,3 @@
         </service>
     </application>
 </manifest>
-

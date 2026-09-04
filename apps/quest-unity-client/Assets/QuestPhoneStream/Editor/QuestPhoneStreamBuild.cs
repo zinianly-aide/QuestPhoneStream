@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.XR.Management;
 using UnityEngine.XR.OpenXR;
@@ -46,7 +47,7 @@ namespace QuestPhoneStream.Editor
             if (material == null)
             {
                 material = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-                material.color = Color.black;
+                material.color = Color.white;
                 AssetDatabase.CreateAsset(material, PanelMaterialPath);
             }
 
@@ -71,6 +72,9 @@ namespace QuestPhoneStream.Editor
             control.signaling = signaling;
             receiver.signaling = signaling;
             receiver.controlChannel = control;
+            receiver.xrCamera = camera;
+            receiver.xrUiRig = app.AddComponent<QuestXrUiRig>();
+            receiver.xrUiRig.actionAsset = AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/QuestPhoneStream/Resources/QuestUi.inputactions");
             receiver.targetMaterial = material;
             mapper.rayCamera = camera;
             mapper.panelCollider = panel.GetComponent<Collider>();

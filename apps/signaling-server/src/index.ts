@@ -13,6 +13,7 @@ interface Session {
   sessionId: string;
   androidDeviceId: string;
   questDeviceId: string;
+  negotiationId?: string;
 }
 
 export interface SignalingServerOptions {
@@ -35,7 +36,7 @@ const DEFAULT_TOKEN = "dev-token";
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   // Load dotenv only in standalone mode
-  import("dotenv/config").catch(() => {});
+  await import("dotenv/config");
   const certPath = process.env.SIGNALING_CERT;
   const keyPath = process.env.SIGNALING_KEY;
   const host = process.env.SIGNALING_HOST ?? "0.0.0.0";
@@ -87,8 +88,6 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
     console.log(`[connection] new client from ${remoteAddr}`);
 
     socket.on("message", (raw) => {
-      const preview = String(raw).slice(0, 5000);
-      console.log(`[message] from ${remoteAddr}: ${preview}`);
       try {
         const message = parseClientMessage(raw);
         if (message.token !== token) {
@@ -114,6 +113,7 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
         if (client.socket === socket) {
           console.log(`[close] removed registered client: ${deviceId}`);
           clients.delete(deviceId);
+          removeSessions(deviceId, clients, sessions);
         }
       }
     });
@@ -125,6 +125,7 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
       if (now - client.lastSeenAt > heartbeatTimeoutMs) {
         client.socket.terminate();
         clients.delete(deviceId);
+        removeSessions(deviceId, clients, sessions);
         continue;
       }
       if (client.socket.readyState === WebSocket.OPEN) client.socket.ping();
@@ -144,7 +145,7 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
     close: () =>
       new Promise((resolve, reject) => {
         clearInterval(interval);
-        for (const client of clients.values()) client.socket.close();
+        for (const socket of wss.clients) socket.terminate();
         wss.close((error) => (error ? reject(error) : resolve()));
       })
   };
@@ -156,6 +157,11 @@ function handleMessage(
   clients: Map<string, RegisteredClient>,
   sessions: Map<string, Session>
 ): void {
+  const sender = [...clients.values()].find(client => client.socket === socket);
+  if (message.type !== "register" && !sender) {
+    send(socket, { type: "error", code: "not_registered", message: "Register first" });
+    return;
+  }
   // 调试日志:记录所有消息类型和关键字段,帮助排查协商失败问题。
   // 上线前可移除。
   switch (message.type) {
@@ -180,6 +186,16 @@ function handleMessage(
   }
   switch (message.type) {
     case "register": {
+      if (sender && (sender.deviceId !== message.deviceId || sender.role !== message.role)) {
+        send(socket, { type: "error", code: "identity_conflict", message: "Reconnect to change identity" });
+        return;
+      }
+      const previous = clients.get(message.deviceId);
+      if (previous && previous.socket !== socket) {
+        // Invalidate sessions before replacing the socket; old close callbacks cannot delete the new identity.
+        removeSessions(message.deviceId, clients, sessions);
+        previous.socket.close(1000, "replaced");
+      }
       clients.set(message.deviceId, {
         socket,
         role: message.role,
@@ -191,28 +207,85 @@ function handleMessage(
     }
     case "heartbeat": {
       const client = clients.get(message.deviceId);
-      if (client) client.lastSeenAt = Date.now();
+      if (client?.socket === socket) client.lastSeenAt = Date.now();
       return;
     }
     case "create_session": {
+      if ((sender!.role === "quest" ? message.questDeviceId : message.androidDeviceId) !== sender!.deviceId) {
+        send(socket, { type: "error", code: "invalid_session", message: "Session identity mismatch" });
+        return;
+      }
+      const android = clients.get(message.androidDeviceId);
+      const quest = clients.get(message.questDeviceId);
+      for (const [peer, role, deviceId] of [[android, "android", message.androidDeviceId], [quest, "quest", message.questDeviceId]] as const) {
+        if (!peer || peer.socket.readyState !== WebSocket.OPEN) {
+          send(socket, { type: "peer_unavailable", sessionId: message.sessionId, negotiationId: message.negotiationId, deviceId });
+          return;
+        }
+        if (peer.role !== role) {
+          send(socket, { type: "error", code: "invalid_session", message: "Peer role mismatch" });
+          return;
+        }
+      }
+      const existing = sessions.get(message.sessionId);
+      if (existing && (existing.androidDeviceId !== message.androidDeviceId || existing.questDeviceId !== message.questDeviceId)) {
+        send(socket, { type: "error", code: "session_conflict", message: "Session belongs to other devices" });
+        return;
+      }
+      // A late Android bootstrap must not replace a Quest-initiated negotiation.
+      if (existing && sender!.role === "android") {
+        send(socket, { type: "session_created", ...existing });
+        return;
+      }
       const session: Session = {
         sessionId: message.sessionId,
         androidDeviceId: message.androidDeviceId,
-        questDeviceId: message.questDeviceId
+        questDeviceId: message.questDeviceId,
+        negotiationId: message.negotiationId
       };
+      // One active stream per phone/Quest. Old sessions cannot keep routing after a switch.
+      for (const [id, old] of sessions) {
+        if (id !== session.sessionId && (old.androidDeviceId === session.androidDeviceId || old.questDeviceId === session.questDeviceId)) {
+          sessions.delete(id);
+          for (const target of [old.androidDeviceId, old.questDeviceId]) {
+            const client = clients.get(target);
+            if (client) send(client.socket, { type: "error", code: "session_replaced", message: "Session replaced", sessionId: id, negotiationId: old.negotiationId });
+          }
+        }
+      }
       sessions.set(message.sessionId, session);
       const payload: ServerMessage = { type: "session_created", ...session };
-      sendTo(clients, message.androidDeviceId, payload, socket);
       sendTo(clients, message.questDeviceId, payload, socket);
+      sendTo(clients, message.androidDeviceId, payload, socket);
       return;
     }
     case "offer":
     case "answer":
     case "ice": {
+      const session = sessions.get(message.sessionId);
+      const expectedTo = sender!.role === "android" ? session?.questDeviceId : session?.androidDeviceId;
+      const expectedFrom = sender!.role === "android" ? session?.androidDeviceId : session?.questDeviceId;
+      if (!session || message.from !== sender!.deviceId || message.from !== expectedFrom || message.to !== expectedTo ||
+          message.negotiationId !== session.negotiationId ||
+          (message.type === "offer" && sender!.role !== "android") ||
+          (message.type === "answer" && sender!.role !== "quest")) {
+        send(socket, { type: "error", code: "stale_or_invalid_session", message: "Relay rejected", sessionId: message.sessionId, negotiationId: message.negotiationId });
+        return;
+      }
       const { token: _token, ...relay } = message;
       sendTo(clients, message.to, relay as RelayMessage, socket, message.sessionId);
       return;
     }
+  }
+}
+
+function removeSessions(deviceId: string, clients: Map<string, RegisteredClient>, sessions: Map<string, Session>): void {
+  for (const [id, session] of sessions) {
+    if (session.androidDeviceId !== deviceId && session.questDeviceId !== deviceId) continue;
+    sessions.delete(id);
+    const peerId = session.androidDeviceId === deviceId ? session.questDeviceId : session.androidDeviceId;
+    const peer = clients.get(peerId);
+    if (peer) send(peer.socket, { type: "peer_unavailable", deviceId, sessionId: id, negotiationId: session.negotiationId });
   }
 }
 

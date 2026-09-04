@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -5,151 +6,137 @@ namespace QuestPhoneStream
 {
     public sealed class SettingsUI : MonoBehaviour
     {
-        [Header("References")]
-        public QuestSignalingClient signalingClient;
-
-        [Header("UI")]
+        public QuestSignalingClient signalingClient { get; private set; }
         public Canvas canvas;
-        public InputField signalingUrlInput;
-        public InputField tokenInput;
-        public InputField questDeviceIdInput;
-        public InputField androidDeviceIdInput;
-        public InputField sessionIdInput;
-        public Button saveButton;
-        public Button connectButton;
+        public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput;
+        public Button saveButton, connectButton;
         public Text statusText;
+        public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
-        private const string UrlPrefKey = "QuestPhoneStream_SignalingUrl";
-        private const string TokenPrefKey = "QuestPhoneStream_Token";
-        private const string QuestIdPrefKey = "QuestPhoneStream_QuestDeviceId";
-        private const string AndroidIdPrefKey = "QuestPhoneStream_AndroidDeviceId";
-        private const string SessionIdPrefKey = "QuestPhoneStream_SessionId";
+        private Camera _xrCamera;
+        private bool _initialized, _isConnecting, _reportedMissingCamera;
+        private InputField[] Inputs => new[] { signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput };
 
-        private bool _isVisible;
-
-        private void Start()
+        public void Initialize(QuestSignalingClient client, Camera xrCamera)
         {
-            if (canvas == null) canvas = GetComponentInChildren<Canvas>();
-            if (canvas != null)
-            {
-                canvas.gameObject.SetActive(false);
-                UpdateCanvasPosition();
-            }
-
+            if (_initialized) throw new InvalidOperationException("Settings UI is already initialized");
+            if (client == null || xrCamera == null || canvas == null)
+                throw new ArgumentException("Settings UI requires signaling, camera and canvas");
+            signalingClient = client;
+            _xrCamera = xrCamera;
+            canvas.worldCamera = xrCamera;
+            _initialized = true;
+            saveButton.onClick.AddListener(OnSave);
+            connectButton.onClick.AddListener(OnConnect);
+            client.StateChanged += OnStateChanged;
             LoadSettings();
-            SetupUI();
-        }
-
-        private void Update()
-        {
-            if (_isVisible)
-            {
-                UpdateCanvasPosition();
-            }
-        }
-
-        private void UpdateCanvasPosition()
-        {
-            var cam = Camera.main;
-            if (cam != null && canvas != null)
-            {
-                canvas.transform.position = cam.transform.position + cam.transform.forward * 2f;
-                canvas.transform.rotation = Quaternion.LookRotation(cam.transform.forward);
-                Debug.Log($"[QuestPhoneStream] Canvas position: {canvas.transform.position}, camera: {cam.transform.position}");
-            }
-            else
-            {
-                Debug.LogWarning($"[QuestPhoneStream] Canvas or Camera is null. cam={cam != null}, canvas={canvas != null}");
-            }
-        }
-
-        private void SetupUI()
-        {
-            if (saveButton != null) saveButton.onClick.AddListener(OnSave);
-            if (connectButton != null) connectButton.onClick.AddListener(OnConnect);
-        }
-
-        public void Toggle()
-        {
-            _isVisible = !_isVisible;
-            if (canvas != null) canvas.gameObject.SetActive(_isVisible);
-            if (_isVisible) LoadSettings();
+            Hide();
+            OnStateChanged(client.State);
         }
 
         public void Show()
         {
-            _isVisible = true;
-            if (canvas != null) canvas.gameObject.SetActive(true);
-            LoadSettings();
+            if (!_initialized) throw new InvalidOperationException("Initialize Settings UI before showing it");
+            if (_xrCamera == null)
+            {
+                if (!_reportedMissingCamera) Debug.LogError("[QuestPhoneStream] Settings XR camera is missing");
+                _reportedMissingCamera = true;
+                return;
+            }
+            if (IsVisible) return;
+            var forward = Vector3.ProjectOnPlane(_xrCamera.transform.forward, Vector3.up);
+            if (forward.sqrMagnitude < 0.001f)
+                forward = Vector3.Cross(_xrCamera.transform.right, Vector3.up);
+            forward.Normalize();
+            canvas.transform.position = _xrCamera.transform.position + forward * 2f + Vector3.down * 0.15f;
+            canvas.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            canvas.gameObject.SetActive(true);
         }
 
-        public void Hide()
-        {
-            _isVisible = false;
-            if (canvas != null) canvas.gameObject.SetActive(false);
-        }
+        public void Hide() { if (canvas != null) canvas.gameObject.SetActive(false); }
+        public void Toggle() { if (IsVisible) Hide(); else Show(); }
 
         private void LoadSettings()
         {
-            if (signalingUrlInput != null)
-                signalingUrlInput.text = PlayerPrefs.GetString(UrlPrefKey, "ws://192.168.1.11:8787");
-            if (tokenInput != null)
-                tokenInput.text = PlayerPrefs.GetString(TokenPrefKey, "dev-token");
-            if (questDeviceIdInput != null)
-                questDeviceIdInput.text = PlayerPrefs.GetString(QuestIdPrefKey, "quest-3s-001");
-            if (androidDeviceIdInput != null)
-                androidDeviceIdInput.text = PlayerPrefs.GetString(AndroidIdPrefKey, "android-phone-001");
-            if (sessionIdInput != null)
-                sessionIdInput.text = PlayerPrefs.GetString(SessionIdPrefKey, "local-session-001");
+            signalingUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl", signalingClient.signalingUrl);
+            tokenInput.text = PlayerPrefs.GetString("QuestPhoneStream_Token", signalingClient.token);
+            questDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", signalingClient.questDeviceId);
+            androidDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", signalingClient.androidDeviceId);
+            sessionIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_SessionId", signalingClient.sessionId);
+        }
+
+        private bool ValidateSettings()
+        {
+            if (!Uri.TryCreate(signalingUrlInput.text.Trim(), UriKind.Absolute, out var uri) ||
+                (uri.Scheme != "ws" && uri.Scheme != "wss") || !string.IsNullOrEmpty(uri.UserInfo) ||
+                string.IsNullOrWhiteSpace(tokenInput.text) || string.IsNullOrWhiteSpace(questDeviceIdInput.text) ||
+                string.IsNullOrWhiteSpace(androidDeviceIdInput.text) || string.IsNullOrWhiteSpace(sessionIdInput.text))
+            {
+                statusText.text = "Enter a ws/wss URL, token and all device/session IDs.";
+                return false;
+            }
+            return true;
         }
 
         private void OnSave()
         {
+            if (_isConnecting || signalingClient.IsConnecting || !ValidateSettings()) return;
             SaveSettings();
-            SetStatus("Settings saved!");
+            statusText.text = "Settings saved. Connect to apply.";
         }
 
-        private void OnConnect()
+        private async void OnConnect()
         {
-            SaveSettings();
-            ApplySettings();
-            if (signalingClient != null)
+            if (_isConnecting || signalingClient.IsConnecting || !ValidateSettings()) return;
+            _isConnecting = true;
+            SetBusy(true);
+            try
             {
-                signalingClient.Reconnect();
-                SetStatus("Connecting...");
+                SaveSettings();
+                signalingClient.signalingUrl = signalingUrlInput.text.Trim();
+                signalingClient.token = tokenInput.text;
+                signalingClient.questDeviceId = questDeviceIdInput.text.Trim();
+                signalingClient.androidDeviceId = androidDeviceIdInput.text.Trim();
+                signalingClient.sessionId = sessionIdInput.text.Trim();
+                await signalingClient.ReconnectAsync();
+            }
+            catch (Exception)
+            {
+                if (this != null) statusText.text = "Connection failed. Check settings and retry.";
+            }
+            finally
+            {
+                _isConnecting = false;
+                if (this != null) SetBusy(signalingClient != null && signalingClient.IsConnecting);
             }
         }
 
         private void SaveSettings()
         {
-            if (signalingUrlInput != null)
-                PlayerPrefs.SetString(UrlPrefKey, signalingUrlInput.text);
-            if (tokenInput != null)
-                PlayerPrefs.SetString(TokenPrefKey, tokenInput.text);
-            if (questDeviceIdInput != null)
-                PlayerPrefs.SetString(QuestIdPrefKey, questDeviceIdInput.text);
-            if (androidDeviceIdInput != null)
-                PlayerPrefs.SetString(AndroidIdPrefKey, androidDeviceIdInput.text);
-            if (sessionIdInput != null)
-                PlayerPrefs.SetString(SessionIdPrefKey, sessionIdInput.text);
+            PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl", signalingUrlInput.text.Trim());
+            PlayerPrefs.SetString("QuestPhoneStream_Token", tokenInput.text);
+            PlayerPrefs.SetString("QuestPhoneStream_QuestDeviceId", questDeviceIdInput.text.Trim());
+            PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", androidDeviceIdInput.text.Trim());
+            PlayerPrefs.SetString("QuestPhoneStream_SessionId", sessionIdInput.text.Trim());
             PlayerPrefs.Save();
         }
 
-        public void ApplySettings()
+        private void OnStateChanged(ConnectionState state)
         {
-            if (signalingClient == null) return;
-
-            signalingClient.signalingUrl = PlayerPrefs.GetString(UrlPrefKey, "ws://192.168.1.11:8787");
-            signalingClient.token = PlayerPrefs.GetString(TokenPrefKey, "dev-token");
-            signalingClient.questDeviceId = PlayerPrefs.GetString(QuestIdPrefKey, "quest-3s-001");
-            signalingClient.androidDeviceId = PlayerPrefs.GetString(AndroidIdPrefKey, "android-phone-001");
-            signalingClient.sessionId = PlayerPrefs.GetString(SessionIdPrefKey, "local-session-001");
+            statusText.text = ConnectionStatus.Text(state);
+            SetBusy(_isConnecting || signalingClient.IsConnecting);
         }
 
-        private void SetStatus(string message)
+        private void SetBusy(bool busy)
         {
-            if (statusText != null) statusText.text = message;
-            Debug.Log($"[QuestPhoneStream] Settings: {message}");
+            connectButton.interactable = !busy;
+            saveButton.interactable = !busy;
+            foreach (var input in Inputs) input.interactable = !busy;
+        }
+
+        private void OnDestroy()
+        {
+            if (signalingClient != null) signalingClient.StateChanged -= OnStateChanged;
         }
     }
 }
