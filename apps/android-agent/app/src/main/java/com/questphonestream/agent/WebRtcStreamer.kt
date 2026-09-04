@@ -31,6 +31,14 @@ class WebRtcStreamer(
     private var remoteReady = false
     private val pendingIce = ArrayDeque<IceCandidateMessage>()
 
+    // Session switches are coalesced through a short debounce: during a Quest
+    // reconnect storm the server may emit several session_created messages in a
+    // row. Tearing down and recreating the PeerConnection for each one aborts the
+    // native signaling thread (libjingle_peerconnection_so). We instead apply at
+    // most one switch per debounce window and defer the old peer's destruction.
+    private var restartDebounce = false
+    private var pendingSession: StreamSession? = null
+
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
             .createInitializationOptions())
@@ -54,7 +62,22 @@ class WebRtcStreamer(
 
     fun startSession(session: StreamSession) {
         if (disposed || activeSession == session) return
-        resetPeer()
+        pendingSession = session
+        if (restartDebounce) return
+        restartDebounce = true
+        main.postDelayed({ applyPendingSession() }, 200)
+    }
+
+    private fun applyPendingSession() {
+        restartDebounce = false
+        val session = pendingSession ?: return
+        pendingSession = null
+        if (disposed || session == activeSession) return
+        teardownPeer()
+        doStartSession(session)
+    }
+
+    private fun doStartSession(session: StreamSession) {
         activeSession = session
         val epoch = generation
         val iceServers = listOf(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
@@ -139,7 +162,7 @@ class WebRtcStreamer(
     fun addIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {
         if (session != activeSession || disposed) return
         if (!remoteReady) {
-            if (pendingIce.size >= 256) { resetPeer(); return }
+            if (pendingIce.size >= 256) { teardownPeer(); return }
             pendingIce.addLast(candidate)
             return
         }
@@ -149,23 +172,47 @@ class WebRtcStreamer(
     private fun isCurrent(epoch: Int): Boolean = !disposed && epoch == generation && peerConnection != null
 
     fun resetPeer() {
+        // Public session-end hook (e.g. peer_unavailable). Also crash-safe:
+        // detaches immediately, destroys the native peer after its callbacks drain.
+        teardownPeer()
+    }
+
+    private fun teardownPeer() {
         ++generation
         activeSession = null
         remoteReady = false
         pendingIce.clear()
         controlChannel?.unregisterObserver()
-        controlChannel?.close()
-        controlChannel?.dispose()
+        val oldChannel = controlChannel
         controlChannel = null
-        peerConnection?.close()
-        peerConnection?.dispose()
+        val oldPeer = peerConnection
         peerConnection = null
+        // Detach immediately; destroy the native peer a moment later so any
+        // signaling-thread callback still in flight for this generation finishes
+        // before close()/dispose() runs. Never dispose synchronously here.
+        runCatching { oldChannel?.close() }
+        if (oldPeer != null) {
+            main.postDelayed({
+                runCatching { oldChannel?.dispose() }
+                runCatching { oldPeer.close(); oldPeer.dispose() }
+            }, 250)
+        }
     }
 
     fun dispose() {
         if (disposed) return
         disposed = true
-        resetPeer()
+        restartDebounce = true
+        pendingSession = null
+        ++generation
+        activeSession = null
+        remoteReady = false
+        pendingIce.clear()
+        runCatching { controlChannel?.unregisterObserver() }
+        runCatching { controlChannel?.close(); controlChannel?.dispose() }
+        controlChannel = null
+        runCatching { peerConnection?.close(); peerConnection?.dispose() }
+        peerConnection = null
         runCatching { videoCapturer.stopCapture() }
         videoCapturer.dispose()
         videoTrack.dispose()
