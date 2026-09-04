@@ -25,6 +25,7 @@ namespace QuestPhoneStream.Editor
         private const string ScenePath = SceneDir + "/QuestPhoneStreamMvp.unity";
         private const string MaterialDir = "Assets/QuestPhoneStream/Materials";
         private const string PanelMaterialPath = MaterialDir + "/PhonePanel.mat";
+        private const string PanelShaderName = "QuestPhoneStream/UnlitVideo";
 
         [MenuItem("QuestPhoneStream/Create MVP Scene")]
         public static void CreateMvpScene()
@@ -43,18 +44,12 @@ namespace QuestPhoneStream.Editor
             light.intensity = 1.25f;
             light.transform.rotation = Quaternion.Euler(45f, 25f, 0f);
 
-            var material = AssetDatabase.LoadAssetAtPath<Material>(PanelMaterialPath);
-            if (material == null)
-            {
-                material = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-                material.color = Color.white;
-                AssetDatabase.CreateAsset(material, PanelMaterialPath);
-            }
+            var material = EnsurePanelMaterial();
 
             var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
             panel.name = "PhonePanel";
             panel.transform.position = new Vector3(0f, 1.45f, 1.2f);
-            panel.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            panel.transform.rotation = Quaternion.identity;
             panel.transform.localScale = new Vector3(0.72f, 1.6f, 1f);
             panel.GetComponent<MeshRenderer>().sharedMaterial = material;
             if (panel.GetComponent<Collider>() == null)
@@ -97,6 +92,8 @@ namespace QuestPhoneStream.Editor
             {
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             }
+            EnsurePanelMaterial();
+            AssetDatabase.SaveAssets();
 
             const string output = "Builds/QuestPhoneStream.apk";
             Directory.CreateDirectory("Builds");
@@ -146,6 +143,27 @@ namespace QuestPhoneStream.Editor
             }
 
             Debug.Log($"QuestPhoneStream Android build succeeded: {output}");
+        }
+
+        private static Material EnsurePanelMaterial()
+        {
+            Directory.CreateDirectory(MaterialDir);
+            var shader = Shader.Find(PanelShaderName) ?? Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
+            if (shader == null) throw new InvalidOperationException("No compatible video panel shader was found");
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(PanelMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, PanelMaterialPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+            if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
+            return material;
         }
 
         private static void EnsureAndroidExternalTools()
