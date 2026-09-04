@@ -237,6 +237,13 @@ function handleMessage(
         send(socket, { type: "session_created", ...existing });
         return;
       }
+      // The Android side only registers availability; it does not own the negotiation.
+      // Without a negotiationId it would establish a guid-less session whose broadcast
+      // the Quest rejects (negotiationId mismatch), causing an infinite request/reconnect
+      // loop. Wait for the Quest to create the session with its own negotiationId.
+      if (sender!.role === "android" && !message.negotiationId) {
+        return;
+      }
       const session: Session = {
         sessionId: message.sessionId,
         androidDeviceId: message.androidDeviceId,
