@@ -67,6 +67,20 @@ namespace QuestPhoneStream
             Actions.Enable();
             _events.SetActive(true);
             _root.SetActive(true);
+            PinPanelToCamera(camera);
+        }
+
+        // The phone mirror panel lives at a fixed scene position by default, which
+        // is not where the real head is after the XR origin is rebuilt from the
+        // guardian space. Reparent it under the camera so it is always in front.
+        private void PinPanelToCamera(Camera camera)
+        {
+            var panel = GameObject.Find("PhonePanel");
+            if (panel == null) return;
+            panel.transform.SetParent(camera.transform, false);
+            panel.transform.localPosition = new Vector3(0, 0.05f, 2.2f);
+            panel.transform.localRotation = Quaternion.Euler(0, 180, 0);
+            panel.transform.localScale = new Vector3(0.9f, 1.6f, 1f); // 9:16 portrait mirror
         }
 
         private InputActionReference Reference(string name)

@@ -8,8 +8,8 @@ data class StreamConfig(
     val deviceId: String,
     val questDeviceId: String,
     val sessionId: String,
-    val width: Int = 1280,
-    val height: Int = 720,
+    val width: Int = 720,
+    val height: Int = 1280,
     val fps: Int = 30
 ) {
     fun writeTo(intent: Intent) {
@@ -30,8 +30,8 @@ data class StreamConfig(
             deviceId = intent.getStringExtra("deviceId") ?: error("missing deviceId"),
             questDeviceId = intent.getStringExtra("questDeviceId") ?: error("missing questDeviceId"),
             sessionId = intent.getStringExtra("sessionId") ?: error("missing sessionId"),
-            width = intent.getIntExtra("width", 1280),
-            height = intent.getIntExtra("height", 720),
+            width = intent.getIntExtra("width", 720),
+            height = intent.getIntExtra("height", 1280),
             fps = intent.getIntExtra("fps", 30)
         )
     }

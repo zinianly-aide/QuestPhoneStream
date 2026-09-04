@@ -125,6 +125,9 @@ namespace QuestPhoneStream
         {
             statusText.text = ConnectionStatus.Text(state);
             SetBusy(_isConnecting || signalingClient.IsConnecting);
+            // Auto-hide the fullscreen panel once media flows so the mirror is visible.
+            if ((state == ConnectionState.PeerConnected || state == ConnectionState.MediaConnected) && IsVisible)
+                Hide();
         }
 
         private void SetBusy(bool busy)
