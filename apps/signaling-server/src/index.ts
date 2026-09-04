@@ -128,7 +128,9 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
         removeSessions(deviceId, clients, sessions);
         continue;
       }
-      if (client.socket.readyState === WebSocket.OPEN) client.socket.ping();
+      // Do NOT send ws ping frames: Unity's Mono ClientWebSocket does not handle
+      // server-initiated pings and the receive loop fails ~15s after connect.
+      // The app-level heartbeat (15s) + heartbeatTimeoutMs keeps staleness detection.
     }
   }, pingIntervalMs);
 
