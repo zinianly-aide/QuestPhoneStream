@@ -149,6 +149,8 @@ namespace QuestPhoneStream
             Graphics.Blit(texture, _renderTexture);
             if (targetMaterial != null) targetMaterial.mainTexture = _renderTexture;
             _hasFrame = true;
+            Debug.Log($"[QuestPhoneStream] Video frame {texture.width}x{texture.height} -> RT {_renderTexture.width}x{_renderTexture.height} " +
+                      $"mat={targetMaterial?.name} panelActive={xrCamera != null}");
             if (_peerConnected) signaling.ReportMediaState(_negotiationId, ConnectionState.MediaConnected);
         }
 
