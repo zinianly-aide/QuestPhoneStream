@@ -20,7 +20,7 @@ namespace QuestPhoneStream
         private VideoStreamTrack _videoTrack;
         private Unity.WebRTC.OnVideoReceived _videoReceived;
         private Texture _receivedTexture;
-        private Coroutine _webRtcUpdate, _offerRoutine;
+        private Coroutine _webRtcUpdate, _videoRender, _offerRoutine;
         private SettingsUI _settingsUI;
         private string _negotiationId;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
@@ -38,6 +38,7 @@ namespace QuestPhoneStream
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
+            _videoRender = StartCoroutine(RenderVideoAtEndOfFrame());
             if (connectOnStart) _ = signaling.ReconnectAsync();
         }
 
@@ -146,19 +147,27 @@ namespace QuestPhoneStream
             if (_peer == null || texture == null || !signaling.IsCurrentNegotiation(_negotiationId)) return;
             EnsureRenderTexture(texture.width, texture.height);
             _receivedTexture = texture;
-            Graphics.Blit(texture, _renderTexture);
             if (targetMaterial != null) targetMaterial.mainTexture = _renderTexture;
-            _hasFrame = true;
-            Debug.Log($"[QuestPhoneStream] Video frame {texture.width}x{texture.height} -> RT {_renderTexture.width}x{_renderTexture.height} " +
-                      $"mat={targetMaterial?.name} panelActive={xrCamera != null}");
-            if (_peerConnected) signaling.ReportMediaState(_negotiationId, ConnectionState.MediaConnected);
         }
 
-        private void LateUpdate()
+        private IEnumerator RenderVideoAtEndOfFrame()
         {
-            // WebRTC pre.8 raises OnVideoReceived on texture creation, not for every decoded frame.
-            if (_receivedTexture != null && _renderTexture != null && signaling.IsCurrentNegotiation(_negotiationId))
-                Graphics.Blit(_receivedTexture, _renderTexture);
+            var endOfFrame = new WaitForEndOfFrame();
+            while (true)
+            {
+                yield return endOfFrame;
+                var source = _receivedTexture;
+                var target = _renderTexture;
+                var id = _negotiationId;
+                if (source == null || target == null || !signaling.IsCurrentNegotiation(id)) continue;
+
+                Graphics.Blit(source, target);
+                if (_hasFrame) continue;
+                _hasFrame = true;
+                Debug.Log($"[QuestPhoneStream] Video frame {source.width}x{source.height} -> RT {target.width}x{target.height} " +
+                          $"mat={targetMaterial?.name} phase=end-of-frame");
+                if (_peerConnected) signaling.ReportMediaState(id, ConnectionState.MediaConnected);
+            }
         }
 
         private void OnSignalMessage(SignalMessage message)
@@ -231,6 +240,7 @@ namespace QuestPhoneStream
                 signaling.MessageReceived -= OnSignalMessage;
                 signaling.NegotiationInvalidated -= ResetPeer;
             }
+            if (_videoRender != null) StopCoroutine(_videoRender);
             ResetPeer();
             if (_webRtcUpdate != null) StopCoroutine(_webRtcUpdate);
         }
