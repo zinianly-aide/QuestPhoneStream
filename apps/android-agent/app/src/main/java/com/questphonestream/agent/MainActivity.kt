@@ -118,7 +118,7 @@ class MainActivity : AppCompatActivity() {
         // ── 3. Config ──
         container.addView(sectionLabel("CONFIGURATION"))
         val configCard = cardLayout()
-        signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.10:8787")
+        signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.9:8787")
         tokenField = configRow(configCard, "Token", "dev-token")
         deviceIdField = configRow(configCard, "Android Device ID", "android-phone-001")
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
