@@ -186,7 +186,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         logCard.addView(clearLogBtn)
-        container.addView(logCard)
 
         // ── Bottom spacing ──
         container.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
