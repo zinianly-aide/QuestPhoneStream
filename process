@@ -1,0 +1,755 @@
+你正在维护仓库：
+
+https://github.com/zinianly-aide/QuestPhoneStream
+
+目标不是重构现有项目，也不是一次性完成完整 VR 播放器。
+
+本阶段只实现：
+
+Android 手机共享用户主动选择的本地视频文件，Quest 通过局域网 HTTP Range 直接读取并播放。
+
+现有 WebRTC 手机投屏功能必须保持兼容，不得破坏。
+
+---
+
+一、先检查当前仓库状态
+
+先读取：
+
+- README.md
+- AGENTS.md
+- apps/android-agent
+- apps/quest-unity-client
+- apps/signaling-server
+- protocol
+- docs/settings-session-gates.md
+
+重点确认当前：
+
+- Android MediaProjection + WebRTC 投屏链路
+- Quest Unity WebRTC Receiver
+- signaling/session/negotiationId
+- Settings UI
+- 当前 fix/settings-session-gates 分支状态
+
+不要假设 README 一定完全同步，以源码为准。
+
+先输出：
+
+1. 当前架构
+2. 本阶段准备修改的文件
+3. 不会修改的现有链路
+4. 主要风险
+
+然后开始实现，不需要等待我确认。
+
+---
+
+二、Git 工作要求
+
+不要直接修改 main。
+
+如果当前工作区干净，从最新目标基线创建：
+
+feat/phone-media-stream
+
+如果当前已有未合并的重要分支，例如：
+
+fix/settings-session-gates
+
+先判断本功能是否应基于该分支。
+
+不要覆盖、reset、clean 或丢失已有修改。
+
+不要 merge main。
+
+完成后可以 commit，但不要 merge。
+
+---
+
+三、本阶段架构
+
+现有：
+
+Android
+  ↓ MediaProjection
+WebRTC
+  ↓
+Quest
+  ↓
+Floating Phone Panel
+
+新增独立媒体链路：
+
+Android Phone
+  │
+  ├── Storage Access Framework
+  │
+  ├── Media Catalog
+  │
+  └── Embedded HTTP Media Server
+          │
+          │ HTTP Range
+          ▼
+       Quest 3S
+          │
+       VideoPlayer
+          │
+      RenderTexture
+          │
+       Flat Panel
+
+注意：
+
+不要通过 MediaProjection 播放本地视频。
+
+视频文件必须直接从手机提供给 Quest。
+
+现有 WebRTC 链路和新 Media 链路必须资源隔离。
+
+---
+
+四、Android：实现 Phone Media Host MVP
+
+暂时不要重构成大型框架。
+
+实现最小可扩展结构：
+
+MediaCatalog
+MediaItem
+MediaHttpServer
+MediaShareRepository
+
+如果项目已有合适架构，可按现有风格调整命名。
+
+---
+
+五、Android：Storage Access Framework
+
+使用 Android SAF。
+
+用户必须通过系统文件选择器主动选择视频。
+
+优先使用：
+
+ACTION_OPEN_DOCUMENT
+
+选择：
+
+video/*
+
+选择成功后：
+
+- 获取 content URI
+- 尝试 takePersistableUriPermission
+- 保存必要的持久授权
+- 不保存真实 filesystem path
+- 不扫描整个手机存储
+- 不自动读取其他 App 私有文件
+
+MediaItem 至少包含：
+
+id
+displayName
+mimeType
+size
+contentUri
+seekable
+shared
+
+"id" 必须是不透明 ID。
+
+例如：
+
+media_4f8392...
+
+HTTP API 不得暴露 content:// URI 或真实文件路径。
+
+---
+
+六、第一版媒体管理 UI
+
+Android 现有 UI 中增加简单的：
+
+Shared Videos
+
+至少支持：
+
+Add Video
+Remove
+Shared / Unshared
+
+不要追求复杂 UI。
+
+重点是功能可靠。
+
+取消共享后：
+
+/media/{id}
+
+必须立即失效。
+
+---
+
+七、Android：内置 HTTP Media Server
+
+不要依赖额外电脑服务器。
+
+手机 App 内运行 HTTP Server。
+
+优先复用项目已有配置体系。
+
+默认监听：
+
+0.0.0.0:<media-port>
+
+端口可以暂定例如：
+
+8788
+
+但必须集中配置，不能散落 hardcode。
+
+实现 API：
+
+GET /v1/media
+GET /v1/media/{id}
+HEAD /v1/media/{id}/content
+GET /v1/media/{id}/content
+
+---
+
+八、GET /v1/media
+
+返回当前用户允许共享的视频。
+
+示例：
+
+[
+  {
+    "id": "media_xxx",
+    "name": "demo.mp4",
+    "mimeType": "video/mp4",
+    "size": 123456789,
+    "seekable": true
+  }
+]
+
+不要返回：
+
+filesystem path
+content:// URI
+Android internal identifiers
+
+---
+
+九、GET /v1/media/{id}
+
+返回基础 metadata。
+
+本阶段可以先只实现：
+
+{
+  "id": "media_xxx",
+  "name": "demo.mp4",
+  "mimeType": "video/mp4",
+  "size": 123456789,
+  "seekable": true
+}
+
+如果能低成本通过 Android API 获取：
+
+duration
+width
+height
+video codec
+audio codec
+
+可以增加。
+
+但不要为了 metadata 阻塞 MVP。
+
+---
+
+十、HTTP Range 是本阶段核心
+
+必须正确支持：
+
+Range: bytes=0-
+Range: bytes=1000-
+Range: bytes=1000-1999
+
+正常部分内容响应：
+
+206 Partial Content
+Accept-Ranges: bytes
+Content-Range: bytes START-END/TOTAL
+Content-Length: ...
+Content-Type: ...
+
+无 Range：
+
+如果底层文件可安全顺序读取，可以：
+
+200 OK
+
+返回完整内容。
+
+非法范围：
+
+416 Range Not Satisfiable
+Content-Range: bytes */TOTAL
+
+必须测试：
+
+首字节
+中间 Range
+末尾 Range
+open-ended Range
+越界 Range
+HEAD
+
+不要把 Range 请求假装成整文件返回 200。
+
+---
+
+十一、SAF 文件 seek 能力
+
+必须正确处理 content provider 不支持随机访问的情况。
+
+打开文件后检测：
+
+seekable = true / false
+
+如果不可 seek：
+
+不要宣称支持完整 Range Seek。
+
+可以：
+
+- 在 metadata 返回 seekable=false
+- Quest UI 显示“不支持拖动”
+- 允许顺序播放则顺序播放
+- 不自动复制整个文件
+
+本阶段不要实现自动缓存。
+
+未来再做：
+
+Copy to cache with user consent
+
+---
+
+十二、媒体访问认证
+
+本阶段不要把 Android signaling token 永久暴露在 URL。
+
+设计一个简单的短期播放 token / capability。
+
+例如：
+
+POST /v1/media/{id}/play-token
+
+返回：
+
+{
+  "token": "...",
+  "expiresInSeconds": 300
+}
+
+然后：
+
+/v1/media/{id}/content?cap=...
+
+要求：
+
+- token 只能访问指定 mediaId
+- 有过期时间
+- 取消共享后立即失效
+- App 重启后旧 token 可以全部失效
+- 日志不得完整打印 token
+- 不允许路径穿越
+
+如果第一版实现完整 pairing 认证代价过高：
+
+可以实现结构化接口和 token 验证器，并明确标记：
+
+LOCAL_DEV_AUTH
+
+但不得假装生产认证已经完成。
+
+---
+
+十三、Quest：新增 Media 模式
+
+不要修改现有 WebRTC Receiver 去同时承担所有职责。
+
+新增类似：
+
+MediaPlaybackController
+MediaCatalogClient
+MediaItemDto
+FlatMediaRenderer
+
+Quest UI 增加两个入口：
+
+Phone Screen
+Video Library
+
+Phone Screen：
+
+继续走现有 WebRTC。
+
+Video Library：
+
+走新的 HTTP Media API。
+
+---
+
+十四、Quest：媒体列表
+
+Quest 能请求：
+
+GET /v1/media
+
+并显示：
+
+视频名称
+文件大小
+是否支持 seek
+
+本阶段 UI 可以简单。
+
+选择视频后：
+
+请求 play token
+→ 生成 URL
+→ VideoPlayer.url
+
+---
+
+十五、Quest：Unity VideoPlayer MVP
+
+第一版只支持：
+
+普通 2D 视频
+
+不要做：
+
+VR180
+VR360
+SBS
+TB
+Depth
+6DoF
+
+使用：
+
+Unity VideoPlayer
+→ RenderTexture
+→ Flat panel material
+
+要求：
+
+- URL 播放
+- Prepare
+- Play
+- Pause
+- Stop
+- 当前播放时间
+- duration
+- seek
+- volume
+
+播放器状态至少：
+
+Idle
+Preparing
+Playing
+Paused
+Buffering / Waiting
+Error
+Ended
+
+如果 Unity VideoPlayer 无法可靠区分某状态，可使用当前 API 能提供的最接近状态，但必须明确记录。
+
+---
+
+十六、资源隔离
+
+现有 WebRTC 手机投屏和新 Media Player 不能抢同一个 texture/resource。
+
+不要继续把所有纹理写到：
+
+targetMaterial.mainTexture
+
+建议最小拆分：
+
+PhoneScreenRenderer
+FlatMediaRenderer
+
+模式切换：
+
+PHONE_SCREEN
+MEDIA
+
+进入 MEDIA 时：
+
+- 可以暂停或隐藏 WebRTC phone panel
+- 不必立即销毁 signaling connection
+
+回到 PHONE_SCREEN：
+
+- 停止 VideoPlayer
+- 释放 Media RenderTexture
+- 恢复 phone panel
+
+旧 VideoPlayer 回调不能覆盖新的 WebRTC Texture。
+
+旧 WebRTC 回调也不能覆盖 Media Texture。
+
+---
+
+十七、暂时不要实现的内容
+
+本 PR 不做：
+
+VR180
+VR360
+SBS stereo
+Top/Bottom stereo
+fisheye
+Depth video
+6DoF
+4DGS
+Gaussian Splatting
+DLNA
+SMB
+UPnP
+自动视频分类
+媒体转码
+远程互联网媒体服务
+DRM 视频
+其他 App 加密离线缓存
+自动复制大型视频
+复杂媒体库
+
+避免 scope creep。
+
+---
+
+十八、测试要求
+
+Android 至少增加：
+
+MediaCatalog tests
+
+验证：
+
+- 添加媒体
+- 删除媒体
+- 不透明 id
+- 删除后不可访问
+
+Range parser tests
+
+验证：
+
+bytes=0-
+bytes=100-
+bytes=100-199
+invalid
+out of bounds
+
+HTTP integration tests
+
+尽量使用小测试文件验证：
+
+GET full file
+HEAD
+206 first range
+206 middle range
+206 final range
+416
+Content-Length
+Content-Range
+Accept-Ranges
+
+Auth tests
+
+验证：
+
+valid cap
+expired cap
+wrong media cap
+revoked media
+
+---
+
+十九、Quest 测试
+
+如果 Unity Test Framework 可用，增加尽量不依赖真机的测试：
+
+Media DTO parsing
+URL construction
+play token handling
+mode transition
+old callback isolation
+renderer resource cleanup
+
+如果当前环境没有 Unity：
+
+不要伪造测试结果。
+
+标记：
+
+NOT RUN
+
+同时提供真机测试步骤。
+
+---
+
+二十、真机验收 Gate
+
+本阶段只有满足下面条件才能标记 PASS：
+
+GATE-MEDIA-1：Android Media Host
+
+必须证明：
+
+Android 用户能选择一个 MP4
+Quest/PC 能 GET /v1/media
+能读取 metadata
+HTTP Range 正确
+取消共享后不可再访问
+
+GATE-MEDIA-2：Quest 2D playback
+
+Quest 3S 真机：
+
+选择视频
+Prepare
+播放
+音频正常
+Pause
+恢复
+拖动进度
+继续播放
+播放结束
+
+并验证：
+
+切换 Phone Screen
+→ Media
+→ Phone Screen
+
+不会：
+
+crash
+旧纹理覆盖
+旧回调继续写
+资源重复占用
+
+---
+
+二十一、性能记录
+
+真机至少记录：
+
+视频编码
+分辨率
+fps
+码率
+文件大小
+Wi-Fi 类型
+首次播放等待时间
+seek 等待时间
+播放掉帧情况
+
+不要承诺：
+
+8K
+HEVC
+60fps
+所有 MP4
+
+只有实际真机通过才能加入 Compatibility Matrix。
+
+---
+
+二十二、文档
+
+新增：
+
+docs/media-streaming-mvp.md
+
+内容包括：
+
+1. 架构
+2. API
+3. Range 语义
+4. SAF 权限模型
+5. 安全设计
+6. Quest 播放链路
+7. 已支持格式
+8. 未支持能力
+9. 测试结果
+10. 真机验收步骤
+11. 下一阶段 VR Renderer 计划
+
+---
+
+二十三、最终输出格式
+
+完成后给我：
+
+1. Summary
+2. Changed files
+3. Architecture after change
+4. HTTP API
+5. Test results
+6. Build results
+7. Gate status
+8. Known limitations
+9. Risks
+10. Next recommended step
+11. Commit SHA
+
+必须明确区分：
+
+PASS
+FAIL
+BLOCKED
+NOT RUN
+NOT VERIFIED
+
+不能把源码检查通过描述成 Quest 真机验证通过。
+
+如果 Android / Unity 构建被环境阻塞：
+
+不要为了过 Gate 随意升级 Gradle、AGP、Unity、OpenXR 或 WebRTC 版本。
+
+先记录真正根因和证据。
+
+---
+
+二十四、下一阶段预留设计
+
+这轮代码应为下一阶段预留：
+
+IMediaRenderer
+
+或等价抽象，使以后可以加入：
+
+FlatRenderer
+Equirect180Renderer
+Equirect360Renderer
+Fisheye180Renderer
+DepthVideoRenderer
+metadata 结构预留：
+projection
+stereoLayout
+eyeOrder
+但这轮：
+不要实现 VR Shader。
+最终成功标准只有一个：
+Android 手机选择一个普通本地 MP4 后，不经过 MediaProjection 和 WebRTC 视频转码，Quest 3S 能直接通过手机 HTTP Range 流式读取原始文件，并完成播放、暂停、拖动、音频和模式切换。
