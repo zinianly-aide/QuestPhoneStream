@@ -75,6 +75,7 @@ class SignalingClient(
                     heartbeat?.cancel()
                     state = ConnectionState.FAILED
                     listener.onError("Signaling connection failed")
+                    scheduleReconnect()
                 }
             }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -86,9 +87,23 @@ class SignalingClient(
                     endSession()
                     heartbeat?.cancel()
                     state = ConnectionState.CLOSED
+                    scheduleReconnect()
                 }
             }
         })
+    }
+
+    // Self-healing: the LAN WebSocket is not guaranteed to stay up, and without a
+    // reconnect the streamer stays offline forever after a drop. Retry on any
+    // unexpected close/failure until the client is explicitly closed.
+    private fun scheduleReconnect() {
+        if (closed) return
+        main.postDelayed({
+            if (closed) return@postDelayed
+            state = ConnectionState.CONNECTING
+            listener.onStateChanged(state)
+            connect()
+        }, 3000)
     }
 
     fun createSession(sessionId: String, androidDeviceId: String, questDeviceId: String) {
