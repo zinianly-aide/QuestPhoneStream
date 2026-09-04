@@ -186,6 +186,7 @@ namespace QuestPhoneStream.Editor
                 "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home");
             var gradlePath = FirstExistingDirectory(
                 Environment.GetEnvironmentVariable("UNITY_GRADLE_PATH"),
+                "/Volumes/ssd/Applications/Unity/PlaybackEngines/AndroidPlayer/Tools/gradle",
                 "/Users/anshi/ssd/Applications/Unity/PlaybackEngines/AndroidPlayer/Tools/gradle");
 
             SetAndroidToolPath("AndroidSDKRoot", sdkRoot);
