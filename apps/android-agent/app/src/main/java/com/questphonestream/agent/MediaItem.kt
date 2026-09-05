@@ -10,14 +10,22 @@ data class MediaItem(
     val size: Long,
     val contentUri: String,
     val seekable: Boolean,
-    val shared: Boolean
+    val shared: Boolean,
+    val projection: String = "flat",
+    val fov: Int = 360,
+    val stereo: String = "mono",
+    val eyeOrder: String = "lr"
 ) {
     fun publicMetadata(): Map<String, Any> = mapOf(
         "id" to id,
         "name" to displayName,
         "mimeType" to mimeType,
         "size" to size,
-        "seekable" to seekable
+        "seekable" to seekable,
+        "projection" to projection,
+        "fov" to fov,
+        "stereo" to stereo,
+        "eyeOrder" to eyeOrder
     )
 
     fun uri(): Uri = Uri.parse(contentUri)

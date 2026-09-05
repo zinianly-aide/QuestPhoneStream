@@ -21,8 +21,24 @@ namespace QuestPhoneStream.Tests
             var items = MediaCatalogJson.Parse("[{\"id\":\"media_a\",\"name\":\"demo.mp4\",\"mimeType\":\"video/mp4\",\"size\":12,\"seekable\":true}]");
             Assert.AreEqual(1, items.Count);
             Assert.AreEqual("media_a", items[0].id);
+            var defaults = MediaVideoProfile.From(items[0]);
+            Assert.AreEqual(ProjectionMode.Flat, defaults.projection);
+            Assert.AreEqual(360, defaults.fov);
+            Assert.AreEqual(StereoMode.Mono, defaults.stereo);
+            Assert.AreEqual(EyeOrder.Lr, defaults.eyeOrder);
             StringAssert.Contains("/v1/media/media_a/play-token", MediaUrlBuilder.PlayToken("http://phone:8788", "media_a"));
             StringAssert.Contains("cap=short", MediaUrlBuilder.Content("http://phone:8788", "media_a", "short"));
+        }
+
+        [Test]
+        public void MetadataMapsAllVrModesAndEyeOrders()
+        {
+            var items = MediaCatalogJson.Parse("[{\"id\":\"vr\",\"projection\":\"equirectangular\",\"fov\":180,\"stereo\":\"sbs\",\"eyeOrder\":\"rl\"}]");
+            var profile = MediaVideoProfile.From(items[0]);
+            Assert.AreEqual(ProjectionMode.Equirectangular, profile.projection);
+            Assert.AreEqual(180, profile.fov);
+            Assert.AreEqual(StereoMode.Sbs, profile.stereo);
+            Assert.AreEqual(EyeOrder.Rl, profile.eyeOrder);
         }
 
         [UnityTest]
@@ -34,6 +50,34 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(MediaPlaybackState.Idle, playback.State);
             Assert.IsFalse(playback.IsMediaMode);
             Assert.IsNull(playback.renderer.RenderTexture);
+            Assert.IsFalse(playback.vrRenderer.IsVrVisible);
+            Assert.IsFalse(playback.gameObject.activeSelf);
+        }
+
+        [UnityTest]
+        public IEnumerator VrRendererReusesOneSurfaceAndReturnsToFlat()
+        {
+            var flatObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            flatObject.transform.SetParent(_object.transform, false);
+            var flat = _object.AddComponent<FlatMediaRenderer>();
+            flat.targetRenderer = flatObject.GetComponent<Renderer>();
+            var vr = _object.AddComponent<VrMediaRenderer>();
+            vr.Initialize(null, flat);
+            var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
+            texture.Create();
+            vr.Apply(texture, ProjectionMode.Equirectangular, 360, StereoMode.Sbs, EyeOrder.Lr);
+            Assert.IsTrue(vr.IsVrVisible);
+            Assert.AreEqual(1, _object.GetComponentsInChildren<VrMediaRenderer>(true).Length);
+            vr.Apply(texture, ProjectionMode.Equirectangular, 180, StereoMode.Mono, EyeOrder.Rl);
+            Assert.IsTrue(vr.IsVrVisible);
+            vr.Apply(texture, ProjectionMode.Flat, 360, StereoMode.Mono, EyeOrder.Lr);
+            Assert.IsFalse(vr.IsVrVisible);
+            Assert.IsTrue(flat.targetRenderer.enabled);
+            vr.Release();
+            texture.Release();
+            Object.Destroy(texture);
+            Object.Destroy(flatObject);
+            yield return null;
         }
     }
 }

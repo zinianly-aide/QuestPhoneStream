@@ -205,6 +205,8 @@ class MediaHttpServer(
     private fun metadataJson(item: MediaItem): JSONObject = JSONObject().apply {
         put("id", item.id); put("name", item.displayName); put("mimeType", item.mimeType)
         put("size", item.size); put("seekable", item.seekable)
+        put("projection", item.projection); put("fov", item.fov)
+        put("stereo", item.stereo); put("eyeOrder", item.eyeOrder)
     }
 
     private fun sendJson(output: BufferedOutputStream, code: Int, body: String) {

@@ -10,8 +10,11 @@ namespace QuestPhoneStream
     {
         public VideoPlayer videoPlayer;
         public FlatMediaRenderer renderer;
+        public VrMediaRenderer vrRenderer;
+        public Renderer phoneScreenRenderer;
         public MediaPlaybackState State { get; private set; } = MediaPlaybackState.Idle;
         public bool IsMediaMode { get; private set; }
+        public MediaVideoProfile Profile { get; private set; } = MediaVideoProfile.Default;
         public double CurrentTime => videoPlayer == null ? 0 : videoPlayer.time;
         public double Duration => videoPlayer == null ? 0 : videoPlayer.length;
         public event Action<MediaPlaybackState> StateChanged;
@@ -25,20 +28,27 @@ namespace QuestPhoneStream
         {
             if (videoPlayer == null) videoPlayer = gameObject.GetComponent<VideoPlayer>() ?? gameObject.AddComponent<VideoPlayer>();
             if (renderer == null) renderer = gameObject.GetComponent<FlatMediaRenderer>() ?? gameObject.AddComponent<FlatMediaRenderer>();
+            if (vrRenderer == null) vrRenderer = gameObject.GetComponent<VrMediaRenderer>() ?? gameObject.AddComponent<VrMediaRenderer>();
+            vrRenderer.Initialize(null, renderer);
             videoPlayer.playOnAwake = false;
             videoPlayer.source = VideoSource.Url;
             videoPlayer.renderMode = VideoRenderMode.RenderTexture;
             videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         }
 
-        public void PlayUrl(string url)
+        public void PlayUrl(string url) => PlayUrl(url, MediaVideoProfile.Default);
+
+        public void PlayUrl(string url, MediaVideoProfile profile)
         {
             if (videoPlayer == null || string.IsNullOrWhiteSpace(url)) { SetState(MediaPlaybackState.Error); return; }
             var generation = ++_generation;
+            Profile = profile.Normalize();
             IsMediaMode = true;
             gameObject.SetActive(true);
+            if (phoneScreenRenderer != null) phoneScreenRenderer.enabled = false;
             DetachHandlers();
             videoPlayer.Stop();
+            vrRenderer?.Release();
             renderer.Release();
             videoPlayer.url = url;
             _prepareHandler = player => {
@@ -46,6 +56,7 @@ namespace QuestPhoneStream
                 renderer.Prepare((int)player.width, (int)player.height);
                 player.targetTexture = renderer.RenderTexture;
                 renderer.SetTexture(renderer.RenderTexture);
+                vrRenderer?.Apply(renderer.RenderTexture, Profile.projection, Profile.fov, Profile.stereo, Profile.eyeOrder);
                 player.Play();
                 SetState(MediaPlaybackState.Playing);
             };
@@ -65,9 +76,20 @@ namespace QuestPhoneStream
             ++_generation;
             DetachHandlers();
             videoPlayer?.Stop();
+            vrRenderer?.Release();
             renderer?.Release();
             IsMediaMode = false;
+            if (phoneScreenRenderer != null) phoneScreenRenderer.enabled = true;
+            if (renderer?.targetRenderer != null) renderer.targetRenderer.enabled = true;
+            gameObject.SetActive(false);
             SetState(MediaPlaybackState.Idle);
+        }
+
+        public void ApplyProfile(MediaVideoProfile profile)
+        {
+            Profile = profile.Normalize();
+            if (!IsMediaMode || renderer?.RenderTexture == null) return;
+            vrRenderer?.Apply(renderer.RenderTexture, Profile.projection, Profile.fov, Profile.stereo, Profile.eyeOrder);
         }
 
         public void Seek(double seconds)
@@ -98,6 +120,7 @@ namespace QuestPhoneStream
         private void OnDestroy()
         {
             DetachHandlers();
+            vrRenderer?.Release();
             renderer?.Release();
         }
     }

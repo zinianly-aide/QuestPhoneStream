@@ -81,7 +81,8 @@ class MediaShareRepository(context: Context?) {
                 val item = MediaItem(
                     o.getString("id"), o.getString("name"), o.getString("mimeType"),
                     o.optLong("size", -1), o.getString("contentUri"), o.optBoolean("seekable", false),
-                    o.optBoolean("shared", false)
+                    o.optBoolean("shared", false), o.optString("projection", "flat"),
+                    o.optInt("fov", 360), o.optString("stereo", "mono"), o.optString("eyeOrder", "lr")
                 )
                 items[item.id] = item
             }
@@ -99,6 +100,10 @@ class MediaShareRepository(context: Context?) {
                 put("contentUri", item.contentUri)
                 put("seekable", item.seekable)
                 put("shared", item.shared)
+                put("projection", item.projection)
+                put("fov", item.fov)
+                put("stereo", item.stereo)
+                put("eyeOrder", item.eyeOrder)
             })
         }
         preferences?.edit()?.putString(KEY_ITEMS, json.toString())?.apply()

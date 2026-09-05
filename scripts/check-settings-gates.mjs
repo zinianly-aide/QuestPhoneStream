@@ -16,6 +16,12 @@ const rig = read(scripts + "QuestXrUiRig.cs");
 const keyboard = read(scripts + "QuestKeyboardInputField.cs");
 const home = read(scripts + "QuestHomeUI.cs");
 const mediaUi = read(scripts + "MediaLibraryUI.cs");
+const mediaPlayback = read(scripts + "MediaPlaybackController.cs");
+const mediaRenderer = read(scripts + "VrMediaRenderer.cs");
+const mediaDto = read(scripts + "MediaItemDto.cs");
+const vrShader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Shaders/VRMediaStereo.shader");
+const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaItem.kt");
+const androidMediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
@@ -154,6 +160,34 @@ test("Quest video library exposes playback controls without closing after play",
     assert.match(mediaUi, new RegExp(`\\.${method}\\(`));
   assert.match(mediaUi, /SetStatus\("Playing: " \+ item\.name\)/);
   assert.doesNotMatch(mediaUi, /SetStatus\("Playing: " \+ item\.name\)[\s\S]{0,180}Close\(\)/);
+});
+
+test("VR media renderer keeps flat playback and supports projection/stereo switching", () => {
+  assert.match(mediaDto, /ProjectionMode \{ Flat, Equirectangular \}/);
+  assert.match(mediaDto, /StereoMode \{ Mono, Sbs \}/);
+  assert.match(mediaDto, /EyeOrder \{ Lr, Rl \}/);
+  assert.match(mediaDto, /projection;[\s\S]*fov;[\s\S]*stereo;[\s\S]*eyeOrder;/);
+  assert.match(mediaDto, /projection = ProjectionMode\.Flat, fov = 360, stereo = StereoMode\.Mono, eyeOrder = EyeOrder\.Lr/);
+  assert.match(mediaRenderer, /public void Apply\(RenderTexture texture, ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder\)/);
+  assert.match(mediaRenderer, /PrimitiveType\.Sphere/);
+  assert.match(mediaRenderer, /HideVr\(\)/);
+  assert.match(mediaRenderer, /VRMediaStereo/);
+  assert.match(vrShader, /Cull Front/);
+  assert.match(vrShader, /unity_StereoEyeIndex/);
+  assert.match(vrShader, /_EyeOrder/);
+  assert.match(vrShader, /_Fov < 270 && dir\.z < 0/);
+  assert.match(mediaPlayback, /PlayUrl\(string url\) => PlayUrl\(url, MediaVideoProfile\.Default\)/);
+  assert.match(mediaPlayback, /vrRenderer\?\.Apply\(renderer\.RenderTexture/);
+  assert.match(mediaPlayback, /public void ApplyProfile\(MediaVideoProfile profile\)/);
+  assert.match(mediaPlayback, /vrRenderer\?\.Release\(\)/);
+  assert.match(mediaPlayback, /phoneScreenRenderer != null\) phoneScreenRenderer\.enabled = false/);
+  assert.match(mediaPlayback, /phoneScreenRenderer != null\) phoneScreenRenderer\.enabled = true/);
+  assert.match(mediaUi, /MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /PlayUrl\(url, profile\)/);
+  for (const field of ["projection", "fov", "stereo", "eyeOrder"])
+    assert.match(androidMediaItem, new RegExp("\\b" + field + ":"));
+  assert.match(androidMediaServer, /put\("projection", item\.projection\)/);
+  assert.match(androidMediaServer, /put\("eyeOrder", item\.eyeOrder\)/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {

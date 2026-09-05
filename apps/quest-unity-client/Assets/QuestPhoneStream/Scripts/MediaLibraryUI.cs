@@ -19,6 +19,9 @@ namespace QuestPhoneStream
         private Slider _volume;
         private Button _playPause;
         private Text _timeText;
+        private Button _modeButton, _stereoButton, _eyeButton;
+        private MediaItemDto _selectedItem;
+        private MediaVideoProfile _selectedProfile = MediaVideoProfile.Default;
         private System.Action<bool, string> _onAvailabilityChanged;
         private Coroutine _probeRoutine;
 
@@ -137,6 +140,7 @@ namespace QuestPhoneStream
                 var root = _panel.GetComponent<RectTransform>(); root.anchorMin = new Vector2(.08f, .08f); root.anchorMax = new Vector2(.92f, .92f); root.sizeDelta = Vector2.zero;
                 var title = MakeText(_panel.transform, "Video Library", 28); title.GetComponent<RectTransform>().anchorMin = new Vector2(.05f,.85f); title.GetComponent<RectTransform>().anchorMax = new Vector2(.95f,.98f);
                 _statusText = MakeText(_panel.transform, "Ready", 16); _statusText.color = new Color(.7f,.8f,1f,1); _statusText.alignment = TextAnchor.UpperLeft; var stRect = _statusText.GetComponent<RectTransform>(); stRect.anchorMin = new Vector2(.05f,.78f); stRect.anchorMax = new Vector2(.95f,.85f); stRect.sizeDelta = Vector2.zero;
+                BuildProfileControls(_panel.transform);
                 BuildPlaybackControls(_panel.transform);
                 var close = MakeButton(_panel.transform, "Back", new Vector2(.78f,.02f), new Vector2(.95f,.12f)); close.onClick.AddListener(Close);
                 BuildList();
@@ -174,6 +178,60 @@ namespace QuestPhoneStream
             _volume.onValueChanged.AddListener(value => _playback?.SetVolume(value));
         }
 
+        private void BuildProfileControls(Transform parent)
+        {
+            _modeButton = MakeButton(parent, "Mode: Flat", new Vector2(.05f,.72f), new Vector2(.35f,.78f));
+            _modeButton.onClick.AddListener(() => {
+                if (_selectedProfile.projection == ProjectionMode.Flat) {
+                    _selectedProfile.projection = ProjectionMode.Equirectangular;
+                    _selectedProfile.fov = 180;
+                } else if (_selectedProfile.fov == 180) {
+                    _selectedProfile.fov = 360;
+                } else {
+                    _selectedProfile = MediaVideoProfile.Default;
+                }
+                ApplySelectedProfile();
+            });
+            _stereoButton = MakeButton(parent, "Stereo: Mono", new Vector2(.38f,.72f), new Vector2(.65f,.78f));
+            _stereoButton.onClick.AddListener(() => {
+                _selectedProfile.stereo = _selectedProfile.stereo == StereoMode.Mono ? StereoMode.Sbs : StereoMode.Mono;
+                ApplySelectedProfile();
+            });
+            _eyeButton = MakeButton(parent, "Eye: L/R", new Vector2(.68f,.72f), new Vector2(.95f,.78f));
+            _eyeButton.onClick.AddListener(() => {
+                _selectedProfile.eyeOrder = _selectedProfile.eyeOrder == EyeOrder.Lr ? EyeOrder.Rl : EyeOrder.Lr;
+                ApplySelectedProfile();
+            });
+            UpdateProfileControls();
+        }
+
+        private void ApplySelectedProfile()
+        {
+            _selectedProfile = _selectedProfile.Normalize();
+            UpdateProfileControls();
+            _playback?.ApplyProfile(_selectedProfile);
+        }
+
+        private void UpdateProfileControls()
+        {
+            if (_modeButton != null)
+            {
+                var label = _modeButton.GetComponentInChildren<Text>();
+                if (label != null) label.text = _selectedProfile.projection == ProjectionMode.Flat
+                    ? "Mode: Flat" : "Mode: " + _selectedProfile.fov + "°";
+            }
+            if (_stereoButton != null)
+            {
+                var label = _stereoButton.GetComponentInChildren<Text>();
+                if (label != null) label.text = "Stereo: " + (_selectedProfile.stereo == StereoMode.Sbs ? "SBS" : "Mono");
+            }
+            if (_eyeButton != null)
+            {
+                var label = _eyeButton.GetComponentInChildren<Text>();
+                if (label != null) label.text = "Eye: " + (_selectedProfile.eyeOrder == EyeOrder.Rl ? "R/L" : "L/R");
+            }
+        }
+
         private static Slider MakeSlider(Transform parent, Vector2 min, Vector2 max)
         {
             var go = new GameObject("Slider"); go.transform.SetParent(parent, false);
@@ -203,7 +261,7 @@ namespace QuestPhoneStream
             // IMPORTANT: AddComponent<RectTransform>() destroys the existing Transform component
             // and replaces it with a RectTransform. So we must set _list AFTER adding components,
             // otherwise _list references a destroyed Transform (== null returns true, instId=0).
-            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.23f); listRect.anchorMax = new Vector2(.95f,.76f); listRect.sizeDelta = Vector2.zero;
+            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.23f); listRect.anchorMax = new Vector2(.95f,.70f); listRect.sizeDelta = Vector2.zero;
             var layout = listGo.AddComponent<VerticalLayoutGroup>(); layout.spacing = 8; layout.childForceExpandWidth = true; layout.childForceExpandHeight = false; layout.padding = new RectOffset(8, 8, 8, 8);
             // NOTE: ContentSizeFitter removed — it was calculating preferred height as 0
             // because children hadn't been laid out yet, making the entire list invisible.
@@ -245,14 +303,18 @@ namespace QuestPhoneStream
 
         private void AddItem(MediaItemDto item)
         {
-            var button = MakeListButton(_list, item.name + (item.seekable ? "" : " (no seek)"));
+            var profile = MediaVideoProfile.From(item);
+            var button = MakeListButton(_list, item.name + "  ·  " + profile.Label + (item.seekable ? "" : " (no seek)"));
             button.onClick.AddListener(() => {
                 Debug.Log($"[MediaLibraryUI] Button clicked: {item.name} (id={item.id}) playbackNull={_playback == null}");
-                StartCoroutine(Play(item));
+                _selectedItem = item;
+                _selectedProfile = MediaVideoProfile.From(item);
+                UpdateProfileControls();
+                StartCoroutine(Play(item, _selectedProfile));
             });
         }
 
-        private IEnumerator Play(MediaItemDto item)
+        private IEnumerator Play(MediaItemDto item, MediaVideoProfile profile)
         {
             if (_catalog == null) { Debug.LogWarning("[MediaLibraryUI] Play skipped: catalog is null"); yield break; }
             Debug.Log($"[MediaLibraryUI] Play: requesting token for {item.id}");
@@ -262,7 +324,7 @@ namespace QuestPhoneStream
                 {
                     var url = _catalog.BuildContentUrl(item.id, token);
                     Debug.Log($"[MediaLibraryUI] Play: calling PlayUrl playbackNull={_playback == null}");
-                    _playback?.PlayUrl(url);
+                    _playback?.PlayUrl(url, profile);
                     SetStatus("Playing: " + item.name);
                 }
                 if (!string.IsNullOrEmpty(error)) { Debug.LogError($"[MediaLibraryUI] Play token error: {error}"); AddText("Play failed: " + error, 18); }

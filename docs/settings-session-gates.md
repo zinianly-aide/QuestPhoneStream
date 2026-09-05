@@ -257,3 +257,12 @@ node node_modules/typescript/bin/tsc --noEmit
 - Android 首页将容易误解的 `Quest · Connected` 改为 `Signaling · Ready`，不再把 signaling 注册冒充 WebRTC peer 连接。
 
 验证：source contract 14/14 PASS，signaling Vitest 15/15 PASS，C# brace balance PASS，`git diff --check` PASS。Unity、Android APK 和 Quest/手机真机仍未执行，因此 GATE-1/GATE-2 继续保持 NOT VERIFIED。
+
+## 2026-09-05 VR media renderer
+
+- 保留 SAF → HTTP Range → play-token → VideoPlayer → RenderTexture 链路；新增 Quest 端 `VrMediaRenderer`，Flat 继续使用原 Quad。
+- 支持 `flat`、360/180 equirectangular、Mono/SBS 以及 LR/RL eye order。缺失 metadata 默认 Flat、360、Mono、LR；视频库可在播放后切换 Mode/Stereo/Eye，立即重新套用 renderer，不重复下载。
+- 360 使用 Cull Front 的 inside-out Sphere；180 使用同一 shader 对后半球输出黑色；Stop/Phone Screen 会隐藏 VR surface、释放视频资源并恢复 PhonePanel。
+- Android media metadata 仅扩展公开字段，不改变 Range、play-token 或 SAF 读取实现。
+
+本轮 source contract 15/15、signaling Vitest 15/15、C# brace balance 和 `git diff --check` 通过。Unity Editor、Quest APK 和真机仍未执行，因此 VR 播放效果与 GATE-1/GATE-2 仍不能标记为 PASS。

@@ -121,6 +121,8 @@ namespace QuestPhoneStream
             var r = panel.GetComponent<Renderer>();
             if (r != null)
             {
+                _receiver.phoneScreenRenderer = r;
+                if (_receiver.mediaPlayback != null) _receiver.mediaPlayback.phoneScreenRenderer = r;
                 var shared = r.sharedMaterial;
                 if (shared != null)
                 {
