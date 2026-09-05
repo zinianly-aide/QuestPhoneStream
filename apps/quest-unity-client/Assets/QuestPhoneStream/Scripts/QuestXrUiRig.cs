@@ -171,7 +171,7 @@ namespace QuestPhoneStream
             controller.AddComponent<XRInteractorLineVisual>();
         }
 
-        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleSettings(); }
+        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleHome(); }
         private void OnDisable() { Actions?.Disable(); }
         private void OnEnable() { Actions?.Enable(); }
         private void OnDestroy()

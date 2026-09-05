@@ -31,7 +31,10 @@ namespace QuestPhoneStream
             saveButton.onClick.AddListener(OnSave);
             connectButton.onClick.AddListener(OnConnect);
             phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
-            videoLibraryButton?.onClick.AddListener(() => mediaLibrary?.Open());
+            videoLibraryButton?.onClick.AddListener(() => {
+                SetAdvancedVisible(false);
+                mediaLibrary?.Open();
+            });
             client.StateChanged += OnStateChanged;
             LoadSettings();
             Hide();
@@ -59,6 +62,19 @@ namespace QuestPhoneStream
 
         public void Hide() { if (canvas != null) canvas.gameObject.SetActive(false); }
         public void Toggle() { if (IsVisible) Hide(); else Show(); }
+
+        public void ShowAdvanced()
+        {
+            SetAdvancedVisible(true);
+            Show();
+        }
+
+        public void SetAdvancedVisible(bool visible)
+        {
+            if (canvas == null) return;
+            var panel = canvas.transform.Find("Panel");
+            if (panel != null) panel.gameObject.SetActive(visible);
+        }
 
         private void LoadSettings()
         {

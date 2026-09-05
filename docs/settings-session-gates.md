@@ -219,3 +219,14 @@ node node_modules/typescript/bin/tsc --noEmit
 本修复没有引入 Meta XR SDK 或自定义虚拟键盘。Meta 官方 Keyboard Overlay 文档要求 Meta XR Core SDK，并以 Unity 6.0.66f2 或更高版本为前提；本项目当前锁定 Unity 2022.3.62f3c1，因此必须在实际 Quest APK 上确认 `TouchScreenKeyboard` fallback 是否被当前 Horizon OS/OpenXR 组合接受。没有设备证据前，键盘问题不能标记为完全解决，GATE-1 仍为 NOT VERIFIED。
 
 新增验证：源码契约 `Quest input fields have a native keyboard fallback`，当前 source contract 为 9/9；signaling 仍为 15/15。Unity 编译、Quest APK 安装和控制器输入/键盘操作本轮仍未执行。
+
+## 2026-09-05 UX 收敛（未改变连接协议）
+
+本轮只针对用户可见流程做小步调整，没有新增自动发现协议或重构信令/WebRTC：
+
+- Quest 新增紧凑的 `QuestHomeCanvas`，默认入口显示 `Phone / Videos / Keyboard / Settings`，并汇总 `Phone / Screen / Control / Media` 状态；工程字段继续放在 `Advanced Settings`。
+- Quest 视频库增加进度条、当前时间/总时长、暂停/继续、前后 10 秒和音量控制；列表区域避开底部控制条，播放后不再自动关闭库页面。
+- Android 首页新增 `READY` 摘要，显示 Quest、Screen Sharing、Remote Control、Media；Accessibility 状态从系统设置回读，并提供直达设置按钮。URL、Token、Device/Session ID、日志和诊断按钮默认收进 `Advanced settings`。
+- 新增 source contract，检查 Quest 普通入口、Android readiness 摘要和视频播放控制存在；当前 source contract 13/13 PASS，signaling Vitest 15/15 PASS，`git diff --check` PASS。
+
+当前环境没有 Unity Editor、Android SDK/完整 Gradle 分发包或 adb，本轮没有运行 Unity、APK 或 Quest/手机真机验证；因此 UX 运行时效果和 GATE-1/GATE-2 仍不能标记为 PASS。

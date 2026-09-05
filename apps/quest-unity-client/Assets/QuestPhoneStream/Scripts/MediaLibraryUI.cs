@@ -14,12 +14,19 @@ namespace QuestPhoneStream
         private GameObject _panel;
         private Transform _list;
         private Text _statusText;
+        private System.Action _onClose;
+        private Slider _progress;
+        private Slider _volume;
+        private Button _playPause;
+        private Text _timeText;
 
         public void Initialize(Canvas canvas, MediaCatalogClient catalog, MediaPlaybackController playback, System.Func<string> baseUrl)
         {
             _canvas = canvas; _catalog = catalog; _playback = playback; _baseUrl = baseUrl;
             Build();
         }
+
+        public void SetOnClose(System.Action onClose) => _onClose = onClose;
 
         public void Open()
         {
@@ -50,7 +57,27 @@ namespace QuestPhoneStream
             StartCoroutine(Refresh());
         }
 
-        public void Close() { if (_panel != null) _panel.SetActive(false); }
+        public void Close()
+        {
+            if (_panel != null) _panel.SetActive(false);
+            _onClose?.Invoke();
+        }
+
+        private void LateUpdate()
+        {
+            if (_panel == null || !_panel.activeInHierarchy || _playback == null) return;
+            var duration = _playback.Duration;
+            if (duration > 0)
+            {
+                _progress?.SetValueWithoutNotify(Mathf.Clamp01((float)(_playback.CurrentTime / duration)));
+                if (_timeText != null) _timeText.text = FormatTime(_playback.CurrentTime) + " / " + FormatTime(duration);
+            }
+            if (_playPause != null)
+            {
+                var label = _playPause.GetComponentInChildren<Text>();
+                if (label != null) label.text = _playback.State == MediaPlaybackState.Playing ? "Pause" : "Resume";
+            }
+        }
 
         private void SetStatus(string message)
         {
@@ -85,7 +112,8 @@ namespace QuestPhoneStream
                 var root = _panel.GetComponent<RectTransform>(); root.anchorMin = new Vector2(.08f, .08f); root.anchorMax = new Vector2(.92f, .92f); root.sizeDelta = Vector2.zero;
                 var title = MakeText(_panel.transform, "Video Library", 28); title.GetComponent<RectTransform>().anchorMin = new Vector2(.05f,.85f); title.GetComponent<RectTransform>().anchorMax = new Vector2(.95f,.98f);
                 _statusText = MakeText(_panel.transform, "Ready", 16); _statusText.color = new Color(.7f,.8f,1f,1); _statusText.alignment = TextAnchor.UpperLeft; var stRect = _statusText.GetComponent<RectTransform>(); stRect.anchorMin = new Vector2(.05f,.78f); stRect.anchorMax = new Vector2(.95f,.85f); stRect.sizeDelta = Vector2.zero;
-                var close = MakeButton(_panel.transform, "Close", new Vector2(.78f,.02f), new Vector2(.95f,.12f)); close.onClick.AddListener(Close);
+                BuildPlaybackControls(_panel.transform);
+                var close = MakeButton(_panel.transform, "Back", new Vector2(.78f,.02f), new Vector2(.95f,.12f)); close.onClick.AddListener(Close);
                 BuildList();
                 _panel.SetActive(false);
                 Debug.Log("[MediaLibraryUI] Build completed successfully");
@@ -97,6 +125,52 @@ namespace QuestPhoneStream
             }
         }
 
+        private void BuildPlaybackControls(Transform parent)
+        {
+            _progress = MakeSlider(parent, new Vector2(.05f,.16f), new Vector2(.74f,.22f));
+            _progress.onValueChanged.AddListener(value => {
+                if (_playback != null && _playback.Duration > 0)
+                    _playback.Seek(value * _playback.Duration);
+            });
+            _timeText = MakeText(parent, "00:00 / 00:00", 15).GetComponent<Text>();
+            var timeRect = _timeText.GetComponent<RectTransform>();
+            timeRect.anchorMin = new Vector2(.05f,.10f); timeRect.anchorMax = new Vector2(.30f,.16f); timeRect.sizeDelta = Vector2.zero;
+            var back = MakeButton(parent, "-10", new Vector2(.32f,.02f), new Vector2(.43f,.12f));
+            back.onClick.AddListener(() => _playback?.Seek((_playback?.CurrentTime ?? 0) - 10));
+            _playPause = MakeButton(parent, "Play", new Vector2(.45f,.02f), new Vector2(.58f,.12f));
+            _playPause.onClick.AddListener(() => {
+                if (_playback == null) return;
+                if (_playback.State == MediaPlaybackState.Playing) _playback.Pause(); else _playback.Resume();
+            });
+            var forward = MakeButton(parent, "+10", new Vector2(.60f,.02f), new Vector2(.71f,.12f));
+            forward.onClick.AddListener(() => _playback?.Seek((_playback?.CurrentTime ?? 0) + 10));
+            _volume = MakeSlider(parent, new Vector2(.05f,.02f), new Vector2(.26f,.08f));
+            _volume.value = 1f;
+            _volume.onValueChanged.AddListener(value => _playback?.SetVolume(value));
+        }
+
+        private static Slider MakeSlider(Transform parent, Vector2 min, Vector2 max)
+        {
+            var go = new GameObject("Slider"); go.transform.SetParent(parent, false);
+            var slider = go.AddComponent<Slider>();
+            var background = new GameObject("Background"); background.transform.SetParent(go.transform, false);
+            var bgImage = background.AddComponent<Image>(); bgImage.color = new Color(.18f,.22f,.3f,1);
+            var bgRect = background.GetComponent<RectTransform>(); bgRect.anchorMin = Vector2.zero; bgRect.anchorMax = Vector2.one; bgRect.sizeDelta = Vector2.zero;
+            var fill = new GameObject("Fill"); fill.transform.SetParent(go.transform, false);
+            var fillImage = fill.AddComponent<Image>(); fillImage.color = new Color(.25f,.65f,.9f,1);
+            var fillRect = fill.GetComponent<RectTransform>(); fillRect.anchorMin = Vector2.zero; fillRect.anchorMax = Vector2.one; fillRect.sizeDelta = Vector2.zero;
+            slider.fillRect = fillRect; slider.minValue = 0; slider.maxValue = 1;
+            var rt = go.GetComponent<RectTransform>(); rt.anchorMin = min; rt.anchorMax = max; rt.sizeDelta = Vector2.zero;
+            return slider;
+        }
+
+        private static string FormatTime(double seconds)
+        {
+            if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
+            var span = System.TimeSpan.FromSeconds(seconds);
+            return span.TotalHours >= 1 ? span.ToString(@"h\:mm\:ss") : span.ToString(@"mm\:ss");
+        }
+
         private void BuildList()
         {
             var listGo = new GameObject("MediaList");
@@ -104,11 +178,11 @@ namespace QuestPhoneStream
             // IMPORTANT: AddComponent<RectTransform>() destroys the existing Transform component
             // and replaces it with a RectTransform. So we must set _list AFTER adding components,
             // otherwise _list references a destroyed Transform (== null returns true, instId=0).
-            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.15f); listRect.anchorMax = new Vector2(.95f,.82f); listRect.sizeDelta = Vector2.zero;
+            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.23f); listRect.anchorMax = new Vector2(.95f,.76f); listRect.sizeDelta = Vector2.zero;
             var layout = listGo.AddComponent<VerticalLayoutGroup>(); layout.spacing = 8; layout.childForceExpandWidth = true; layout.childForceExpandHeight = false; layout.padding = new RectOffset(8, 8, 8, 8);
             // NOTE: ContentSizeFitter removed — it was calculating preferred height as 0
             // because children hadn't been laid out yet, making the entire list invisible.
-            // The list now fills its parent via anchors (0.15-0.82 vertical).
+            // The list now fills the space above the playback controls (0.23-0.76 vertical).
             _list = listGo.transform;
             Debug.Log($"[MediaLibraryUI] BuildList: instance={GetInstanceID()} _list set, refNull={ReferenceEquals(_list, null)} instId={_list.GetInstanceID()}");
         }
@@ -162,10 +236,10 @@ namespace QuestPhoneStream
                     var url = _catalog.BuildContentUrl(item.id, token);
                     Debug.Log($"[MediaLibraryUI] Play: calling PlayUrl playbackNull={_playback == null}");
                     _playback?.PlayUrl(url);
+                    SetStatus("Playing: " + item.name);
                 }
                 if (!string.IsNullOrEmpty(error)) { Debug.LogError($"[MediaLibraryUI] Play token error: {error}"); AddText("Play failed: " + error, 18); }
             });
-            Close();
         }
 
         private Text AddText(string value, int size)

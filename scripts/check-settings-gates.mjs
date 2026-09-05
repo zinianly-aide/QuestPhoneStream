@@ -14,6 +14,8 @@ const receiver = read(scripts + "QuestWebRtcReceiver.cs");
 const signaling = read(scripts + "QuestSignalingClient.cs");
 const rig = read(scripts + "QuestXrUiRig.cs");
 const keyboard = read(scripts + "QuestKeyboardInputField.cs");
+const home = read(scripts + "QuestHomeUI.cs");
+const mediaUi = read(scripts + "MediaLibraryUI.cs");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
@@ -27,7 +29,7 @@ test("settings dependencies are explicit; Awake/Start cannot race initialization
 
 test("visibility has one source of truth", () => {
   assert.match(ui, /bool IsVisible => canvas != null && canvas\.gameObject\.activeInHierarchy/);
-  assert.match(receiver, /_settingsUI\.Toggle\(\)/);
+  assert.match(receiver, /(_settingsUI\.Toggle\(\)|_receiver\.ToggleHome|_homeUI\?\.Toggle\(\))/);
   assert.doesNotMatch(receiver, /_settingsUI\.gameObject\.activeSelf/);
   assert.match(ui, /public void Toggle\(\) \{ if \(IsVisible\) Hide\(\); else Show\(\); \}/);
 });
@@ -120,4 +122,36 @@ test("media control endpoints require pairing and cleartext false is corrected",
   assert.match(client, /SetRequestHeader\("Authorization", "Bearer /);
   assert.match(manifestProcessor, /cleartextAttr\.Value, "true"/);
   assert.doesNotMatch(client, /192\.168\.1\.6/);
+});
+
+test("Quest normal flow is compact and keeps engineering fields behind Advanced Settings", () => {
+  assert.match(home, /QuestHomeCanvas/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Phone"/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Videos"/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Keyboard"/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Settings"/);
+  assert.match(home, /Screen  ·  /);
+  assert.match(home, /Control  ·  /);
+  assert.match(home, /Media  ·  /);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /EnsureHomeUI\(\)/);
+  assert.match(read(scripts + "QuestXrUiRig.cs"), /_receiver\.ToggleHome\(\)/);
+  assert.match(read(scripts + "SettingsUIFactory.cs"), /Advanced Settings/);
+});
+
+test("Android normal flow exposes readiness and hides engineering controls", () => {
+  const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  for (const label of ["READY", "Screen Sharing", "Remote Control", "Media", "Advanced settings"])
+    assert.match(android, new RegExp(label));
+  assert.match(android, /visibility = View\.GONE/);
+  assert.match(android, /private fun updateHomeStatus\(\)/);
+  assert.match(android, /Settings\.Secure\.ENABLED_ACCESSIBILITY_SERVICES/);
+  assert.match(android, /openAccessibilitySettings\(\)/);
+});
+
+test("Quest video library exposes playback controls without closing after play", () => {
+  assert.match(mediaUi, /BuildPlaybackControls\(_panel\.transform\)/);
+  for (const method of ["Pause", "Resume", "Seek", "SetVolume"])
+    assert.match(mediaUi, new RegExp(`\\.${method}\\(`));
+  assert.match(mediaUi, /SetStatus\("Playing: " \+ item\.name\)/);
+  assert.doesNotMatch(mediaUi, /SetStatus\("Playing: " \+ item\.name\)[\s\S]{0,180}Close\(\)/);
 });

@@ -24,10 +24,17 @@ namespace QuestPhoneStream
         private Texture _receivedTexture;
         private Coroutine _webRtcUpdate, _videoRender, _offerRoutine;
         private SettingsUI _settingsUI;
+        private QuestHomeUI _homeUI;
         private PanelInputMapper _panelInput;
         private string _negotiationId;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
         private readonly Queue<IceCandidateDto> _pendingIce = new Queue<IceCandidateDto>();
+
+        public bool HasVideoFrame => _hasFrame;
+        public bool IsPeerConnected => _peerConnected;
+        public bool IsControlConnected => controlChannel != null && controlChannel.IsOpen;
+        public bool HasMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null &&
+            !string.IsNullOrWhiteSpace(_settingsUI.mediaBaseUrlInput.text);
 
         private void Start()
         {
@@ -39,6 +46,7 @@ namespace QuestPhoneStream
             }
             xrUiRig.Initialize(xrCamera, this);
             EnsureMediaPlaybackPanel();
+            EnsureHomeUI();
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
@@ -72,13 +80,39 @@ namespace QuestPhoneStream
 
         public void ToggleSettings()
         {
-            if (_settingsUI == null)
-            {
-                var settingsGo = new GameObject("SettingsUI");
-                settingsGo.transform.SetParent(transform, false);
-                _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback);
-            }
-            _settingsUI.Toggle();
+            EnsureSettingsUI();
+            if (_settingsUI.IsVisible) _settingsUI.Hide();
+            else _settingsUI.ShowAdvanced();
+        }
+
+        public void ToggleHome()
+        {
+            if (_homeUI == null) EnsureHomeUI();
+            if (_settingsUI != null && _settingsUI.IsVisible) _settingsUI.Hide();
+            _homeUI?.Toggle();
+        }
+
+        public void OpenVideoLibrary()
+        {
+            EnsureSettingsUI();
+            _settingsUI.SetAdvancedVisible(false);
+            _settingsUI.Show();
+            _settingsUI.mediaLibrary?.Open();
+            _homeUI?.Hide();
+        }
+
+        private void EnsureSettingsUI()
+        {
+            if (_settingsUI != null) return;
+            var settingsGo = new GameObject("SettingsUI");
+            settingsGo.transform.SetParent(transform, false);
+            _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback);
+        }
+
+        private void EnsureHomeUI()
+        {
+            if (_homeUI == null) _homeUI = gameObject.AddComponent<QuestHomeUI>();
+            _homeUI.Initialize(signaling, xrCamera, this);
         }
 
         private bool IsCurrent(RTCPeerConnection peer, string id) =>

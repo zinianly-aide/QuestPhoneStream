@@ -44,6 +44,7 @@ namespace QuestPhoneStream
             rt.localRotation = Quaternion.identity;
 
             var panel = CreatePanel(canvasGo.transform);
+            CreatePanelTitle(panel, "Advanced Settings");
 
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
@@ -82,6 +83,10 @@ namespace QuestPhoneStream
             catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
             _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
             _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
+            _mediaLibrary.SetOnClose(() => {
+                _settingsUI.SetAdvancedVisible(true);
+                _settingsUI.Hide();
+            });
             _settingsUI.mediaLibrary = _mediaLibrary;
             _settingsUI.mediaPlayback = playback;
 
@@ -105,6 +110,23 @@ namespace QuestPhoneStream
             rt.sizeDelta = Vector2.zero;
 
             return panelGo.transform;
+        }
+
+        private void CreatePanelTitle(Transform parent, string value)
+        {
+            var titleGo = new GameObject("Title");
+            titleGo.transform.SetParent(parent, false);
+            var title = titleGo.AddComponent<Text>();
+            title.text = value;
+            title.fontSize = 30;
+            title.fontStyle = FontStyle.Bold;
+            title.alignment = TextAnchor.MiddleCenter;
+            title.color = Color.white;
+            title.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var rt = titleGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.05f, 0.91f);
+            rt.anchorMax = new Vector2(0.95f, 0.99f);
+            rt.sizeDelta = Vector2.zero;
         }
 
         private void CreateInputField(Transform parent, string label, string prefKey, string defaultValue, int index, out InputField inputField)

@@ -56,6 +56,13 @@ class MainActivity : AppCompatActivity() {
     private var mediaServer: MediaHttpServer? = null
     @Volatile private var mediaPairingToken = "dev-token"
 
+    // --- User-facing readiness summary ---
+    private lateinit var homeQuestStatusView: TextView
+    private lateinit var homeScreenStatusView: TextView
+    private lateinit var homeControlStatusView: TextView
+    private lateinit var homeMediaStatusView: TextView
+    private lateinit var advancedContainer: LinearLayout
+
     // --- Log ---
     private val logEntries = mutableListOf<String>()
     private lateinit var logContainer: LinearLayout
@@ -86,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             screenCaptureStatusView.setText("Denied", TextView.BufferType.NORMAL)
             screenCaptureStatusView.setTextColor(color(R.color.status_error))
+            updateHomeStatus()
             addLog("Screen capture permission denied")
         }
     }
@@ -127,14 +135,37 @@ class MainActivity : AppCompatActivity() {
         // ── 1. Title ──
         container.addView(sectionTitle("Quest Phone Stream Agent"))
 
-        // ── 2. Status Card ──
-        container.addView(sectionLabel("STATUS"))
+        // ── 2. User-facing readiness summary ──
+        container.addView(sectionLabel("READY"))
+        val homeCard = cardLayout()
+        homeQuestStatusView = statusRow(homeCard, "Quest", "Not connected")
+        homeScreenStatusView = statusRow(homeCard, "Screen Sharing", "Needs permission")
+        homeControlStatusView = statusRow(homeCard, "Remote Control", "Needs permission")
+        homeMediaStatusView = statusRow(homeCard, "Media", "Starting…")
+        homeCard.addView(actionButton("Enable remote control", R.color.status_idle) {
+            openAccessibilitySettings()
+        })
+        container.addView(homeCard)
+
+        advancedContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        homeCard.addView(actionButton("Start screen sharing", R.color.status_ok) {
+            startStream()
+        })
+        homeCard.addView(actionButton("Manage videos", R.color.colorPrimary) {
+            advancedContainer.visibility = View.VISIBLE
+        })
+
+        // ── Advanced: detailed status ──
+        advancedContainer.addView(sectionLabel("STATUS"))
         val statusCard = cardLayout()
         signalingStatusView = statusRow(statusCard, "Signaling", "Idle")
         webrtcStatusView = statusRow(statusCard, "WebRTC", "Idle")
         screenCaptureStatusView = statusRow(statusCard, "Screen Capture", "Idle")
         currentSessionIdView = statusRow(statusCard, "Session ID", "—")
-        container.addView(statusCard)
+        advancedContainer.addView(statusCard)
 
         // ── URL mode indicator ──
         urlModeIndicator = TextView(this).apply {
@@ -142,10 +173,10 @@ class MainActivity : AppCompatActivity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(null, Typeface.BOLD)
         }
-        container.addView(urlModeIndicator)
+        advancedContainer.addView(urlModeIndicator)
 
-        // ── 3. Config ──
-        container.addView(sectionLabel("CONFIGURATION"))
+        // ── Advanced: config ──
+        advancedContainer.addView(sectionLabel("CONFIGURATION"))
         val configCard = cardLayout()
         signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.9:8787")
         tokenField = configRow(configCard, "Token", "dev-token")
@@ -160,10 +191,10 @@ class MainActivity : AppCompatActivity() {
         deviceIdField = configRow(configCard, "Android Device ID", "android-phone-001")
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
-        container.addView(configCard)
+        advancedContainer.addView(configCard)
 
-        // ── 3b. Shared videos ──
-        container.addView(sectionLabel("SHARED VIDEOS"))
+        // ── Advanced: shared videos ──
+        advancedContainer.addView(sectionLabel("SHARED VIDEOS"))
         val mediaCard = cardLayout()
         mediaServerStatusView = TextView(this).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
@@ -180,12 +211,12 @@ class MainActivity : AppCompatActivity() {
         })
         mediaListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mediaCard.addView(mediaListContainer)
-        container.addView(mediaCard)
+        advancedContainer.addView(mediaCard)
 
         signalingUrlField.setOnFocusChangeListener { _, _ -> updateUrlModeIndicator() }
 
-        // ── 4. Actions ──
-        container.addView(sectionLabel("ACTIONS"))
+        // ── Advanced: actions ──
+        advancedContainer.addView(sectionLabel("ACTIONS"))
         val actionsCard = cardLayout()
 
         val testBtn = actionButton("🔌 Test Connection", R.color.colorPrimary) { testConnection() }
@@ -201,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         actionsCard.addView(certBtn)
 
         val a11yBtn = actionButton("♿ Open Accessibility Settings", R.color.status_idle) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            openAccessibilitySettings()
         }
         actionsCard.addView(a11yBtn)
 
@@ -212,10 +243,10 @@ class MainActivity : AppCompatActivity() {
         }
         actionsCard.addView(appSettingsBtn)
 
-        container.addView(actionsCard)
+        advancedContainer.addView(actionsCard)
 
-        // ── 5. Log ──
-        container.addView(sectionLabel("LOG"))
+        // ── Advanced: log ──
+        advancedContainer.addView(sectionLabel("LOG"))
         val logCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8))
@@ -229,7 +260,7 @@ class MainActivity : AppCompatActivity() {
         }
         logScroll.addView(logContainer)
         logCard.addView(logScroll)
-        container.addView(logCard)
+        advancedContainer.addView(logCard)
 
         val clearLogBtn = Button(this).apply {
             text = "Clear Log"
@@ -245,13 +276,20 @@ class MainActivity : AppCompatActivity() {
         logCard.addView(clearLogBtn)
 
         // ── Bottom spacing ──
-        container.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+        advancedContainer.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+
+        val advancedToggle = actionButton("Advanced settings", R.color.status_idle) {
+            advancedContainer.visibility = if (advancedContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        container.addView(advancedToggle)
+        container.addView(advancedContainer)
 
         root.addView(container)
         setContentView(root)
 
         updateUrlModeIndicator()
         updateMediaList()
+        updateHomeStatus()
         addLog("App started")
     }
 
@@ -369,6 +407,7 @@ class MainActivity : AppCompatActivity() {
         if (mediaCatalog.all().isEmpty()) {
             mediaListContainer.addView(TextView(this).apply { text = "No videos selected" })
         }
+        updateHomeStatus()
     }
 
     private fun localLanAddress(): String {
@@ -384,6 +423,12 @@ class MainActivity : AppCompatActivity() {
         mediaServer?.stop()
         mediaServer = null
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Accessibility settings are changed outside the app; refresh readiness when returning.
+        updateHomeStatus()
     }
 
     // ─── Cert Dialog ───
@@ -472,6 +517,7 @@ class MainActivity : AppCompatActivity() {
                 signalingStatusView.setTextColor(color(R.color.status_idle))
             }
         }
+        updateHomeStatus()
     }
 
     private fun updateScreenCaptureStatus() {
@@ -482,6 +528,63 @@ class MainActivity : AppCompatActivity() {
             screenCaptureStatusView.setText("Idle", TextView.BufferType.NORMAL)
             screenCaptureStatusView.setTextColor(color(R.color.status_idle))
         }
+        updateHomeStatus()
+    }
+
+    /** Refresh the small, action-oriented summary shown on the normal home screen. */
+    private fun updateHomeStatus() {
+        if (!::homeQuestStatusView.isInitialized) return
+
+        val questText = when (currentSignalingState) {
+            ConnectionState.CONNECTED -> "Connected"
+            ConnectionState.CONNECTING -> "Connecting…"
+            ConnectionState.FAILED -> "Connection failed"
+            ConnectionState.CLOSED -> "Disconnected"
+            ConnectionState.IDLE -> "Not connected"
+        }
+        homeQuestStatusView.text = questText
+        homeQuestStatusView.setTextColor(color(
+            when (currentSignalingState) {
+                ConnectionState.CONNECTED -> R.color.status_ok
+                ConnectionState.FAILED -> R.color.status_error
+                ConnectionState.CONNECTING -> R.color.status_warn
+                else -> R.color.status_idle
+            }
+        ))
+
+        homeScreenStatusView.text = if (isStreaming) "Ready" else "Needs permission"
+        homeScreenStatusView.setTextColor(color(if (isStreaming) R.color.status_ok else R.color.status_warn))
+
+        val controlReady = isAccessibilityEnabled()
+        homeControlStatusView.text = if (controlReady) "Ready" else "Needs permission"
+        homeControlStatusView.setTextColor(color(if (controlReady) R.color.status_ok else R.color.status_warn))
+
+        val sharedCount = if (::mediaCatalog.isInitialized) mediaCatalog.all().count { it.shared } else 0
+        homeMediaStatusView.text = when {
+            mediaServer == null -> "Unavailable"
+            sharedCount > 0 -> "Ready · $sharedCount shared"
+            else -> "Ready · no videos shared"
+        }
+        homeMediaStatusView.setTextColor(color(if (mediaServer == null) R.color.status_error else R.color.status_ok))
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val serviceName = ControlAccessibilityService::class.java.name
+        val shortServiceName = serviceName.substringAfterLast('.')
+        return enabled.split(':').any { component ->
+            component.equals("$packageName/$serviceName", ignoreCase = true) ||
+                component.endsWith("/$serviceName", ignoreCase = true) ||
+                component.endsWith("/.$shortServiceName", ignoreCase = true) ||
+                component.endsWith("/$shortServiceName", ignoreCase = true)
+        }
+    }
+
+    private fun openAccessibilitySettings() {
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     @Synchronized
