@@ -23,7 +23,7 @@ namespace QuestPhoneStream
         private Button _flatScaleDownButton, _flatScaleUpButton, _flatRotateButton, _flatResetButton;
         private MediaItemDto _selectedItem;
         private MediaVideoProfile _selectedProfile = MediaVideoProfile.Default;
-        private bool _profileInitialized;
+        private bool _manualProfileOverride;
         private System.Action<bool, string> _onAvailabilityChanged;
         private Coroutine _probeRoutine;
 
@@ -194,17 +194,17 @@ namespace QuestPhoneStream
                 } else {
                     _selectedProfile = MediaVideoProfile.Default;
                 }
-                ApplySelectedProfile();
+                ApplySelectedProfile(true);
             });
             _stereoButton = MakeButton(parent, "Stereo: Mono", new Vector2(.38f,.72f), new Vector2(.65f,.78f));
             _stereoButton.onClick.AddListener(() => {
                 _selectedProfile.stereo = _selectedProfile.stereo == StereoMode.Mono ? StereoMode.Sbs : StereoMode.Mono;
-                ApplySelectedProfile();
+                ApplySelectedProfile(true);
             });
             _eyeButton = MakeButton(parent, "Eye: L/R", new Vector2(.68f,.72f), new Vector2(.95f,.78f));
             _eyeButton.onClick.AddListener(() => {
                 _selectedProfile.eyeOrder = _selectedProfile.eyeOrder == EyeOrder.Lr ? EyeOrder.Rl : EyeOrder.Lr;
-                ApplySelectedProfile();
+                ApplySelectedProfile(true);
             });
             UpdateProfileControls();
         }
@@ -224,7 +224,9 @@ namespace QuestPhoneStream
 
         private void UpdateFlatInteractionControls()
         {
-            var active = _playback?.flatPanelController?.IsFlatActive == true;
+            var active = _playback != null && _playback.IsMediaMode &&
+                _playback.Profile.projection == ProjectionMode.Flat &&
+                _playback.flatPanelController?.IsFlatActive == true;
             foreach (var button in new[] { _flatScaleDownButton, _flatScaleUpButton, _flatRotateButton, _flatResetButton })
             {
                 if (button == null) continue;
@@ -233,9 +235,9 @@ namespace QuestPhoneStream
             }
         }
 
-        private void ApplySelectedProfile()
+        private void ApplySelectedProfile(bool manualOverride)
         {
-            _profileInitialized = true;
+            if (manualOverride) _manualProfileOverride = true;
             _selectedProfile = _selectedProfile.Normalize();
             UpdateProfileControls();
             _playback?.ApplyProfile(_selectedProfile);
@@ -337,10 +339,9 @@ namespace QuestPhoneStream
             button.onClick.AddListener(() => {
                 Debug.Log($"[MediaLibraryUI] Button clicked: {item.name} (id={item.id}) playbackNull={_playback == null}");
                 _selectedItem = item;
-                if (!_profileInitialized)
+                if (!_manualProfileOverride)
                 {
                     _selectedProfile = MediaVideoProfile.From(item);
-                    _profileInitialized = true;
                 }
                 UpdateProfileControls();
                 StartCoroutine(Play(item, _selectedProfile));

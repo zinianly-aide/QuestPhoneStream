@@ -27,6 +27,7 @@ namespace QuestPhoneStream
         private float _baseLongSide = 1.6f;
         private float _scaleMultiplier = 1f;
         private bool _rotated;
+        private Quaternion _orientationBaseRotation = Quaternion.identity;
         private bool _initialized;
 
         public void Initialize(Camera camera, Renderer targetRenderer)
@@ -39,6 +40,7 @@ namespace QuestPhoneStream
                 var localScale = transform.localScale;
                 _baseLongSide = Mathf.Max(Mathf.Abs(localScale.x), Mathf.Abs(localScale.y));
                 if (_baseLongSide < 0.01f) _baseLongSide = 1.6f;
+                _orientationBaseRotation = transform.rotation;
                 _initialized = true;
             }
             EnsureXrGrab();
@@ -80,17 +82,27 @@ namespace QuestPhoneStream
         {
             if (!IsFlatActive) return;
             _rotated = !_rotated;
-            transform.Rotate(Vector3.forward, 90f, Space.Self);
+            ApplyOrientationRotation();
             ApplyAspectScale();
         }
 
         public void ResetPose()
         {
             if (!IsFlatActive || xrCamera == null) return;
-            transform.SetParent(xrCamera.transform, false);
-            transform.localPosition = new Vector3(0f, 0f, 1.5f);
-            transform.localRotation = Quaternion.Euler(0f, 0f, _rotated ? 90f : 0f);
+            var cameraTransform = xrCamera.transform;
+            var cameraForward = cameraTransform.forward;
+            if (cameraForward.sqrMagnitude < 0.001f) cameraForward = Vector3.forward;
+            var worldPosition = cameraTransform.position + cameraForward.normalized * 1.5f;
+            _orientationBaseRotation = Quaternion.LookRotation(cameraTransform.position - worldPosition, cameraTransform.up);
+            transform.SetPositionAndRotation(worldPosition, _orientationBaseRotation);
+            ApplyOrientationRotation();
             ApplyAspectScale();
+        }
+
+        private void ApplyOrientationRotation()
+        {
+            var angle = _rotated ? 90f : 0f;
+            transform.rotation = Quaternion.AngleAxis(angle, _orientationBaseRotation * Vector3.forward) * _orientationBaseRotation;
         }
 
         private void ApplyAspectScale()

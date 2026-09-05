@@ -201,9 +201,9 @@ test("VR media renderer keeps flat playback and supports projection/stereo switc
 test("VR playback preserves overrides and explicitly references the VR shader asset", () => {
   const scene = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity");
   const vrMaterial = read("apps/quest-unity-client/Assets/QuestPhoneStream/Materials/VRMediaStereo.mat");
-  assert.match(mediaUi, /private bool _profileInitialized/);
-  assert.match(mediaUi, /if \(!_profileInitialized\)[\s\S]*MediaVideoProfile\.From\(item\)/);
-  assert.match(mediaUi, /_profileInitialized = true;/);
+  assert.match(mediaUi, /private bool _manualProfileOverride/);
+  assert.match(mediaUi, /if \(!_manualProfileOverride\)[\s\S]*MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /ApplySelectedProfile\(true\)/);
   assert.match(mediaRenderer, /public Material vrMaterialTemplate/);
   assert.match(mediaRenderer, /new Material\(vrMaterialTemplate\)/);
   assert.match(mediaRenderer, /Shader\.Find\("QuestPhoneStream\/VRMediaStereo"\)/);
@@ -224,7 +224,7 @@ test("Flat playback preserves aspect ratio and gates XRI interaction by projecti
   assert.match(flatPanel, /projection == ProjectionMode\.Flat/);
   assert.match(flatPanel, /grabInteractable\.enabled = IsFlatActive/);
   assert.match(flatPanel, /panelRenderer\.enabled = IsFlatActive/);
-  assert.match(flatPanel, /transform\.localPosition = new Vector3\(0f, 0f, 1\.5f\)/);
+  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
   assert.match(mediaPlayback, /SetVideoDimensions\(\(int\)player\.width, \(int\)player\.height\)/);
   assert.match(mediaPlayback, /flatPanelController\?\.SetProjection\(Profile\.projection\)/);
   for (const label of ['"-"', '"Rotate"', '"Reset"'])
@@ -236,6 +236,26 @@ test("Flat playback preserves aspect ratio and gates XRI interaction by projecti
   assert.match(mediaUi, /flatPanelController\?\.ResetPose\(\)/);
   assert.match(rig, /ray\.selectInput = new XRInputButtonReader/);
   assert.match(rig, /Reference\(hand \+ " UI Click"\)/);
+});
+
+test("Flat panel reset is world-locked and orientation toggles exactly between 0 and 90 degrees", () => {
+  assert.doesNotMatch(flatPanel, /ResetPose\(\)[\s\S]*SetParent\(xrCamera/);
+  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
+  assert.match(flatPanel, /transform\.SetPositionAndRotation\(worldPosition, _orientationBaseRotation\)/);
+  assert.match(flatPanel, /var angle = _rotated \? 90f : 0f/);
+  assert.match(flatPanel, /Quaternion\.AngleAxis\(angle/);
+  assert.doesNotMatch(flatPanel, /transform\.Rotate\(/);
+  assert.match(mediaRenderer, /_sphere\.transform\.SetParent\(transform\.parent, true\)/);
+  assert.doesNotMatch(flatPanel, /SetParent\(xrCamera\.transform/);
+});
+
+test("Flat controls require active media mode and metadata yields until a manual profile override", () => {
+  assert.match(mediaUi, /private bool _manualProfileOverride/);
+  assert.doesNotMatch(mediaUi, /_profileInitialized/);
+  assert.match(mediaUi, /if \(!_manualProfileOverride\)[\s\S]*MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /ApplySelectedProfile\(true\)/);
+  assert.match(mediaUi, /_playback\.IsMediaMode[\s\S]*_playback\.Profile\.projection == ProjectionMode\.Flat/);
+  assert.match(mediaUi, /button\.gameObject\.SetActive\(active\)/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {
