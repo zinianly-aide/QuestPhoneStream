@@ -64,6 +64,11 @@ class WebRtcStreamer(
         surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
         videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
         videoCapturer.startCapture(config.width, config.height, config.fps)
+        // Publish the encoding resolution so the accessibility service can scale
+        // incoming touch coordinates from video-space to the real screen resolution.
+        VideoResolutionHolder.width = config.width
+        VideoResolutionHolder.height = config.height
+        Log.i(TAG, "Video capture started at ${config.width}x${config.height}@${config.fps}fps")
         videoTrack = factory.createVideoTrack("screen-video", videoSource)
         audioSource = factory.createAudioSource(MediaConstraints())
         audioTrack = factory.createAudioTrack("silent-audio", audioSource)

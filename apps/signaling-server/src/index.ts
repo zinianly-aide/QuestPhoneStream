@@ -1,4 +1,5 @@
 import https from "node:https";
+import path from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseClientMessage, serialize, type ClientMessage, type ClientRole, type RelayMessage, type ServerMessage } from "./protocol.js";
 
@@ -34,7 +35,28 @@ export interface RunningSignalingServer {
 
 const DEFAULT_TOKEN = "dev-token";
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Global safety net: any unexpected error in callbacks/timers is logged instead
+// of crashing the process (which would kill all active signaling sessions).
+process.on("uncaughtException", (error) => {
+  console.error("[uncaughtException]", error instanceof Error ? error.stack : error);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason instanceof Error ? reason.stack : reason);
+});
+
+// Robust entry-point detection: works with direct `node dist/index.js`,
+// pm2 (which may wrap the script and change process.argv[1]), and tests
+// (which import startSignalingServer without auto-starting).
+const isDirectRun = (() => {
+  try {
+    const entry = path.resolve(process.argv[1] ?? "");
+    return import.meta.url === `file://${entry}`;
+  } catch {
+    return false;
+  }
+})();
+const isPM2 = !!process.env.pm_id;
+if (isDirectRun || isPM2) {
   // Load dotenv only in standalone mode
   await import("dotenv/config");
   const certPath = process.env.SIGNALING_CERT;
@@ -108,29 +130,34 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
     });
 
     socket.on("close", (code) => {
-      console.log(`[close] client from ${remoteAddr} disconnected (code=${code})`);
-      for (const [deviceId, client] of clients) {
-        if (client.socket === socket) {
-          console.log(`[close] removed registered client: ${deviceId}`);
-          clients.delete(deviceId);
-          removeSessions(deviceId, clients, sessions);
+      try {
+        console.log(`[close] client from ${remoteAddr} disconnected (code=${code})`);
+        for (const [deviceId, client] of clients) {
+          if (client.socket === socket) {
+            console.log(`[close] removed registered client: ${deviceId}`);
+            clients.delete(deviceId);
+            removeSessions(deviceId, clients, sessions);
+          }
         }
+      } catch (error) {
+        console.error("[close handler error]", error instanceof Error ? error.stack : error);
       }
     });
   });
 
   const interval = setInterval(() => {
-    const now = Date.now();
-    for (const [deviceId, client] of clients) {
-      if (now - client.lastSeenAt > heartbeatTimeoutMs) {
-        client.socket.terminate();
-        clients.delete(deviceId);
-        removeSessions(deviceId, clients, sessions);
-        continue;
+    try {
+      const now = Date.now();
+      for (const [deviceId, client] of clients) {
+        if (now - client.lastSeenAt > heartbeatTimeoutMs) {
+          client.socket.terminate();
+          clients.delete(deviceId);
+          removeSessions(deviceId, clients, sessions);
+          continue;
+        }
       }
-      // Do NOT send ws ping frames: Unity's Mono ClientWebSocket does not handle
-      // server-initiated pings and the receive loop fails ~15s after connect.
-      // The app-level heartbeat (15s) + heartbeatTimeoutMs keeps staleness detection.
+    } catch (error) {
+      console.error("[heartbeat error]", error instanceof Error ? error.stack : error);
     }
   }, pingIntervalMs);
 

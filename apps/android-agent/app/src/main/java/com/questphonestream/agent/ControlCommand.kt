@@ -63,7 +63,20 @@ object ControlCommandDispatcher {
     }
 }
 
+/**
+ * Holds the current video encoding resolution so the accessibility service can
+ * scale incoming touch coordinates from video-space to real screen pixels.
+ * Set by WebRtcStreamer when capture starts; falls back to 720x1280.
+ */
+object VideoResolutionHolder {
+    @Volatile var width: Int = 720
+    @Volatile var height: Int = 1280
+}
+
 class ControlAccessibilityService : AccessibilityService() {
+    // Video encoding resolution is read from VideoResolutionHolder (set by WebRtcStreamer
+    // when capture starts), so this works on any device with any encoding resolution.
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         ControlCommandDispatcher.attach(this)
@@ -80,14 +93,28 @@ class ControlAccessibilityService : AccessibilityService() {
 
     fun execute(command: ControlCommand) {
         when (command.type) {
-            "click" -> gesture(command.x, command.y, command.x, command.y, 1, 80)
-            "long_press" -> gesture(command.x, command.y, command.x, command.y, 1, command.durationMs.coerceAtLeast(500))
-            "swipe" -> gesture(command.startX, command.startY, command.endX, command.endY, 0, command.durationMs.coerceAtLeast(100))
+            "click" -> gesture(scaleX(command.x), scaleY(command.y), scaleX(command.x), scaleY(command.y), 1, 80)
+            "long_press" -> gesture(scaleX(command.x), scaleY(command.y), scaleX(command.x), scaleY(command.y), 1, command.durationMs.coerceAtLeast(500))
+            "swipe" -> gesture(scaleX(command.startX), scaleY(command.startY), scaleX(command.endX), scaleY(command.endY), 0, command.durationMs.coerceAtLeast(100))
             "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
             "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
             "text_input" -> inputText(command.text)
             else -> Log.w(TAG, "Unsupported command: ${command.type}")
         }
+    }
+
+    /** Scale an x coordinate from video-resolution space to real screen pixels. */
+    private fun scaleX(x: Int): Int {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val videoWidth = VideoResolutionHolder.width.coerceAtLeast(1)
+        return (x * screenWidth / videoWidth).coerceIn(0, screenWidth)
+    }
+
+    /** Scale a y coordinate from video-resolution space to real screen pixels. */
+    private fun scaleY(y: Int): Int {
+        val screenHeight = resources.displayMetrics.heightPixels
+        val videoHeight = VideoResolutionHolder.height.coerceAtLeast(1)
+        return (y * screenHeight / videoHeight).coerceIn(0, screenHeight)
     }
 
     private fun gesture(startX: Int, startY: Int, endX: Int, endY: Int, startTime: Long, durationMs: Long) {
