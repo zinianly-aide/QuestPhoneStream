@@ -175,7 +175,13 @@ test("VR media renderer keeps flat playback and supports projection/stereo switc
   assert.match(vrShader, /Cull Front/);
   assert.match(vrShader, /unity_StereoEyeIndex/);
   assert.match(vrShader, /_EyeOrder/);
-  assert.match(vrShader, /_Fov < 270 && dir\.z < 0/);
+  assert.match(vrShader, /float lon = atan2\(dir\.x, dir\.z\)/);
+  assert.match(vrShader, /is180 && abs\(lon\) > UNITY_PI \/ 2\.0/);
+  assert.match(vrShader, /lon \/ UNITY_PI \+ 0\.5/);
+  assert.match(vrShader, /lon \/ \(2\.0 \* UNITY_PI\) \+ 0\.5/);
+  assert.ok(vrShader.indexOf("float u =") < vrShader.indexOf("if (_Stereo > 0.5)"), "SBS sampling must follow base longitude mapping");
+  assert.match(mediaRenderer, /private void LateUpdate\(\)[\s\S]*IsVrVisible[\s\S]*_sphere\.transform\.position = xrCamera\.transform\.position/);
+  assert.doesNotMatch(mediaRenderer, /private void LateUpdate\(\)[\s\S]*_sphere\.transform\.rotation/);
   assert.match(mediaPlayback, /PlayUrl\(string url\) => PlayUrl\(url, MediaVideoProfile\.Default\)/);
   assert.match(mediaPlayback, /vrRenderer\?\.Apply\(renderer\.RenderTexture/);
   assert.match(mediaPlayback, /public void ApplyProfile\(MediaVideoProfile profile\)/);

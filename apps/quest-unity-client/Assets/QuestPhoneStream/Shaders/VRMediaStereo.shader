@@ -53,8 +53,12 @@ Shader "QuestPhoneStream/VRMediaStereo"
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float3 dir = normalize(i.dir);
-                if (_Fov < 270 && dir.z < 0) return fixed4(0, 0, 0, 1);
-                float u = atan2(dir.x, dir.z) / (2.0 * UNITY_PI) + 0.5;
+                float lon = atan2(dir.x, dir.z);
+                bool is180 = _Fov < 270;
+                if (is180 && abs(lon) > UNITY_PI / 2.0) return fixed4(0, 0, 0, 1);
+                float u = is180
+                    ? lon / UNITY_PI + 0.5
+                    : lon / (2.0 * UNITY_PI) + 0.5;
                 float v = 0.5 - asin(clamp(dir.y, -1.0, 1.0)) / UNITY_PI;
                 float2 uv = float2(frac(u), saturate(v));
                 if (_Stereo > 0.5)

@@ -60,6 +60,12 @@ namespace QuestPhoneStream
 
         public void Release() => HideVr();
 
+        private void LateUpdate()
+        {
+            if (!IsVrVisible || xrCamera == null) return;
+            _sphere.transform.position = xrCamera.transform.position;
+        }
+
         private void EnsureSphere()
         {
             if (_sphere != null) return;
