@@ -183,3 +183,39 @@ node node_modules/typescript/bin/tsc --noEmit
 ## 验证后的代码交付
 
 用户随后授权将现有修改提交并推送到 fix/settings-session-gates；不合并 main。交付范围包括修复、测试、本报告和构建失败日志，不包含原有的无关 pnpm 文件或构建工具缓存。提交/推送不改变上述验收结论：GATE-1 与 GATE-2 仍为 NOT VERIFIED。
+## 2026-09-04 分支续审：最小 Android 稳定性修复
+
+分支仍为 `fix/settings-session-gates`，未切换、未 reset、未 clean。对比已抓取的远端分支后，保留当前分支的媒体 MVP；没有把 `origin/main` 的回滚式差异整体合并，也没有把 `fix/android16-mediaprojection` 中仅用于诊断的 SafeMainActivity 启动路径带入正式应用。
+
+本轮只修改三个 Android 文件：
+
+- `MainActivity.kt`：移除确认会造成启动时父容器重复添加的第二次 `logCard` 加入。
+- `ScreenStreamService.kt`：MediaProjection 前台服务启动、参数缺失和初始化异常统一走安全清理；停止时释放 streamer/signaling 并移除通知。
+- `WebRtcStreamer.kt`：初始化过程改为可回滚；若采集器、轨道、SurfaceTextureHelper、PeerConnectionFactory 或 EGL 在中途创建失败，已创建资源会按初始化状态释放。
+
+修复记录：failure 为 Android 启动的重复 View 加入及已确认的 WebRTC 初始化部分失败泄漏风险；root cause 分别是同一 View 被重复加入父容器、构造函数抛异常时服务层尚未拿到对象引用；修改保持在上述三个文件内，未改变信令协议或 Quest 业务流程。
+
+本轮复验：
+
+| 检查 | 结果 |
+| --- | --- |
+| Signaling Vitest | PASS，15/15 |
+| Source contract | PASS，8/8 |
+| `git diff --cached --check` | PASS |
+| Android `./gradlew tasks --stacktrace` | BLOCKED，插件解析阶段无法解析 AGP 8.7.3 |
+| Android `./gradlew assembleDebug --stacktrace` | BLOCKED，同一 AGP 解析错误；未进入 Kotlin 编译，无 APK |
+| Unity Editor / tests | NOT RUN；环境无 Unity 2022.3.62f3c1 |
+| ADB / Quest / Android phone | NOT RUN；`adb` 不存在 |
+| GATE-1 / GATE-2 | NOT VERIFIED |
+
+因此本轮仍不能将任何 Gate 标记为 PASS。两个原有未跟踪 pnpm 文件保持不变。
+
+## 2026-09-04 Quest 键盘问题：代码修复但未真机确认
+
+问题：Quest 射线可以定位设置输入框，但点击后没有可靠拉起系统键盘。
+
+代码检查确认，原实现使用 `UnityEngine.UI.InputField`，只有 `XRUIInputModule` 和 `TrackedDeviceGraphicRaycaster`，没有显式的 `TouchScreenKeyboard` 兜底。新增 `QuestKeyboardInputField` 保留 Unity 默认输入流程，并在焦点保持、键盘仍不可见时调用 `TouchScreenKeyboard.Open`；同时同步键盘文本、处理 Done/Canceled/LostFocus，并设置 `shouldHideMobileInput = false`。所有设置输入框改为该派生组件。
+
+本修复没有引入 Meta XR SDK 或自定义虚拟键盘。Meta 官方 Keyboard Overlay 文档要求 Meta XR Core SDK，并以 Unity 6.0.66f2 或更高版本为前提；本项目当前锁定 Unity 2022.3.62f3c1，因此必须在实际 Quest APK 上确认 `TouchScreenKeyboard` fallback 是否被当前 Horizon OS/OpenXR 组合接受。没有设备证据前，键盘问题不能标记为完全解决，GATE-1 仍为 NOT VERIFIED。
+
+新增验证：源码契约 `Quest input fields have a native keyboard fallback`，当前 source contract 为 9/9；signaling 仍为 15/15。Unity 编译、Quest APK 安装和控制器输入/键盘操作本轮仍未执行。

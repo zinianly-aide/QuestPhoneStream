@@ -20,9 +20,9 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -31,6 +31,7 @@ import androidx.core.view.setPadding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,6 +48,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenCaptureStatusView: TextView
     private lateinit var currentSessionIdView: TextView
     private lateinit var urlModeIndicator: TextView
+    private lateinit var mediaListContainer: LinearLayout
+    private lateinit var mediaServerStatusView: TextView
+    private lateinit var mediaCatalog: MediaCatalog
+    private var mediaServer: MediaHttpServer? = null
 
     // --- Log ---
     private val logEntries = mutableListOf<String>()
@@ -85,8 +90,26 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        try {
+            val flags = result.data?.flags?.and(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ?: 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && flags != 0) {
+                contentResolver.takePersistableUriPermission(uri, flags)
+            }
+            mediaCatalog.addSelectedVideo(uri, result.data?.type)
+            updateMediaList()
+            addLog("Video added to shared catalog")
+        } catch (error: SecurityException) {
+            addLog("Video permission was not persisted; selection cancelled")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        mediaCatalog = MediaCatalog(applicationContext)
+        mediaServer = runCatching { MediaHttpServer(applicationContext, mediaCatalog).also { it.start() } }
+            .getOrNull()
         maybeRequestNotificationPermission()
 
         val root = ScrollView(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT) }
@@ -124,6 +147,26 @@ class MainActivity : AppCompatActivity() {
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
         container.addView(configCard)
+
+        // ── 3b. Shared videos ──
+        container.addView(sectionLabel("SHARED VIDEOS"))
+        val mediaCard = cardLayout()
+        mediaServerStatusView = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(color(R.color.status_idle))
+        }
+        mediaCard.addView(mediaServerStatusView)
+        mediaCard.addView(actionButton("Add Video", R.color.colorPrimary) {
+            videoPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "video/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            })
+        })
+        mediaListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        mediaCard.addView(mediaListContainer)
+        container.addView(mediaCard)
 
         signalingUrlField.setOnFocusChangeListener { _, _ -> updateUrlModeIndicator() }
 
@@ -194,6 +237,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
 
         updateUrlModeIndicator()
+        updateMediaList()
         addLog("App started")
     }
 
@@ -272,6 +316,60 @@ class MainActivity : AppCompatActivity() {
         webrtcStatusView.setTextColor(color(R.color.status_idle))
         currentSessionIdView.setText("—", TextView.BufferType.NORMAL)
         addLog("Streaming stopped")
+    }
+
+    private fun updateMediaList() {
+        if (!::mediaListContainer.isInitialized) return
+        mediaListContainer.removeAllViews()
+        val server = mediaServer
+        mediaServerStatusView.text = if (server == null) {
+            "Media HTTP server unavailable"
+        } else {
+            "Media HTTP: http://${localLanAddress()}:${server.port}"
+        }
+        mediaCatalog.all().forEach { item ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val label = TextView(this).apply {
+                text = "${item.displayName}  (${if (item.shared) "Shared" else "Unshared"})"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val share = Switch(this).apply {
+                isChecked = item.shared
+                text = "Share"
+                setOnCheckedChangeListener { _, checked ->
+                    mediaCatalog.setShared(item.id, checked)
+                    updateMediaList()
+                }
+            }
+            val remove = Button(this).apply {
+                text = "Remove"
+                setOnClickListener { mediaCatalog.remove(item.id); updateMediaList() }
+            }
+            row.addView(label); row.addView(share); row.addView(remove)
+            mediaListContainer.addView(row)
+        }
+        if (mediaCatalog.all().isEmpty()) {
+            mediaListContainer.addView(TextView(this).apply { text = "No videos selected" })
+        }
+    }
+
+    private fun localLanAddress(): String {
+        return runCatching {
+            NetworkInterface.getNetworkInterfaces().asSequence()
+                .flatMap { it.inetAddresses.asSequence() }
+                .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
+                ?.hostAddress ?: "0.0.0.0"
+        }.getOrDefault("0.0.0.0")
+    }
+
+    override fun onDestroy() {
+        mediaServer?.stop()
+        mediaServer = null
+        super.onDestroy()
     }
 
     // ─── Cert Dialog ───
