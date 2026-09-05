@@ -155,3 +155,19 @@ test("Quest video library exposes playback controls without closing after play",
   assert.match(mediaUi, /SetStatus\("Playing: " \+ item\.name\)/);
   assert.doesNotMatch(mediaUi, /SetStatus\("Playing: " \+ item\.name\)[\s\S]{0,180}Close\(\)/);
 });
+
+test("UX navigation and readiness states have explicit recovery paths", () => {
+  assert.match(receiver, /public void ShowHome\(\)/);
+  assert.match(factory, /CreateBackButton\(panel/);
+  assert.match(factory, /_settingsUI\.BackToHome\(\)/);
+  assert.match(home, /_receiver\.IsPeerConnected \? "Connected"/);
+  assert.match(home, /_receiver\.IsMediaReady/);
+  assert.match(home, /_receiver\.IsMediaChecking/);
+  assert.match(home, /_receiver\.IsControlConnected/);
+  assert.match(home, /_keyboardButton\.interactable = controlReady/);
+  const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  assert.match(android, /MEDIA MANAGER/);
+  assert.match(android, /private fun showMediaManager\(\)/);
+  assert.match(android, /homeScreenStatusView\.text = if \(isStreaming\) "Active" else "Off"/);
+  assert.match(android, /homeScreenActionButton\.text = if \(isStreaming\)/);
+});

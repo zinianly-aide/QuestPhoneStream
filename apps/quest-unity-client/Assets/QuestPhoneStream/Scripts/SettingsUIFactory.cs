@@ -48,6 +48,8 @@ namespace QuestPhoneStream
 
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
+            CreateBackButton(panel, out var backButton);
+            _settingsUI.backButton = backButton;
 
             CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "ws://192.168.1.9:8787", 0, out var urlInput);
             _settingsUI.signalingUrlInput = urlInput;
@@ -85,7 +87,7 @@ namespace QuestPhoneStream
             _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
             _mediaLibrary.SetOnClose(() => {
                 _settingsUI.SetAdvancedVisible(true);
-                _settingsUI.Hide();
+                _settingsUI.BackToHome();
             });
             _settingsUI.mediaLibrary = _mediaLibrary;
             _settingsUI.mediaPlayback = playback;
@@ -124,9 +126,36 @@ namespace QuestPhoneStream
             title.color = Color.white;
             title.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var rt = titleGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.05f, 0.91f);
+            rt.anchorMin = new Vector2(0.28f, 0.91f);
             rt.anchorMax = new Vector2(0.95f, 0.99f);
             rt.sizeDelta = Vector2.zero;
+        }
+
+        private void CreateBackButton(Transform parent, out Button button)
+        {
+            var btnGo = new GameObject("Button_Back");
+            btnGo.transform.SetParent(parent, false);
+            var image = btnGo.AddComponent<Image>();
+            image.color = new Color(0.18f, 0.22f, 0.3f, 1f);
+            button = btnGo.AddComponent<Button>();
+            button.targetGraphic = image;
+            var rt = btnGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.05f, 0.94f);
+            rt.anchorMax = new Vector2(0.25f, 0.995f);
+            rt.sizeDelta = Vector2.zero;
+
+            var textGo = new GameObject("Text");
+            textGo.transform.SetParent(btnGo.transform, false);
+            var text = textGo.AddComponent<Text>();
+            text.text = "← Back";
+            text.fontSize = 22;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var textRt = textGo.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.sizeDelta = Vector2.zero;
         }
 
         private void CreateInputField(Transform parent, string label, string prefKey, string defaultValue, int index, out InputField inputField)

@@ -230,3 +230,21 @@ node node_modules/typescript/bin/tsc --noEmit
 - 新增 source contract，检查 Quest 普通入口、Android readiness 摘要和视频播放控制存在；当前 source contract 13/13 PASS，signaling Vitest 15/15 PASS，`git diff --check` PASS。
 
 当前环境没有 Unity Editor、Android SDK/完整 Gradle 分发包或 adb，本轮没有运行 Unity、APK 或 Quest/手机真机验证；因此 UX 运行时效果和 GATE-1/GATE-2 仍不能标记为 PASS。
+
+## 2026-09-05 UX navigation polish
+
+- Video Library 和 Advanced Settings 都提供明确的 Back 路径；关闭视频库或设置页会回到 Quest 首页。
+- Quest 首页的 Phone 状态只有在 `PeerConnected` 后才显示 Connected；注册 signaling 只显示 Found/Connecting。
+- Media 状态改为基于最近一次 `/v1/media` 请求：未配置、Checking、Ready 或 Unreachable；URL 本身不再等同于 Ready。
+- Keyboard 仅在 Control DataChannel Ready 时可操作；未连接时提示先连接手机。Videos 未配置媒体地址时会引导进入 Settings。
+- Android 的视频管理从 Advanced settings 移出，单独显示 Media Manager；屏幕共享按钮根据状态在 Start/Stop 间切换，状态显示 Off/Active。
+- 本轮 source contract 14/14 PASS，signaling Vitest 15/15 PASS。Unity、APK 和真机仍未运行，Gate 结论保持 NOT VERIFIED。
+
+## 2026-09-05 UX navigation polish follow-up
+
+- Video Library Back、Settings Back 都回到 Quest 首页；视频库关闭回调不再留下空场景。
+- Phone Connected 改为严格依赖 `PeerConnected`；仅注册 signaling 时显示 Found/Connecting。
+- Media Ready 改为最近一次 `/v1/media` 成功探测，并区分 Not configured、Checking、Unreachable。
+- Keyboard 在 Control DataChannel 未打开时禁用并提示连接手机；未配置媒体时进入 Videos 会引导 Settings。
+- Android 将 Shared Videos 独立为 Media Manager；Screen Sharing 首页按钮根据状态切换 Start/Stop，状态显示 Off/Active。
+- 本轮静态契约 14/14、signaling 15/15、diff check 均通过；Gradle 仍因损坏的 Gradle 8.10.2 缓存在配置阶段阻塞，Unity/设备验证未执行。

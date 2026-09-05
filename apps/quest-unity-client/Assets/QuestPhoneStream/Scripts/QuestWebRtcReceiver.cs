@@ -28,13 +28,22 @@ namespace QuestPhoneStream
         private PanelInputMapper _panelInput;
         private string _negotiationId;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
+        private bool _mediaProbeReady, _mediaProbeChecking, _mediaProbeFailed;
+        private string _mediaProbeUrl;
         private readonly Queue<IceCandidateDto> _pendingIce = new Queue<IceCandidateDto>();
 
         public bool HasVideoFrame => _hasFrame;
         public bool IsPeerConnected => _peerConnected;
         public bool IsControlConnected => controlChannel != null && controlChannel.IsOpen;
-        public bool HasMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null &&
-            !string.IsNullOrWhiteSpace(_settingsUI.mediaBaseUrlInput.text);
+        public bool HasMediaUrl => !string.IsNullOrWhiteSpace(CurrentMediaUrl);
+        public bool IsMediaReady => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl;
+        public bool IsMediaChecking => HasMediaUrl &&
+            ((!_mediaProbeReady && !_mediaProbeFailed) || _mediaProbeChecking || _mediaProbeUrl != CurrentMediaUrl);
+        public bool IsMediaFailed => HasMediaUrl && _mediaProbeFailed && _mediaProbeUrl == CurrentMediaUrl;
+
+        private string CurrentMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
+            ? _settingsUI.mediaBaseUrlInput.text.Trim()
+            : PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", string.Empty).Trim();
 
         private void Start()
         {
@@ -92,6 +101,13 @@ namespace QuestPhoneStream
             _homeUI?.Toggle();
         }
 
+        public void ShowHome()
+        {
+            if (_homeUI == null) EnsureHomeUI();
+            _settingsUI?.Hide();
+            _homeUI?.Show();
+        }
+
         public void OpenVideoLibrary()
         {
             EnsureSettingsUI();
@@ -113,6 +129,14 @@ namespace QuestPhoneStream
             var settingsGo = new GameObject("SettingsUI");
             settingsGo.transform.SetParent(transform, false);
             _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback);
+            _settingsUI.onBackToHome = ShowHome;
+            _settingsUI.mediaLibrary?.SetAvailabilityHandler((ready, error) => {
+                _mediaProbeUrl = CurrentMediaUrl;
+                _mediaProbeChecking = !ready && string.IsNullOrEmpty(error);
+                _mediaProbeReady = ready;
+                _mediaProbeFailed = !ready && !string.IsNullOrEmpty(error);
+                _homeUI?.RefreshStatus();
+            });
         }
 
         private void EnsureHomeUI()

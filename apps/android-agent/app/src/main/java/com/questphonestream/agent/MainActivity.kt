@@ -61,7 +61,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeScreenStatusView: TextView
     private lateinit var homeControlStatusView: TextView
     private lateinit var homeMediaStatusView: TextView
+    private lateinit var homeScreenActionButton: Button
+    private lateinit var advancedToggleButton: Button
     private lateinit var advancedContainer: LinearLayout
+    private lateinit var mediaManagerContainer: LinearLayout
 
     // --- Log ---
     private val logEntries = mutableListOf<String>()
@@ -139,8 +142,8 @@ class MainActivity : AppCompatActivity() {
         container.addView(sectionLabel("READY"))
         val homeCard = cardLayout()
         homeQuestStatusView = statusRow(homeCard, "Quest", "Not connected")
-        homeScreenStatusView = statusRow(homeCard, "Screen Sharing", "Needs permission")
-        homeControlStatusView = statusRow(homeCard, "Remote Control", "Needs permission")
+        homeScreenStatusView = statusRow(homeCard, "Screen Sharing", "Off")
+        homeControlStatusView = statusRow(homeCard, "Remote Control", "Permission required")
         homeMediaStatusView = statusRow(homeCard, "Media", "Starting…")
         homeCard.addView(actionButton("Enable remote control", R.color.status_idle) {
             openAccessibilitySettings()
@@ -151,11 +154,16 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-        homeCard.addView(actionButton("Start screen sharing", R.color.status_ok) {
-            startStream()
-        })
+        mediaManagerContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        homeScreenActionButton = actionButton("Start screen sharing", R.color.status_ok) {
+            if (isStreaming) stopStream() else startStream()
+        }
+        homeCard.addView(homeScreenActionButton)
         homeCard.addView(actionButton("Manage videos", R.color.colorPrimary) {
-            advancedContainer.visibility = View.VISIBLE
+            showMediaManager()
         })
 
         // ── Advanced: detailed status ──
@@ -193,8 +201,8 @@ class MainActivity : AppCompatActivity() {
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
         advancedContainer.addView(configCard)
 
-        // ── Advanced: shared videos ──
-        advancedContainer.addView(sectionLabel("SHARED VIDEOS"))
+        // ── Separate media manager ──
+        mediaManagerContainer.addView(sectionLabel("MEDIA MANAGER"))
         val mediaCard = cardLayout()
         mediaServerStatusView = TextView(this).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
@@ -211,7 +219,10 @@ class MainActivity : AppCompatActivity() {
         })
         mediaListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mediaCard.addView(mediaListContainer)
-        advancedContainer.addView(mediaCard)
+        mediaManagerContainer.addView(mediaCard)
+        mediaManagerContainer.addView(actionButton("← Back", R.color.status_idle) {
+            hideMediaManager()
+        })
 
         signalingUrlField.setOnFocusChangeListener { _, _ -> updateUrlModeIndicator() }
 
@@ -278,10 +289,11 @@ class MainActivity : AppCompatActivity() {
         // ── Bottom spacing ──
         advancedContainer.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
 
-        val advancedToggle = actionButton("Advanced settings", R.color.status_idle) {
+        advancedToggleButton = actionButton("Advanced settings", R.color.status_idle) {
             advancedContainer.visibility = if (advancedContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
-        container.addView(advancedToggle)
+        container.addView(advancedToggleButton)
+        container.addView(mediaManagerContainer)
         container.addView(advancedContainer)
 
         root.addView(container)
@@ -368,6 +380,17 @@ class MainActivity : AppCompatActivity() {
         webrtcStatusView.setTextColor(color(R.color.status_idle))
         currentSessionIdView.setText("—", TextView.BufferType.NORMAL)
         addLog("Streaming stopped")
+    }
+
+    private fun showMediaManager() {
+        advancedContainer.visibility = View.GONE
+        advancedToggleButton.visibility = View.GONE
+        mediaManagerContainer.visibility = View.VISIBLE
+    }
+
+    private fun hideMediaManager() {
+        mediaManagerContainer.visibility = View.GONE
+        advancedToggleButton.visibility = View.VISIBLE
     }
 
     private fun updateMediaList() {
@@ -552,11 +575,12 @@ class MainActivity : AppCompatActivity() {
             }
         ))
 
-        homeScreenStatusView.text = if (isStreaming) "Ready" else "Needs permission"
-        homeScreenStatusView.setTextColor(color(if (isStreaming) R.color.status_ok else R.color.status_warn))
+        homeScreenStatusView.text = if (isStreaming) "Active" else "Off"
+        homeScreenStatusView.setTextColor(color(if (isStreaming) R.color.status_ok else R.color.status_idle))
+        homeScreenActionButton.text = if (isStreaming) "Stop screen sharing" else "Start screen sharing"
 
         val controlReady = isAccessibilityEnabled()
-        homeControlStatusView.text = if (controlReady) "Ready" else "Needs permission"
+        homeControlStatusView.text = if (controlReady) "Ready" else "Permission required"
         homeControlStatusView.setTextColor(color(if (controlReady) R.color.status_ok else R.color.status_warn))
 
         val sharedCount = if (::mediaCatalog.isInitialized) mediaCatalog.all().count { it.shared } else 0

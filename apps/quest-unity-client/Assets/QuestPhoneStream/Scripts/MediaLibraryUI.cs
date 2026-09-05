@@ -19,6 +19,7 @@ namespace QuestPhoneStream
         private Slider _volume;
         private Button _playPause;
         private Text _timeText;
+        private System.Action<bool, string> _onAvailabilityChanged;
 
         public void Initialize(Canvas canvas, MediaCatalogClient catalog, MediaPlaybackController playback, System.Func<string> baseUrl)
         {
@@ -27,6 +28,7 @@ namespace QuestPhoneStream
         }
 
         public void SetOnClose(System.Action onClose) => _onClose = onClose;
+        public void SetAvailabilityHandler(System.Action<bool, string> handler) => _onAvailabilityChanged = handler;
 
         public void Open()
         {
@@ -54,6 +56,7 @@ namespace QuestPhoneStream
                     _catalog.baseUrl = urlFromSettings;
                 Debug.Log($"[MediaLibraryUI] Using catalog.baseUrl={_catalog.baseUrl}");
             }
+            _onAvailabilityChanged?.Invoke(false, null);
             StartCoroutine(Refresh());
         }
 
@@ -191,6 +194,7 @@ namespace QuestPhoneStream
         {
             if (_list == null || _catalog == null)
             {
+                _onAvailabilityChanged?.Invoke(false, "Media catalog is unavailable");
                 SetStatus($"Error: listNull={_list == null} catalogNull={_catalog == null}");
                 Debug.LogWarning("[MediaLibraryUI] Refresh skipped: _list or _catalog is null");
                 yield break;
@@ -199,7 +203,8 @@ namespace QuestPhoneStream
             SetStatus($"Loading from {_catalog.baseUrl} ...");
             Debug.Log($"[MediaLibraryUI] Fetching media from {_catalog.baseUrl}/v1/media");
             yield return _catalog.GetMedia((items, error) => {
-                if (!string.IsNullOrEmpty(error)) { SetStatus("Request failed: " + error); AddText("Media request failed: " + error, 20); return; }
+                if (!string.IsNullOrEmpty(error)) { _onAvailabilityChanged?.Invoke(false, error); SetStatus("Request failed: " + error); AddText("Media request failed: " + error, 20); return; }
+                _onAvailabilityChanged?.Invoke(true, null);
                 if (items == null || items.Count == 0) { SetStatus("No shared videos found"); AddText("No shared videos", 22); return; }
                 SetStatus($"Found {items.Count} video(s)");
                 foreach (var item in items) AddItem(item);

@@ -16,7 +16,8 @@ namespace QuestPhoneStream
         private QuestWebRtcReceiver _receiver;
         private Camera _camera;
         private Text _phoneStatus, _screenStatus, _controlStatus, _mediaStatus;
-        private Button _phoneTab, _videosTab;
+        private Button _phoneTab, _videosTab, _keyboardButton;
+        private Text _hint;
         private bool _initialized;
         private bool _videosSelected;
         private Coroutine _keyboardRoutine;
@@ -47,6 +48,7 @@ namespace QuestPhoneStream
             _canvas.transform.position = _camera.transform.position + forward * 1.35f + Vector3.down * 0.62f;
             _canvas.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             _canvas.gameObject.SetActive(true);
+            RefreshStatus();
         }
 
         public void Hide() { if (_canvas != null) _canvas.gameObject.SetActive(false); }
@@ -88,12 +90,13 @@ namespace QuestPhoneStream
 
             _phoneTab = MakeButton(panelGo.transform, "Phone", 0.05f, 0.39f, 0.27f, 0.56f, OnPhone);
             _videosTab = MakeButton(panelGo.transform, "Videos", 0.29f, 0.39f, 0.51f, 0.56f, OnVideos);
-            MakeButton(panelGo.transform, "Keyboard", 0.55f, 0.39f, 0.76f, 0.56f, OpenKeyboard);
+            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.55f, 0.39f, 0.76f, 0.56f, OpenKeyboard);
             MakeButton(panelGo.transform, "Settings", 0.78f, 0.39f, 0.95f, 0.56f, OpenSettings);
 
             var hint = MakeText(panelGo.transform, "Use the controller ray to select Phone or Videos", 16, TextAnchor.MiddleLeft);
             hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
             Anchor(hint.rectTransform, 0.05f, 0.08f, 0.95f, 0.28f);
+            _hint = hint.textComponent;
         }
 
         private Text AddStatus(Transform parent, string label, float x, float y)
@@ -113,8 +116,17 @@ namespace QuestPhoneStream
 
         private void OnVideos()
         {
+            if (_receiver == null) return;
             _videosSelected = true;
-            _receiver?.OpenVideoLibrary();
+            if (!_receiver.HasMediaUrl)
+            {
+                _videosSelected = false;
+                if (_hint != null) _hint.text = "Media isn't configured. Open Settings to set it up.";
+                _receiver.ToggleSettings();
+                Hide();
+                return;
+            }
+            _receiver.OpenVideoLibrary();
             Hide();
         }
 
@@ -126,6 +138,11 @@ namespace QuestPhoneStream
 
         private void OpenKeyboard()
         {
+            if (_receiver == null || !_receiver.IsControlConnected)
+            {
+                if (_hint != null) _hint.text = "Connect phone to use Keyboard";
+                return;
+            }
             if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
             _keyboardRoutine = StartCoroutine(ReadKeyboard());
         }
@@ -153,15 +170,23 @@ namespace QuestPhoneStream
             UpdateStatus(_signaling.State);
         }
 
+        public void RefreshStatus() => UpdateStatus(_signaling.State);
+
         private void UpdateStatus(ConnectionState state)
         {
             if (_phoneStatus == null || _receiver == null) return;
             var failed = ConnectionStatus.IsFailure(state);
-            _phoneStatus.text = failed ? "Phone  ·  Needs attention" :
-                (int)state >= (int)ConnectionState.Registered ? "Phone  ·  Connected" : "Phone  ·  Searching...";
+            var phone = failed ? "Offline" : _receiver.IsPeerConnected ? "Connected" :
+                state == ConnectionState.Registered ? "Found" :
+                (int)state >= (int)ConnectionState.SessionRequesting ? "Connecting..." : "Searching...";
+            _phoneStatus.text = "Phone  ·  " + phone;
             _screenStatus.text = "Screen  ·  " + (_receiver.HasVideoFrame ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
             _controlStatus.text = "Control  ·  " + (_receiver.IsControlConnected ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
-            _mediaStatus.text = "Media  ·  " + (_receiver.HasMediaUrl ? "Ready" : "Set in Settings");
+            _mediaStatus.text = "Media  ·  " + (!_receiver.HasMediaUrl ? "Not configured" :
+                _receiver.IsMediaReady ? "Ready" : _receiver.IsMediaChecking ? "Checking..." : "Unreachable");
+            var controlReady = _receiver.IsControlConnected;
+            if (_keyboardButton != null) _keyboardButton.interactable = controlReady;
+            if (_hint != null && controlReady) _hint.text = "Use the controller ray to select Phone or Videos";
             SetTab(_phoneTab, !_videosSelected);
             SetTab(_videosTab, _videosSelected);
         }

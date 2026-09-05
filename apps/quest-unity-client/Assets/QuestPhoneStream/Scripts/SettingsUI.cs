@@ -10,9 +10,11 @@ namespace QuestPhoneStream
         public Canvas canvas;
         public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput, mediaBaseUrlInput;
         public Button saveButton, connectButton, phoneScreenButton, videoLibraryButton;
+        public Button backButton;
         public Text statusText;
         public MediaLibraryUI mediaLibrary;
         public MediaPlaybackController mediaPlayback;
+        public Action onBackToHome;
         public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
         private Camera _xrCamera;
@@ -30,6 +32,7 @@ namespace QuestPhoneStream
             _initialized = true;
             saveButton.onClick.AddListener(OnSave);
             connectButton.onClick.AddListener(OnConnect);
+            backButton?.onClick.AddListener(OnBack);
             phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
             videoLibraryButton?.onClick.AddListener(() => {
                 SetAdvancedVisible(false);
@@ -75,6 +78,14 @@ namespace QuestPhoneStream
             var panel = canvas.transform.Find("Panel");
             if (panel != null) panel.gameObject.SetActive(visible);
         }
+
+        private void OnBack()
+        {
+            Hide();
+            onBackToHome?.Invoke();
+        }
+
+        public void BackToHome() => OnBack();
 
         private void LoadSettings()
         {
