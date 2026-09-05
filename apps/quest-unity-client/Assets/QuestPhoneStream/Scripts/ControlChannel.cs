@@ -81,7 +81,7 @@ namespace QuestPhoneStream
             string json = command.ToJson();
             if (_channel != null && _channel.ReadyState == RTCDataChannelState.Open)
             {
-                _channel.Send(json);
+                _channel.Send(Encoding.UTF8.GetBytes(json));
                 Debug.Log($"[QuestPhoneStream] Control sent: type={command.type} x={command.x} y={command.y}");
             }
             else
