@@ -248,3 +248,12 @@ node node_modules/typescript/bin/tsc --noEmit
 - Keyboard 在 Control DataChannel 未打开时禁用并提示连接手机；未配置媒体时进入 Videos 会引导 Settings。
 - Android 将 Shared Videos 独立为 Media Manager；Screen Sharing 首页按钮根据状态切换 Start/Stop，状态显示 Off/Active。
 - 本轮静态契约 14/14、signaling 15/15、diff check 均通过；Gradle 仍因损坏的 Gradle 8.10.2 缓存在配置阶段阻塞，Unity/设备验证未执行。
+
+## 2026-09-05 readiness gaps follow-up
+
+- Settings 在 PeerConnected/MediaConnected 自动收起时统一走 `BackToHome()`，避免隐藏后丢失首页导航。
+- Quest 首页每次显示都会主动探测 `/v1/media`；Media Ready 增加 30 秒 TTL，过期显示 Stale 并要求重新探测。
+- Videos 入口按状态分流：未配置进入 Settings，不可达执行 Retry，探测成功才打开 Library；Keyboard 未连接 Control 时保持禁用并直接显示原因。
+- Android 首页将容易误解的 `Quest · Connected` 改为 `Signaling · Ready`，不再把 signaling 注册冒充 WebRTC peer 连接。
+
+验证：source contract 14/14 PASS，signaling Vitest 15/15 PASS，C# brace balance PASS，`git diff --check` PASS。Unity、Android APK 和 Quest/手机真机仍未执行，因此 GATE-1/GATE-2 继续保持 NOT VERIFIED。

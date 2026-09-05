@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
         // ── 2. User-facing readiness summary ──
         container.addView(sectionLabel("READY"))
         val homeCard = cardLayout()
-        homeQuestStatusView = statusRow(homeCard, "Quest", "Not connected")
+        homeQuestStatusView = statusRow(homeCard, "Signaling", "Not ready")
         homeScreenStatusView = statusRow(homeCard, "Screen Sharing", "Off")
         homeControlStatusView = statusRow(homeCard, "Remote Control", "Permission required")
         homeMediaStatusView = statusRow(homeCard, "Media", "Starting…")
@@ -559,7 +559,7 @@ class MainActivity : AppCompatActivity() {
         if (!::homeQuestStatusView.isInitialized) return
 
         val questText = when (currentSignalingState) {
-            ConnectionState.CONNECTED -> "Connected"
+            ConnectionState.CONNECTED -> "Ready"
             ConnectionState.CONNECTING -> "Connecting…"
             ConnectionState.FAILED -> "Connection failed"
             ConnectionState.CLOSED -> "Disconnected"

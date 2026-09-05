@@ -48,6 +48,7 @@ namespace QuestPhoneStream
             _canvas.transform.position = _camera.transform.position + forward * 1.35f + Vector3.down * 0.62f;
             _canvas.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             _canvas.gameObject.SetActive(true);
+            _receiver?.ProbeMedia();
             RefreshStatus();
         }
 
@@ -126,6 +127,16 @@ namespace QuestPhoneStream
                 Hide();
                 return;
             }
+            if (!_receiver.IsMediaReady)
+            {
+                _videosSelected = false;
+                if (_hint != null)
+                    _hint.text = _receiver.IsMediaFailed || _receiver.IsMediaStale
+                        ? "Media is unreachable. Retrying..."
+                        : "Checking media. Try Videos again shortly.";
+                _receiver.ProbeMedia();
+                return;
+            }
             _receiver.OpenVideoLibrary();
             Hide();
         }
@@ -183,10 +194,12 @@ namespace QuestPhoneStream
             _screenStatus.text = "Screen  ·  " + (_receiver.HasVideoFrame ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
             _controlStatus.text = "Control  ·  " + (_receiver.IsControlConnected ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
             _mediaStatus.text = "Media  ·  " + (!_receiver.HasMediaUrl ? "Not configured" :
-                _receiver.IsMediaReady ? "Ready" : _receiver.IsMediaChecking ? "Checking..." : "Unreachable");
+                _receiver.IsMediaReady ? "Ready" : _receiver.IsMediaStale ? "Stale" :
+                _receiver.IsMediaChecking ? "Checking..." : "Unreachable");
             var controlReady = _receiver.IsControlConnected;
             if (_keyboardButton != null) _keyboardButton.interactable = controlReady;
-            if (_hint != null && controlReady) _hint.text = "Use the controller ray to select Phone or Videos";
+            if (_hint != null)
+                _hint.text = controlReady ? "Use the controller ray to select Phone or Videos" : "Connect phone to use Keyboard";
             SetTab(_phoneTab, !_videosSelected);
             SetTab(_videosTab, _videosSelected);
         }

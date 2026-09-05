@@ -20,6 +20,7 @@ namespace QuestPhoneStream
         private Button _playPause;
         private Text _timeText;
         private System.Action<bool, string> _onAvailabilityChanged;
+        private Coroutine _probeRoutine;
 
         public void Initialize(Canvas canvas, MediaCatalogClient catalog, MediaPlaybackController playback, System.Func<string> baseUrl)
         {
@@ -29,6 +30,27 @@ namespace QuestPhoneStream
 
         public void SetOnClose(System.Action onClose) => _onClose = onClose;
         public void SetAvailabilityHandler(System.Action<bool, string> handler) => _onAvailabilityChanged = handler;
+
+        public void ProbeAvailability()
+        {
+            if (_catalog == null)
+            {
+                _onAvailabilityChanged?.Invoke(false, "Media catalog is unavailable");
+                return;
+            }
+            var url = _baseUrl?.Invoke();
+            if (!string.IsNullOrWhiteSpace(url)) _catalog.baseUrl = url.Trim();
+            if (_probeRoutine != null) StopCoroutine(_probeRoutine);
+            _onAvailabilityChanged?.Invoke(false, null);
+            _probeRoutine = StartCoroutine(ProbeRoutine());
+        }
+
+        private IEnumerator ProbeRoutine()
+        {
+            yield return _catalog.GetMedia((items, error) =>
+                _onAvailabilityChanged?.Invoke(string.IsNullOrEmpty(error), error));
+            _probeRoutine = null;
+        }
 
         public void Open()
         {
@@ -250,6 +272,11 @@ namespace QuestPhoneStream
         private Text AddText(string value, int size)
         {
             var text = MakeText(_list, value, size); text.GetComponent<RectTransform>().sizeDelta = new Vector2(0, 40); return text;
+        }
+
+        private void OnDestroy()
+        {
+            if (_probeRoutine != null) StopCoroutine(_probeRoutine);
         }
 
         private static Text MakeText(Transform parent, string value, int size)

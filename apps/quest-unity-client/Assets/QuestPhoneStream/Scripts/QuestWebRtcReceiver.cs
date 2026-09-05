@@ -30,15 +30,19 @@ namespace QuestPhoneStream
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
         private bool _mediaProbeReady, _mediaProbeChecking, _mediaProbeFailed;
         private string _mediaProbeUrl;
+        private float _mediaProbeAt = -Mathf.Infinity;
+        private const float MediaProbeTtlSeconds = 30f;
         private readonly Queue<IceCandidateDto> _pendingIce = new Queue<IceCandidateDto>();
 
         public bool HasVideoFrame => _hasFrame;
         public bool IsPeerConnected => _peerConnected;
         public bool IsControlConnected => controlChannel != null && controlChannel.IsOpen;
         public bool HasMediaUrl => !string.IsNullOrWhiteSpace(CurrentMediaUrl);
-        public bool IsMediaReady => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl;
+        public bool IsMediaStale => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl &&
+            Time.unscaledTime - _mediaProbeAt > MediaProbeTtlSeconds;
+        public bool IsMediaReady => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl && !IsMediaStale;
         public bool IsMediaChecking => HasMediaUrl &&
-            ((!_mediaProbeReady && !_mediaProbeFailed) || _mediaProbeChecking || _mediaProbeUrl != CurrentMediaUrl);
+            ((!_mediaProbeReady && !_mediaProbeFailed) || _mediaProbeChecking || _mediaProbeUrl != CurrentMediaUrl || IsMediaStale);
         public bool IsMediaFailed => HasMediaUrl && _mediaProbeFailed && _mediaProbeUrl == CurrentMediaUrl;
 
         private string CurrentMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
@@ -108,6 +112,13 @@ namespace QuestPhoneStream
             _homeUI?.Show();
         }
 
+        public void ProbeMedia()
+        {
+            if (!HasMediaUrl) return;
+            EnsureSettingsUI();
+            _settingsUI.mediaLibrary?.ProbeAvailability();
+        }
+
         public void OpenVideoLibrary()
         {
             EnsureSettingsUI();
@@ -135,6 +146,7 @@ namespace QuestPhoneStream
                 _mediaProbeChecking = !ready && string.IsNullOrEmpty(error);
                 _mediaProbeReady = ready;
                 _mediaProbeFailed = !ready && !string.IsNullOrEmpty(error);
+                if (ready) _mediaProbeAt = Time.unscaledTime;
                 _homeUI?.RefreshStatus();
             });
         }
