@@ -64,7 +64,7 @@ namespace QuestPhoneStream
             CreateInputField(panel, "Session ID:", "QuestPhoneStream_SessionId", "local-session-001", 4, out var sessionIdInput);
             _settingsUI.sessionIdInput = sessionIdInput;
 
-            CreateInputField(panel, "Media HTTP URL:", "QuestPhoneStream_MediaBaseUrl", "http://192.168.1.6:8788", 5, out var mediaUrlInput);
+            CreateInputField(panel, "Media HTTP URL:", "QuestPhoneStream_MediaBaseUrl", "", 5, out var mediaUrlInput);
             _settingsUI.mediaBaseUrlInput = mediaUrlInput;
 
             CreateButton(panel, "Save", 6, 0.05f, out var saveBtn);
@@ -79,6 +79,7 @@ namespace QuestPhoneStream
             _settingsUI.videoLibraryButton = videoBtn;
 
             var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
+            catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
             _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
             _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
             _settingsUI.mediaLibrary = _mediaLibrary;

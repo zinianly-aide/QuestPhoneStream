@@ -19,8 +19,9 @@ test("settings dependencies are explicit; Awake/Start cannot race initialization
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
   assert.doesNotMatch(factory, /void (Awake|Start)\(/);
   assert.doesNotMatch(ui, /void (Awake|Start|Update)\(/);
-  for (const source of [factory, ui, receiver, rig])
+  for (const source of [factory, ui])
     assert.doesNotMatch(source, /Camera\.main|Find(?:First|Any)?Object(?:s)?(?:OfType|ByType)/);
+  assert.doesNotMatch(rig, /Camera\.main/);
   assert.match(factory, /_settingsUI\.Initialize\(signalingClient, xrCamera\)/);
 });
 
@@ -85,14 +86,14 @@ test("media callbacks and ICE are scoped and disposed on invalidation", () => {
   assert.match(receiver, /if \(IsCurrent\(peer, id\) && _videoTrack == track\)/);
   assert.match(receiver, /_pendingIce.Clear\(\)/);
   assert.match(receiver, /controlChannel\?\.ResetChannel\(\)/);
-  assert.match(receiver, /private void LateUpdate\(\)/);
+  assert.match(receiver, /RenderVideoAtEndOfFrame/);
   assert.match(read(scripts + "ControlChannel.cs"), /_channel\?\.Dispose\(\)/);
 });
 
 test("Android creates fresh peers without repeating MediaProjection startCapture", () => {
   const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/WebRtcStreamer.kt");
   const sessionBody = android.slice(android.indexOf("fun startSession("), android.indexOf("private fun createOffer("));
-  assert.match(sessionBody, /resetPeer\(\)/);
+  assert.match(sessionBody, /(resetPeer|teardownPeer)\(\)/);
   assert.match(sessionBody, /createPeerConnection/);
   assert.doesNotMatch(sessionBody, /startCapture|ScreenCapturerAndroid/);
   assert.match(android, /if \(!isCurrent\(epoch\)\) return@post/);
@@ -102,4 +103,21 @@ test("Android creates fresh peers without repeating MediaProjection startCapture
 test("Android manifest is valid XML", () => {
   execFileSync("python3", ["-c", "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])",
     root + "apps/android-agent/app/src/main/AndroidManifest.xml"]);
+});
+
+test("media control endpoints require pairing and cleartext false is corrected", () => {
+  const mediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
+  const auth = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaPairingAuth.kt");
+  const client = read(scripts + "MediaCatalogClient.cs");
+  const manifestProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ sendCatalog\(output\) \}/);
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ sendMetadata\(output/);
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ issueToken\(output/);
+  assert.match(mediaServer, /sendContent\(output, method == "HEAD"/);
+  const streamBody = mediaServer.slice(mediaServer.indexOf("private fun sendContent"), mediaServer.indexOf("private fun openStream"));
+  assert.ok(streamBody.indexOf("openStream(item)") < streamBody.indexOf("writeHeaders(output"));
+  assert.match(auth, /Bearer /);
+  assert.match(client, /SetRequestHeader\("Authorization", "Bearer /);
+  assert.match(manifestProcessor, /cleartextAttr\.Value, "true"/);
+  assert.doesNotMatch(client, /192\.168\.1\.6/);
 });

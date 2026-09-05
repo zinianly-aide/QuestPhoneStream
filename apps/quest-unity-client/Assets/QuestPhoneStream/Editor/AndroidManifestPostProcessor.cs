@@ -62,7 +62,16 @@ namespace QuestPhoneStream.Editor
                 }
                 else
                 {
-                    Debug.Log("[AndroidManifestPostProcessor] usesCleartextTraffic already present, skipping");
+                    if (!string.Equals(cleartextAttr.Value, "true", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        cleartextAttr.Value = "true";
+                        changed = true;
+                        Debug.Log("[AndroidManifestPostProcessor] Changed android:usesCleartextTraffic to true for LAN media playback");
+                    }
+                    else
+                    {
+                        Debug.Log("[AndroidManifestPostProcessor] usesCleartextTraffic already true, skipping");
+                    }
                 }
             }
             else

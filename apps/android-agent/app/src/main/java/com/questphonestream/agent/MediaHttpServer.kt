@@ -24,7 +24,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MediaHttpServer(
     private val context: Context,
     private val catalog: MediaCatalog,
-    requestedPort: Int = DEFAULT_PORT
+    requestedPort: Int = DEFAULT_PORT,
+    private val pairingTokenProvider: () -> String = { "dev-token" }
 ) {
     private val server = ServerSocket(requestedPort)
     private val running = AtomicBoolean(false)
@@ -78,10 +79,12 @@ class MediaHttpServer(
                 val path = uri?.path ?: run { sendError(output, 400, "Bad Request"); return }
                 Log.d(TAG, "HTTP $method $path (range=${headers["range"]})")
                 when {
-                    method == "GET" && path == "/v1/media" -> sendCatalog(output)
-                    method == "GET" && path.matches(Regex("/v1/media/[^/]+")) -> sendMetadata(output, path.substringAfterLast('/'))
+                    method == "GET" && path == "/v1/media" ->
+                        ifAuthorized(headers, output) { sendCatalog(output) }
+                    method == "GET" && path.matches(Regex("/v1/media/[^/]+")) ->
+                        ifAuthorized(headers, output) { sendMetadata(output, path.substringAfterLast('/')) }
                     method == "POST" && path.matches(Regex("/v1/media/[^/]+/play-token")) ->
-                        issueToken(output, path.split('/')[3])
+                        ifAuthorized(headers, output) { issueToken(output, path.split('/')[3]) }
                     (method == "GET" || method == "HEAD") && path.matches(Regex("/v1/media/[^/]+/content")) ->
                         sendContent(output, method == "HEAD", path.split('/')[3], uri, headers["range"])
                     else -> sendError(output, 404, "Not Found")
@@ -94,6 +97,18 @@ class MediaHttpServer(
                 } catch (_: Exception) {}
             }
         }
+    }
+
+    private inline fun ifAuthorized(
+        headers: Map<String, String>,
+        output: BufferedOutputStream,
+        action: () -> Unit
+    ) {
+        if (!MediaPairingAuth.isAuthorized(headers, pairingTokenProvider())) {
+            sendError(output, 401, "Unauthorized")
+            return
+        }
+        action()
     }
 
     private fun sendCatalog(output: BufferedOutputStream) {
@@ -140,26 +155,39 @@ class MediaHttpServer(
             "Content-Length" to length.toString(), "Connection" to "close"
         )
         if (range != null) headers["Content-Range"] = "bytes $start-$end/$total"
-        writeHeaders(output, if (range == null) 200 else 206, if (range == null) "OK" else "Partial Content", headers)
-        if (head || length == 0L) { output.flush(); return }
-        try {
-            openStream(item).use { stream ->
+        val stream = try {
+            openStream(item).also { opened ->
                 Log.d(TAG, "sendContent: stream opened, skipping to $start")
-                if (!skipFully(stream, start)) {
-                    Log.w(TAG, "sendContent: skipFully failed at $start")
-                    return
+                if (!skipFully(opened, start)) {
+                    opened.close()
+                    throw IllegalStateException("Unable to seek media stream")
                 }
-                val buffer = ByteArray(32 * 1024)
-                var remaining = length
-                var totalSent = 0L
-                while (remaining > 0) {
-                    val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                    if (read <= 0) break
-                    output.write(buffer, 0, read)
-                    remaining -= read
-                    totalSent += read
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendContent: stream unavailable: ${e.javaClass.simpleName}: ${e.message}")
+            sendError(output, 500, "Media stream unavailable")
+            return
+        }
+
+        // Do not advertise a successful response until the source is open and positioned.
+        writeHeaders(output, if (range == null) 200 else 206, if (range == null) "OK" else "Partial Content", headers)
+        try {
+            if (head || length == 0L) {
+                stream.close()
+            } else {
+                stream.use { positioned ->
+                    val buffer = ByteArray(32 * 1024)
+                    var remaining = length
+                    var totalSent = 0L
+                    while (remaining > 0) {
+                        val read = positioned.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                        remaining -= read
+                        totalSent += read
+                    }
+                    Log.d(TAG, "sendContent: sent $totalSent / $length bytes")
                 }
-                Log.d(TAG, "sendContent: sent $totalSent / $length bytes")
             }
         } catch (e: Exception) {
             Log.e(TAG, "sendContent: stream error: ${e.javaClass.simpleName}: ${e.message}", e)

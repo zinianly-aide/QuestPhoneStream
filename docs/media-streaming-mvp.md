@@ -17,7 +17,8 @@ Quest MediaCatalogClient -> VideoPlayer -> FlatMediaRenderer
    the read grant and stores metadata plus an opaque `media_...` id, never a real
    filesystem path or the `content://` URI in a network response.
 3. Leave **Share** enabled. Disable it or remove the item to revoke access.
-4. The app shows the LAN URL, for example `http://192.168.1.20:8788`.
+4. The app shows the LAN URL. Enter that URL manually in the Quest **Media HTTP URL** field;
+   automatic NSD discovery is planned but is not enabled yet.
 
 `MediaCatalog` is persisted in app preferences. `seekable` is detected from the
 provider descriptor; a pipe-like provider is reported as non-seekable rather than
@@ -27,13 +28,16 @@ being advertised as a fully seekable file.
 
 | Request | Result |
 | --- | --- |
-| `GET /v1/media` | JSON array of shared metadata |
-| `GET /v1/media/{id}` | One shared metadata object |
-| `POST /v1/media/{id}/play-token` | Short-lived capability for that item |
+| `GET /v1/media` | JSON array of shared metadata; requires pairing `Authorization: Bearer <token>` |
+| `GET /v1/media/{id}` | One shared metadata object; requires pairing authorization |
+| `POST /v1/media/{id}/play-token` | Short-lived capability for that item; requires pairing authorization |
 | `HEAD /v1/media/{id}/content?cap=...` | Headers and length |
 | `GET /v1/media/{id}/content?cap=...` | Original bytes, with Range support |
 
-Content access requires the capability returned by `play-token`. It is scoped to
+The catalog, metadata, and play-token control-plane endpoints require the same
+pairing token used by signaling, sent as an `Authorization: Bearer` header.
+Content access requires only the short-lived capability returned by `play-token`
+(the Unity `VideoPlayer` URL cannot attach custom headers). The capability is scoped to
 one media id, expires after five minutes, is cleared on app restart, and is
 checked against the current Shared state on every request. Tokens are not put in
 logs.
@@ -65,8 +69,8 @@ to a dedicated flat panel `Renderer`; do not reuse the WebRTC panel material.
 From a machine on the same Wi-Fi, first list metadata:
 
 ```bash
-curl http://PHONE_IP:8788/v1/media
-curl -X POST http://PHONE_IP:8788/v1/media/MEDIA_ID/play-token
+curl -H 'Authorization: Bearer PAIRING_TOKEN' http://PHONE_IP:8788/v1/media
+curl -H 'Authorization: Bearer PAIRING_TOKEN' -X POST http://PHONE_IP:8788/v1/media/MEDIA_ID/play-token
 curl -H 'Range: bytes=0-1023' -H 'Accept: */*' \
   'http://PHONE_IP:8788/v1/media/MEDIA_ID/content?cap=CAPABILITY'
 ```

@@ -15,6 +15,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -52,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mediaServerStatusView: TextView
     private lateinit var mediaCatalog: MediaCatalog
     private var mediaServer: MediaHttpServer? = null
+    @Volatile private var mediaPairingToken = "dev-token"
 
     // --- Log ---
     private val logEntries = mutableListOf<String>()
@@ -108,7 +111,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mediaCatalog = MediaCatalog(applicationContext)
-        mediaServer = runCatching { MediaHttpServer(applicationContext, mediaCatalog).also { it.start() } }
+        mediaServer = runCatching {
+            MediaHttpServer(applicationContext, mediaCatalog, pairingTokenProvider = { mediaPairingToken })
+                .also { it.start() }
+        }
             .getOrNull()
         maybeRequestNotificationPermission()
 
@@ -143,6 +149,14 @@ class MainActivity : AppCompatActivity() {
         val configCard = cardLayout()
         signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.9:8787")
         tokenField = configRow(configCard, "Token", "dev-token")
+        mediaPairingToken = tokenField.text.toString().trim()
+        tokenField.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                mediaPairingToken = s?.toString()?.trim().orEmpty()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
         deviceIdField = configRow(configCard, "Android Device ID", "android-phone-001")
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
