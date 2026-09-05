@@ -14,6 +14,7 @@ namespace QuestPhoneStream
         public Text statusText;
         public MediaLibraryUI mediaLibrary;
         public MediaPlaybackController mediaPlayback;
+        public MediaCatalogClient mediaCatalogClient;
         public Action onBackToHome;
         public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
@@ -86,6 +87,15 @@ namespace QuestPhoneStream
         }
 
         public void BackToHome() => OnBack();
+
+        public void SetMediaBaseUrl(string value)
+        {
+            var normalized = (value ?? string.Empty).Trim();
+            if (mediaBaseUrlInput != null) mediaBaseUrlInput.text = normalized;
+            if (mediaCatalogClient != null) mediaCatalogClient.baseUrl = normalized;
+            PlayerPrefs.SetString("QuestPhoneStream_MediaBaseUrl", normalized);
+            PlayerPrefs.Save();
+        }
 
         private void LoadSettings()
         {

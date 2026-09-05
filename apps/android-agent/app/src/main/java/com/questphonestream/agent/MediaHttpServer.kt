@@ -28,6 +28,7 @@ class MediaHttpServer(
     private val pairingTokenProvider: () -> String = { "dev-token" }
 ) {
     private val server = ServerSocket(requestedPort)
+    private val nsdRegistration = MediaNsdRegistration(context) { port }
     private val running = AtomicBoolean(false)
     private val workers: ExecutorService = Executors.newCachedThreadPool()
     private val acceptThread = Thread({ acceptLoop() }, "quest-phone-media-accept")
@@ -37,11 +38,15 @@ class MediaHttpServer(
     val port: Int get() = server.localPort
 
     fun start() {
-        if (running.compareAndSet(false, true)) acceptThread.start()
+        if (running.compareAndSet(false, true)) {
+            acceptThread.start()
+            nsdRegistration.start()
+        }
     }
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        nsdRegistration.stop()
         runCatching { server.close() }
         workers.shutdownNow()
         capabilities.clear()

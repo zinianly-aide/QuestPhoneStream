@@ -19,10 +19,14 @@ const mediaUi = read(scripts + "MediaLibraryUI.cs");
 const mediaPlayback = read(scripts + "MediaPlaybackController.cs");
 const mediaRenderer = read(scripts + "VrMediaRenderer.cs");
 const flatPanel = read(scripts + "FlatMediaPanelController.cs");
+const mediaDiscovery = read(scripts + "MediaDeviceDiscovery.cs");
 const mediaDto = read(scripts + "MediaItemDto.cs");
+const settings = read(scripts + "SettingsUI.cs");
 const vrShader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Shaders/VRMediaStereo.shader");
 const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaItem.kt");
 const androidMediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
+const androidNsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
+const androidIdentity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaDeviceIdentity.kt");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
@@ -256,6 +260,45 @@ test("Flat controls require active media mode and metadata yields until a manual
   assert.match(mediaUi, /ApplySelectedProfile\(true\)/);
   assert.match(mediaUi, /_playback\.IsMediaMode[\s\S]*_playback\.Profile\.projection == ProjectionMode\.Flat/);
   assert.match(mediaUi, /button\.gameObject\.SetActive\(active\)/);
+});
+
+test("Android media server advertises a persistent UUID through NSD for its current port", () => {
+  assert.match(androidNsd, /NsdManager/);
+  assert.match(androidNsd, /SERVICE_TYPE = "_qps-media\._tcp\."/);
+  for (const attribute of ["v", "id", "name", "caps"])
+    assert.match(androidNsd, new RegExp(`setAttribute\\("${attribute}"`));
+  assert.match(androidNsd, /setAttribute\("v", "1"\)/);
+  assert.match(androidNsd, /setAttribute\("caps", "media"\)/);
+  assert.match(androidNsd, /port = portProvider\(\)/);
+  assert.match(androidIdentity, /UUID\.randomUUID\(\)/);
+  assert.match(androidIdentity, /getSharedPreferences/);
+  assert.doesNotMatch(androidIdentity, /MAC|macAddress|NetworkInterface/);
+  assert.match(androidMediaServer, /MediaNsdRegistration\(context\) \{ port \}/);
+  assert.match(androidMediaServer, /nsdRegistration\.start\(\)/);
+  assert.match(androidMediaServer, /nsdRegistration\.stop\(\)/);
+});
+
+test("Quest NSD discovery deduplicates by device id, resolves services, handles loss and brackets IPv6 URLs", () => {
+  assert.match(mediaDiscovery, /ServiceType = "_qps-media\._tcp\."/);
+  assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$DiscoveryListener"\)/);
+  assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$ResolveListener"\)/);
+  assert.match(mediaDiscovery, /Dictionary<string, MediaDeviceInfo>/);
+  assert.match(mediaDiscovery, /_devices\[deviceId\]/);
+  assert.match(mediaDiscovery, /HasReadyDevice/);
+  assert.match(mediaDiscovery, /device\.IsReady = false/);
+  assert.match(mediaDiscovery, /normalizedHost\.IndexOf\(/);
+  assert.match(mediaDiscovery, /normalizedHost = "\[" \+ normalizedHost\.Trim\('\[', '\]'\) \+ "\]"/);
+  assert.match(mediaDiscovery, /TryGetReadyDevice/);
+  assert.match(mediaDiscovery, /capabilities != "media"/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /MediaDeviceDiscovery mediaDiscovery/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /SelectMediaDevice\(string deviceId\)/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.SetMediaBaseUrl\(device\.BaseUrl\)/);
+  assert.match(settings, /public MediaCatalogClient mediaCatalogClient/);
+  assert.match(settings, /mediaCatalogClient\.baseUrl = normalized/);
+  assert.match(home, /Media phones/);
+  assert.match(home, /device\.IsReady \? "Ready" : "Lost"/);
+  assert.match(home, /button\.interactable = device\.IsReady/);
+  assert.match(home, /OnMediaDeviceSelected/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {

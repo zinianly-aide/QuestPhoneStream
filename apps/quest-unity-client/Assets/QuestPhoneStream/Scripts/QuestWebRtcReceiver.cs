@@ -12,6 +12,7 @@ namespace QuestPhoneStream
         public Camera xrCamera;
         public QuestXrUiRig xrUiRig;
         public MediaPlaybackController mediaPlayback;
+        public MediaDeviceDiscovery mediaDiscovery;
         public Transform mediaPanelAnchor;
         public Material targetMaterial;
         public Material vrMaterialTemplate;
@@ -46,6 +47,7 @@ namespace QuestPhoneStream
         public bool IsMediaChecking => HasMediaUrl &&
             ((!_mediaProbeReady && !_mediaProbeFailed) || _mediaProbeChecking || _mediaProbeUrl != CurrentMediaUrl || IsMediaStale);
         public bool IsMediaFailed => HasMediaUrl && _mediaProbeFailed && _mediaProbeUrl == CurrentMediaUrl;
+        public bool HasReadyMediaDevice => mediaDiscovery != null && mediaDiscovery.HasReadyDevice;
 
         private string CurrentMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
             ? _settingsUI.mediaBaseUrlInput.text.Trim()
@@ -61,6 +63,7 @@ namespace QuestPhoneStream
             }
             xrUiRig.Initialize(xrCamera, this);
             EnsureMediaPlaybackPanel();
+            EnsureMediaDiscovery();
             EnsureHomeUI();
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
@@ -110,6 +113,28 @@ namespace QuestPhoneStream
                     mediaPlayback.gameObject.AddComponent<FlatMediaPanelController>();
             var target = mediaPlayback.renderer?.targetRenderer ?? mediaPlayback.gameObject.GetComponent<Renderer>();
             mediaPlayback.flatPanelController.Initialize(xrCamera, target);
+        }
+
+        private void EnsureMediaDiscovery()
+        {
+            if (mediaDiscovery == null)
+                mediaDiscovery = gameObject.GetComponent<MediaDeviceDiscovery>() ?? gameObject.AddComponent<MediaDeviceDiscovery>();
+            mediaDiscovery.StartDiscovery();
+        }
+
+        public bool SelectMediaDevice(string deviceId)
+        {
+            if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
+            EnsureSettingsUI();
+            _settingsUI.SetMediaBaseUrl(device.BaseUrl);
+            _mediaProbeReady = false;
+            _mediaProbeChecking = false;
+            _mediaProbeFailed = false;
+            _mediaProbeAt = -Mathf.Infinity;
+            _mediaProbeUrl = null;
+            Debug.Log($"[QuestPhoneStream] Selected discovered media device name={device.name} id={device.deviceId} baseUrl={device.BaseUrl}");
+            _homeUI?.RefreshStatus();
+            return true;
         }
 
         public void ToggleSettings()
@@ -364,6 +389,7 @@ namespace QuestPhoneStream
 
         private void OnDestroy()
         {
+            mediaDiscovery?.StopDiscovery();
             if (signaling != null)
             {
                 signaling.MessageReceived -= OnSignalMessage;
