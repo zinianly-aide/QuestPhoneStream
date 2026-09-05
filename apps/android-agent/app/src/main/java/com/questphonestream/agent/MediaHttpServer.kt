@@ -104,7 +104,10 @@ class MediaHttpServer(
         output: BufferedOutputStream,
         action: () -> Unit
     ) {
-        if (!MediaPairingAuth.isAuthorized(headers, pairingTokenProvider())) {
+        val token = pairingTokenProvider()
+        val authorized = MediaPairingAuth.isAuthorized(headers, token)
+        Log.d(TAG, "ifAuthorized: headersKeys=${headers.keys.joinToString(",")} expectedToken=${token.take(5)}... result=$authorized")
+        if (!authorized) {
             sendError(output, 401, "Unauthorized")
             return
         }
