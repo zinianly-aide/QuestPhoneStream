@@ -116,8 +116,9 @@ class WebRtcStreamer(
         controlChannel = peer.createDataChannel("control", DataChannel.Init()).apply {
             registerObserver(object : DataChannel.Observer {
                 override fun onBufferedAmountChange(previousAmount: Long) = Unit
-                override fun onStateChange() = Unit
+                override fun onStateChange() { Log.i(TAG, "Control channel state: ${controlChannel?.state()}") }
                 override fun onMessage(buffer: DataChannel.Buffer) {
+                    Log.i(TAG, "Control message received: binary=${buffer.binary} size=${buffer.data.remaining()}")
                     if (buffer.binary || buffer.data.remaining() > 65536) return
                     val bytes = ByteArray(buffer.data.remaining())
                     buffer.data.get(bytes)

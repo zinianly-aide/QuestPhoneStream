@@ -22,6 +22,7 @@ namespace QuestPhoneStream
         private Texture _receivedTexture;
         private Coroutine _webRtcUpdate, _videoRender, _offerRoutine;
         private SettingsUI _settingsUI;
+        private PanelInputMapper _panelInput;
         private string _negotiationId;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
         private readonly Queue<IceCandidateDto> _pendingIce = new Queue<IceCandidateDto>();
@@ -148,6 +149,9 @@ namespace QuestPhoneStream
             EnsureRenderTexture(texture.width, texture.height);
             _receivedTexture = texture;
             if (targetMaterial != null) targetMaterial.mainTexture = _renderTexture;
+            // Push the incoming video dimensions to the input mapper so touch coords scale correctly.
+            if (_panelInput == null) _panelInput = FindFirstObjectByType<PanelInputMapper>();
+            _panelInput?.SetAndroidResolution(texture.width, texture.height);
         }
 
         private IEnumerator RenderVideoAtEndOfFrame()

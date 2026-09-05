@@ -69,6 +69,34 @@ namespace QuestPhoneStream
             _root.SetActive(true);
             Debug.Log($"[QuestPhoneStream] XR rig initialized. Camera world pos={camera.transform.position} rot={camera.transform.eulerAngles}");
             PinPanelToCamera(camera);
+            WirePanelInput();
+        }
+
+        /// <summary>Wire the right-hand controller ray and trigger action to PanelInputMapper at runtime.</summary>
+        private void WirePanelInput()
+        {
+            var panelInput = FindFirstObjectByType<PanelInputMapper>();
+            if (panelInput == null)
+            {
+                Debug.LogWarning("[QuestPhoneStream] WirePanelInput: PanelInputMapper not found in scene");
+                return;
+            }
+            var rightController = GameObject.Find("Right Controller");
+            if (rightController != null)
+            {
+                var interactor = rightController.GetComponent<XRRayInteractor>();
+                if (interactor != null)
+                {
+                    panelInput.controllerInteractor = interactor;
+                    Debug.Log("[QuestPhoneStream] PanelInputMapper wired to Right Controller ray");
+                }
+            }
+            var triggerAction = Actions.FindAction("RightHand UI Click", true);
+            if (triggerAction != null)
+            {
+                panelInput.clickAction = triggerAction;
+                Debug.Log("[QuestPhoneStream] PanelInputMapper clickAction bound to RightHand UI Click (trigger)");
+            }
         }
 
         // The phone mirror panel lives at a fixed scene position by default, which
