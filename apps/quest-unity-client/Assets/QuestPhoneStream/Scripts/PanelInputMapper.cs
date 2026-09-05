@@ -7,6 +7,11 @@ namespace QuestPhoneStream
     /// <summary>
     /// Maps controller / head-gaze ray hits on the PhonePanel collider to
     /// Android touch coordinates sent over the WebRTC control data channel.
+    ///
+    /// Gesture model:
+    ///   Trigger pressed  → record start UV (must hit panel)
+    ///   held             → track current UV each frame
+    ///   Trigger released → if moved &gt; threshold → swipe, else → click
     /// </summary>
     public sealed class PanelInputMapper : MonoBehaviour
     {
@@ -24,6 +29,10 @@ namespace QuestPhoneStream
         [Header("Gate")]
         public SettingsUI settingsUI; // blocks panel clicks while settings panel is visible
 
+        [Header("Gesture")]
+        [Tooltip("Minimum pixel distance (in Android screen space) between press and release to count as a swipe instead of a click.")]
+        public int swipeThresholdPixels = 24;
+
         [Header("Cursor Highlight")]
         [Tooltip("Shows a live marker at the controller ray hit point on the panel.")]
         public bool showCursor = true;
@@ -33,6 +42,12 @@ namespace QuestPhoneStream
         private int _androidWidth = 720;
         private int _androidHeight = 1280;
         private GameObject _runtimeCursor;
+
+        // Gesture state
+        private bool _gestureActive;
+        private Vector2 _gestureStartUv;
+        private Vector2 _lastUv;
+        private float _gestureStartTime;
 
         public int AndroidWidth => _androidWidth;
         public int AndroidHeight => _androidHeight;
@@ -51,14 +66,133 @@ namespace QuestPhoneStream
             // Live cursor highlight at the ray hit point (helps debug coordinate mapping).
             UpdateCursor();
 
-            // Block click passthrough while the settings panel is open.
-            if (settingsUI != null && settingsUI.IsVisible) return;
-
-            if (clickAction != null && clickAction.WasPressedThisFrame())
+            // Block touch passthrough while the settings panel is open.
+            if (settingsUI != null && settingsUI.IsVisible)
             {
-                TryClick();
+                // Cancel any in-progress gesture so we don't send a stale swipe later.
+                _gestureActive = false;
+                return;
+            }
+
+            if (clickAction == null) return;
+
+            if (clickAction.WasPressedThisFrame())
+                BeginGesture();
+
+            if (!_gestureActive) return;
+
+            // Track the latest ray hit UV while the trigger is held down.
+            // If the ray leaves the panel, keep the last valid position (so a
+            // swipe that briefly goes off-panel still completes sensibly).
+            if (TryGetPanelUv(out var currentUv))
+                _lastUv = currentUv;
+
+            if (clickAction.WasReleasedThisFrame())
+                EndGesture();
+        }
+
+        // ── Gesture lifecycle ─────────────────────────────────────────────
+
+        private void BeginGesture()
+        {
+            if (!TryGetPanelUv(out var uv))
+            {
+                Debug.Log("[QuestPhoneStream] Gesture begin: ray missed panel, ignoring press");
+                return;
+            }
+
+            _gestureActive = true;
+            _gestureStartUv = uv;
+            _lastUv = uv;
+            _gestureStartTime = Time.unscaledTime;
+            Debug.Log($"[QuestPhoneStream] Gesture begin uv=({uv.x:F3},{uv.y:F3})");
+        }
+
+        private void EndGesture()
+        {
+            if (!_gestureActive) return;
+            _gestureActive = false;
+
+            var start = ToAndroidPixels(_gestureStartUv);
+            var end = ToAndroidPixels(_lastUv);
+
+            int dx = end.x - start.x;
+            int dy = end.y - start.y;
+            int distSq = dx * dx + dy * dy;
+            int thresholdSq = swipeThresholdPixels * swipeThresholdPixels;
+
+            if (distSq >= thresholdSq)
+            {
+                int durationMs = Mathf.Clamp(
+                    Mathf.RoundToInt((Time.unscaledTime - _gestureStartTime) * 1000f),
+                    100, 2000);
+
+                controlChannel.SendSwipe(start.x, start.y, end.x, end.y, durationMs);
+                Debug.Log($"[QuestPhoneStream] Swipe ({start.x},{start.y})→({end.x},{end.y}) " +
+                          $"dist={Mathf.Sqrt(distSq):F0}px dur={durationMs}ms res={_androidWidth}x{_androidHeight}");
+            }
+            else
+            {
+                controlChannel.SendClick(start.x, start.y);
+                Debug.Log($"[QuestPhoneStream] Click ({start.x},{start.y}) " +
+                          $"dist={Mathf.Sqrt(distSq):F0}px res={_androidWidth}x{_androidHeight}");
             }
         }
+
+        // ── Ray / UV helpers ──────────────────────────────────────────────
+
+        /// <summary>Cast the active ray (controller, fallback head gaze) and return the panel UV at the hit point.</summary>
+        private bool TryGetPanelUv(out Vector2 uv)
+        {
+            uv = default;
+            if (panelCollider == null) return false;
+
+            Ray ray;
+            if (controllerInteractor != null)
+            {
+                var origin = controllerInteractor.rayOriginTransform != null
+                    ? controllerInteractor.rayOriginTransform
+                    : controllerInteractor.transform;
+                ray = new Ray(origin.position, origin.forward);
+            }
+            else if (rayCamera != null)
+            {
+                ray = new Ray(rayCamera.transform.position, rayCamera.transform.forward);
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!panelCollider.Raycast(ray, out RaycastHit hit, 20f))
+                return false;
+
+            uv = hit.textureCoord;
+            return true;
+        }
+
+        /// <summary>Convert panel UV (0-1, origin bottom-left) to Android pixel coordinates (origin top-left).</summary>
+        private Vector2Int ToAndroidPixels(Vector2 uv)
+        {
+            int x = Mathf.RoundToInt(Mathf.Clamp01(uv.x) * _androidWidth);
+            int y = Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * _androidHeight);
+            return new Vector2Int(x, y);
+        }
+
+        // ── Resolution ────────────────────────────────────────────────────
+
+        /// <summary>Update the target Android resolution from the incoming video texture.</summary>
+        public void SetAndroidResolution(int width, int height)
+        {
+            if (width > 0 && height > 0 && (width != _androidWidth || height != _androidHeight))
+            {
+                _androidWidth = width;
+                _androidHeight = height;
+                Debug.Log($"[QuestPhoneStream] PanelInputMapper android resolution -> {width}x{height}");
+            }
+        }
+
+        // ── Cursor highlight ───────────────────────────────────────────────
 
         /// <summary>Create a visible cursor marker if none was assigned in the inspector.</summary>
         private void EnsureRuntimeCursor()
@@ -121,56 +255,9 @@ namespace QuestPhoneStream
             }
         }
 
-        /// <summary>Update the target Android resolution from the incoming video texture.</summary>
-        public void SetAndroidResolution(int width, int height)
+        private void OnDisable()
         {
-            if (width > 0 && height > 0 && (width != _androidWidth || height != _androidHeight))
-            {
-                _androidWidth = width;
-                _androidHeight = height;
-                Debug.Log($"[QuestPhoneStream] PanelInputMapper android resolution -> {width}x{height}");
-            }
-        }
-
-        /// <summary>Cast the active ray (controller, fallback head gaze) and send a click on hit.</summary>
-        public bool TryClick()
-        {
-            if (panelCollider == null || controlChannel == null) return false;
-
-            Ray ray;
-            if (controllerInteractor != null)
-            {
-                var origin = controllerInteractor.rayOriginTransform != null
-                    ? controllerInteractor.rayOriginTransform
-                    : controllerInteractor.transform;
-                ray = new Ray(origin.position, origin.forward);
-            }
-            else if (rayCamera != null)
-            {
-                ray = new Ray(rayCamera.transform.position, rayCamera.transform.forward);
-            }
-            else
-            {
-                Debug.LogWarning("[QuestPhoneStream] PanelInputMapper: no ray source available");
-                return false;
-            }
-
-            if (!panelCollider.Raycast(ray, out RaycastHit hit, 20f))
-            {
-                Debug.Log($"[QuestPhoneStream] PanelInputMapper: ray missed panel");
-                return false;
-            }
-            return SendClick(hit.textureCoord);
-        }
-
-        /// <summary>Convert panel UV to Android pixel coordinates and send over the control channel.</summary>
-        public bool SendClick(Vector2 uv)
-        {
-            int x = Mathf.RoundToInt(Mathf.Clamp01(uv.x) * _androidWidth);
-            int y = Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * _androidHeight);
-            controlChannel.SendClick(x, y);
-            Debug.Log($"[QuestPhoneStream] SendClick uv=({uv.x:F3},{uv.y:F3}) -> px=({x},{y}) res={_androidWidth}x{_androidHeight}");
-            return true;
+            _gestureActive = false;
         }
 
         private void OnDestroy()
