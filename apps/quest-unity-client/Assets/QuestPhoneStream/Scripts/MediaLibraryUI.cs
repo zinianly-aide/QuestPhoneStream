@@ -22,6 +22,7 @@ namespace QuestPhoneStream
         private Button _modeButton, _stereoButton, _eyeButton;
         private MediaItemDto _selectedItem;
         private MediaVideoProfile _selectedProfile = MediaVideoProfile.Default;
+        private bool _profileInitialized;
         private System.Action<bool, string> _onAvailabilityChanged;
         private Coroutine _probeRoutine;
 
@@ -207,6 +208,7 @@ namespace QuestPhoneStream
 
         private void ApplySelectedProfile()
         {
+            _profileInitialized = true;
             _selectedProfile = _selectedProfile.Normalize();
             UpdateProfileControls();
             _playback?.ApplyProfile(_selectedProfile);
@@ -308,7 +310,11 @@ namespace QuestPhoneStream
             button.onClick.AddListener(() => {
                 Debug.Log($"[MediaLibraryUI] Button clicked: {item.name} (id={item.id}) playbackNull={_playback == null}");
                 _selectedItem = item;
-                _selectedProfile = MediaVideoProfile.From(item);
+                if (!_profileInitialized)
+                {
+                    _selectedProfile = MediaVideoProfile.From(item);
+                    _profileInitialized = true;
+                }
                 UpdateProfileControls();
                 StartCoroutine(Play(item, _selectedProfile));
             });

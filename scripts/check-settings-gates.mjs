@@ -197,6 +197,23 @@ test("VR media renderer keeps flat playback and supports projection/stereo switc
   assert.match(androidMediaServer, /put\("eyeOrder", item\.eyeOrder\)/);
 });
 
+test("VR playback preserves overrides and explicitly references the VR shader asset", () => {
+  const scene = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity");
+  const vrMaterial = read("apps/quest-unity-client/Assets/QuestPhoneStream/Materials/VRMediaStereo.mat");
+  assert.match(mediaUi, /private bool _profileInitialized/);
+  assert.match(mediaUi, /if \(!_profileInitialized\)[\s\S]*MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /_profileInitialized = true;/);
+  assert.match(mediaRenderer, /public Material vrMaterialTemplate/);
+  assert.match(mediaRenderer, /new Material\(vrMaterialTemplate\)/);
+  assert.match(mediaRenderer, /Shader\.Find\("QuestPhoneStream\/VRMediaStereo"\)/);
+  assert.match(mediaRenderer, /VR media shader is unavailable/);
+  assert.match(mediaRenderer, /projection=.*fov=.*stereo=.*eye=.*shader=.*sphereVisible=/);
+  assert.match(receiver, /public Material vrMaterialTemplate/);
+  assert.match(receiver, /Initialize\(xrCamera, mediaPlayback\.renderer, vrMaterialTemplate\)/);
+  assert.match(vrMaterial, /guid: 7f3ef1a3e7c04b1d9a6c8f20e3b64512/);
+  assert.match(scene, /vrMaterialTemplate: \{fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2\}/);
+});
+
 test("UX navigation and readiness states have explicit recovery paths", () => {
   assert.match(receiver, /public void ShowHome\(\)/);
   assert.match(factory, /CreateBackButton\(panel/);

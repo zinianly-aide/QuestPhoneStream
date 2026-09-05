@@ -14,6 +14,7 @@ namespace QuestPhoneStream
         public MediaPlaybackController mediaPlayback;
         public Transform mediaPanelAnchor;
         public Material targetMaterial;
+        public Material vrMaterialTemplate;
         public Renderer phoneScreenRenderer;
         public int textureWidth = 1280, textureHeight = 720;
         public bool connectOnStart = true;
@@ -72,7 +73,7 @@ namespace QuestPhoneStream
         {
             if (mediaPlayback != null)
             {
-                mediaPlayback.vrRenderer?.Initialize(xrCamera, mediaPlayback.renderer);
+                mediaPlayback.vrRenderer?.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
                 mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
                 return;
             }
@@ -94,7 +95,7 @@ namespace QuestPhoneStream
             if (targetMaterial != null) meshRenderer.material = new Material(targetMaterial);
             mediaPlayback = panel.AddComponent<MediaPlaybackController>();
             mediaPlayback.renderer.targetRenderer = meshRenderer;
-            mediaPlayback.vrRenderer.Initialize(xrCamera, mediaPlayback.renderer);
+            mediaPlayback.vrRenderer.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
             mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
             panel.SetActive(false);
         }

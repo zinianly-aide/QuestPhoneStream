@@ -339,6 +339,7 @@ MonoBehaviour:
   mediaPanelAnchor: {fileID: 1788554307}
   connectOnStart: 1
   targetMaterial: {fileID: 2100000, guid: 3b6ab603b5778456ebd6098585a220fd, type: 2}
+  vrMaterialTemplate: {fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2}
   textureWidth: 1280
   textureHeight: 720
 --- !u!114 &1624316271

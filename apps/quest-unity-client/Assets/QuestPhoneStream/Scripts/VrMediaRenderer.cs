@@ -10,6 +10,7 @@ namespace QuestPhoneStream
     {
         public Camera xrCamera;
         public FlatMediaRenderer flatRenderer;
+        public Material vrMaterialTemplate;
 
         private GameObject _sphere;
         private Renderer _sphereRenderer;
@@ -18,25 +19,35 @@ namespace QuestPhoneStream
 
         public bool IsVrVisible => _vrVisible && _sphere != null && _sphere.activeSelf;
 
-        public void Initialize(Camera camera, FlatMediaRenderer flat)
+        public void Initialize(Camera camera, FlatMediaRenderer flat, Material materialTemplate = null)
         {
             xrCamera = camera;
             flatRenderer = flat;
+            if (materialTemplate != null) vrMaterialTemplate = materialTemplate;
         }
 
         public void Apply(RenderTexture texture, ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder)
         {
-            if (texture == null) return;
+            if (texture == null)
+            {
+                Debug.LogError($"[VrMediaRenderer] Apply failed: texture=null projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsVrVisible}");
+                return;
+            }
             if (projection == ProjectionMode.Flat)
             {
                 HideVr();
                 flatRenderer?.SetTexture(texture);
                 if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = true;
+                LogApply(projection, fov, stereo, eyeOrder);
                 return;
             }
 
-            EnsureSphere();
-            if (_sphereRenderer == null || _vrMaterial == null) return;
+            if (!EnsureSphere())
+            {
+                if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
+                Debug.LogError($"[VrMediaRenderer] Apply failed: VR shader unavailable projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsVrVisible}");
+                return;
+            }
             if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
             _sphere.transform.position = xrCamera != null ? xrCamera.transform.position : transform.position;
             var facing = xrCamera == null ? Vector3.forward : Vector3.ProjectOnPlane(xrCamera.transform.forward, Vector3.up);
@@ -49,6 +60,7 @@ namespace QuestPhoneStream
             _vrMaterial.SetFloat("_EyeOrder", eyeOrder == EyeOrder.Rl ? 1f : 0f);
             _sphere.SetActive(true);
             _vrVisible = true;
+            LogApply(projection, fov, stereo, eyeOrder);
         }
 
         public void HideVr()
@@ -66,9 +78,9 @@ namespace QuestPhoneStream
             _sphere.transform.position = xrCamera.transform.position;
         }
 
-        private void EnsureSphere()
+        private bool EnsureSphere()
         {
-            if (_sphere != null) return;
+            if (_sphere != null) return _sphereRenderer != null && _vrMaterial != null;
             _sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             _sphere.name = "VrMediaSphere";
             // The MediaPanel parent is a portrait Quad with non-uniform scale;
@@ -77,16 +89,28 @@ namespace QuestPhoneStream
             var collider = _sphere.GetComponent<Collider>();
             if (collider != null) Destroy(collider);
             _sphereRenderer = _sphere.GetComponent<Renderer>();
-            var shader = Shader.Find("QuestPhoneStream/VRMediaStereo");
+            var shader = vrMaterialTemplate != null ? vrMaterialTemplate.shader : null;
+            if (shader == null) shader = Shader.Find("QuestPhoneStream/VRMediaStereo");
             if (shader == null)
             {
-                Debug.LogError("[QuestPhoneStream] VR media shader is unavailable");
+                Debug.LogError("[VrMediaRenderer] VR media shader is unavailable. Assign VRMediaStereo.mat to vrMaterialTemplate or include QuestPhoneStream/VRMediaStereo in the build.");
                 _sphere.SetActive(false);
-                return;
+                return false;
             }
-            _vrMaterial = new Material(shader) { name = "QuestPhoneStream VR Media (Runtime)" };
+            _vrMaterial = vrMaterialTemplate != null && vrMaterialTemplate.shader != null
+                ? new Material(vrMaterialTemplate)
+                : new Material(shader);
+            _vrMaterial.name = "QuestPhoneStream VR Media (Runtime)";
             _sphereRenderer.sharedMaterial = _vrMaterial;
             _sphere.SetActive(false);
+            return true;
+        }
+
+        private string ShaderName() => _vrMaterial?.shader?.name ?? vrMaterialTemplate?.shader?.name ?? "<unavailable>";
+
+        private void LogApply(ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder)
+        {
+            Debug.Log($"[VrMediaRenderer] Apply projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsVrVisible}");
         }
 
         private void OnDestroy()
