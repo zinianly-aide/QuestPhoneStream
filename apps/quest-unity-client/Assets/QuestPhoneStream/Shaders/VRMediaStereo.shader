@@ -60,7 +60,8 @@ Shader "QuestPhoneStream/VRMediaStereo"
                     ? lon / UNITY_PI + 0.5
                     : lon / (2.0 * UNITY_PI) + 0.5;
                 float v = 0.5 - asin(clamp(dir.y, -1.0, 1.0)) / UNITY_PI;
-                float2 uv = float2(frac(u), saturate(v));
+                float sampledU = is180 ? saturate(u) : frac(u);
+                float2 uv = float2(sampledU, saturate(v));
                 if (_Stereo > 0.5)
                 {
                     bool rightEye = unity_StereoEyeIndex == 1;
