@@ -20,6 +20,7 @@ namespace QuestPhoneStream
         private Button _playPause;
         private Text _timeText;
         private Button _modeButton, _stereoButton, _eyeButton;
+        private Button _flatScaleDownButton, _flatScaleUpButton, _flatRotateButton, _flatResetButton;
         private MediaItemDto _selectedItem;
         private MediaVideoProfile _selectedProfile = MediaVideoProfile.Default;
         private bool _profileInitialized;
@@ -106,6 +107,7 @@ namespace QuestPhoneStream
                 var label = _playPause.GetComponentInChildren<Text>();
                 if (label != null) label.text = _playback.State == MediaPlaybackState.Playing ? "Pause" : "Resume";
             }
+            UpdateFlatInteractionControls();
         }
 
         private void SetStatus(string message)
@@ -142,6 +144,7 @@ namespace QuestPhoneStream
                 var title = MakeText(_panel.transform, "Video Library", 28); title.GetComponent<RectTransform>().anchorMin = new Vector2(.05f,.85f); title.GetComponent<RectTransform>().anchorMax = new Vector2(.95f,.98f);
                 _statusText = MakeText(_panel.transform, "Ready", 16); _statusText.color = new Color(.7f,.8f,1f,1); _statusText.alignment = TextAnchor.UpperLeft; var stRect = _statusText.GetComponent<RectTransform>(); stRect.anchorMin = new Vector2(.05f,.78f); stRect.anchorMax = new Vector2(.95f,.85f); stRect.sizeDelta = Vector2.zero;
                 BuildProfileControls(_panel.transform);
+                BuildFlatInteractionControls(_panel.transform);
                 BuildPlaybackControls(_panel.transform);
                 var close = MakeButton(_panel.transform, "Back", new Vector2(.78f,.02f), new Vector2(.95f,.12f)); close.onClick.AddListener(Close);
                 BuildList();
@@ -206,6 +209,30 @@ namespace QuestPhoneStream
             UpdateProfileControls();
         }
 
+        private void BuildFlatInteractionControls(Transform parent)
+        {
+            _flatScaleDownButton = MakeButton(parent, "-", new Vector2(.05f,.62f), new Vector2(.15f,.68f));
+            _flatScaleDownButton.onClick.AddListener(() => _playback?.flatPanelController?.ScaleDown());
+            _flatScaleUpButton = MakeButton(parent, "+", new Vector2(.16f,.62f), new Vector2(.26f,.68f));
+            _flatScaleUpButton.onClick.AddListener(() => _playback?.flatPanelController?.ScaleUp());
+            _flatRotateButton = MakeButton(parent, "Rotate", new Vector2(.27f,.62f), new Vector2(.58f,.68f));
+            _flatRotateButton.onClick.AddListener(() => _playback?.flatPanelController?.RotateOrientation());
+            _flatResetButton = MakeButton(parent, "Reset", new Vector2(.59f,.62f), new Vector2(.95f,.68f));
+            _flatResetButton.onClick.AddListener(() => _playback?.flatPanelController?.ResetPose());
+            UpdateFlatInteractionControls();
+        }
+
+        private void UpdateFlatInteractionControls()
+        {
+            var active = _playback?.flatPanelController?.IsFlatActive == true;
+            foreach (var button in new[] { _flatScaleDownButton, _flatScaleUpButton, _flatRotateButton, _flatResetButton })
+            {
+                if (button == null) continue;
+                button.gameObject.SetActive(active);
+                button.interactable = active;
+            }
+        }
+
         private void ApplySelectedProfile()
         {
             _profileInitialized = true;
@@ -263,11 +290,11 @@ namespace QuestPhoneStream
             // IMPORTANT: AddComponent<RectTransform>() destroys the existing Transform component
             // and replaces it with a RectTransform. So we must set _list AFTER adding components,
             // otherwise _list references a destroyed Transform (== null returns true, instId=0).
-            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.23f); listRect.anchorMax = new Vector2(.95f,.70f); listRect.sizeDelta = Vector2.zero;
+            var listRect = listGo.AddComponent<RectTransform>(); listRect.anchorMin = new Vector2(.05f,.23f); listRect.anchorMax = new Vector2(.95f,.60f); listRect.sizeDelta = Vector2.zero;
             var layout = listGo.AddComponent<VerticalLayoutGroup>(); layout.spacing = 8; layout.childForceExpandWidth = true; layout.childForceExpandHeight = false; layout.padding = new RectOffset(8, 8, 8, 8);
             // NOTE: ContentSizeFitter removed — it was calculating preferred height as 0
             // because children hadn't been laid out yet, making the entire list invisible.
-            // The list now fills the space above the playback controls (0.23-0.76 vertical).
+            // The list now leaves room for Flat interaction controls above playback.
             _list = listGo.transform;
             Debug.Log($"[MediaLibraryUI] BuildList: instance={GetInstanceID()} _list set, refNull={ReferenceEquals(_list, null)} instId={_list.GetInstanceID()}");
         }

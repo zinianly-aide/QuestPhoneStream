@@ -11,6 +11,7 @@ namespace QuestPhoneStream
         public VideoPlayer videoPlayer;
         public FlatMediaRenderer renderer;
         public VrMediaRenderer vrRenderer;
+        public FlatMediaPanelController flatPanelController;
         public Renderer phoneScreenRenderer;
         public MediaPlaybackState State { get; private set; } = MediaPlaybackState.Idle;
         public bool IsMediaMode { get; private set; }
@@ -29,6 +30,7 @@ namespace QuestPhoneStream
             if (videoPlayer == null) videoPlayer = gameObject.GetComponent<VideoPlayer>() ?? gameObject.AddComponent<VideoPlayer>();
             if (renderer == null) renderer = gameObject.GetComponent<FlatMediaRenderer>() ?? gameObject.AddComponent<FlatMediaRenderer>();
             if (vrRenderer == null) vrRenderer = gameObject.GetComponent<VrMediaRenderer>() ?? gameObject.AddComponent<VrMediaRenderer>();
+            if (flatPanelController == null) flatPanelController = gameObject.GetComponent<FlatMediaPanelController>();
             vrRenderer.Initialize(null, renderer);
             videoPlayer.playOnAwake = false;
             videoPlayer.source = VideoSource.Url;
@@ -45,6 +47,7 @@ namespace QuestPhoneStream
             Profile = profile.Normalize();
             IsMediaMode = true;
             gameObject.SetActive(true);
+            flatPanelController?.SetProjection(Profile.projection);
             if (phoneScreenRenderer != null) phoneScreenRenderer.enabled = false;
             DetachHandlers();
             videoPlayer.Stop();
@@ -54,6 +57,8 @@ namespace QuestPhoneStream
             _prepareHandler = player => {
                 if (generation != _generation || player != videoPlayer || !IsMediaMode) return;
                 renderer.Prepare((int)player.width, (int)player.height);
+                flatPanelController?.SetVideoDimensions((int)player.width, (int)player.height);
+                flatPanelController?.SetProjection(Profile.projection);
                 player.targetTexture = renderer.RenderTexture;
                 renderer.SetTexture(renderer.RenderTexture);
                 vrRenderer?.Apply(renderer.RenderTexture, Profile.projection, Profile.fov, Profile.stereo, Profile.eyeOrder);
@@ -78,6 +83,7 @@ namespace QuestPhoneStream
             videoPlayer?.Stop();
             vrRenderer?.Release();
             renderer?.Release();
+            flatPanelController?.SetProjection(ProjectionMode.Flat);
             IsMediaMode = false;
             if (phoneScreenRenderer != null) phoneScreenRenderer.enabled = true;
             if (renderer?.targetRenderer != null) renderer.targetRenderer.enabled = true;
@@ -88,6 +94,7 @@ namespace QuestPhoneStream
         public void ApplyProfile(MediaVideoProfile profile)
         {
             Profile = profile.Normalize();
+            flatPanelController?.SetProjection(Profile.projection);
             if (!IsMediaMode || renderer?.RenderTexture == null) return;
             vrRenderer?.Apply(renderer.RenderTexture, Profile.projection, Profile.fov, Profile.stereo, Profile.eyeOrder);
         }

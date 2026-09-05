@@ -18,6 +18,7 @@ const home = read(scripts + "QuestHomeUI.cs");
 const mediaUi = read(scripts + "MediaLibraryUI.cs");
 const mediaPlayback = read(scripts + "MediaPlaybackController.cs");
 const mediaRenderer = read(scripts + "VrMediaRenderer.cs");
+const flatPanel = read(scripts + "FlatMediaPanelController.cs");
 const mediaDto = read(scripts + "MediaItemDto.cs");
 const vrShader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Shaders/VRMediaStereo.shader");
 const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaItem.kt");
@@ -212,6 +213,29 @@ test("VR playback preserves overrides and explicitly references the VR shader as
   assert.match(receiver, /Initialize\(xrCamera, mediaPlayback\.renderer, vrMaterialTemplate\)/);
   assert.match(vrMaterial, /guid: 7f3ef1a3e7c04b1d9a6c8f20e3b64512/);
   assert.match(scene, /vrMaterialTemplate: \{fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2\}/);
+});
+
+test("Flat playback preserves aspect ratio and gates XRI interaction by projection", () => {
+  assert.match(flatPanel, /XRGrabInteractable/);
+  assert.match(flatPanel, /_aspectRatio = width \/ \(float\)height/);
+  assert.match(flatPanel, /_baseLongSide = 1\.6f/);
+  assert.match(flatPanel, /minScale = 0\.5f/);
+  assert.match(flatPanel, /maxScale = 2\.5f/);
+  assert.match(flatPanel, /projection == ProjectionMode\.Flat/);
+  assert.match(flatPanel, /grabInteractable\.enabled = IsFlatActive/);
+  assert.match(flatPanel, /panelRenderer\.enabled = IsFlatActive/);
+  assert.match(flatPanel, /transform\.localPosition = new Vector3\(0f, 0f, 1\.5f\)/);
+  assert.match(mediaPlayback, /SetVideoDimensions\(\(int\)player\.width, \(int\)player\.height\)/);
+  assert.match(mediaPlayback, /flatPanelController\?\.SetProjection\(Profile\.projection\)/);
+  for (const label of ['"-"', '"Rotate"', '"Reset"'])
+    assert.match(mediaUi, new RegExp(`MakeButton\\(parent, ${label}`));
+  assert.match(mediaUi, /MakeButton\(parent, "\+"/);
+  assert.match(mediaUi, /flatPanelController\?\.ScaleDown\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.ScaleUp\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.RotateOrientation\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.ResetPose\(\)/);
+  assert.match(rig, /ray\.selectInput = new XRInputButtonReader/);
+  assert.match(rig, /Reference\(hand \+ " UI Click"\)/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {

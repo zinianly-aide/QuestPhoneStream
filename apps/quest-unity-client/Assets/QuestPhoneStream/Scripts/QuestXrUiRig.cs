@@ -168,8 +168,13 @@ namespace QuestPhoneStream
                 inputActionReferencePerformed = Reference(hand + " UI Click"),
                 inputActionReferenceValue = Reference(hand + " UI Click Value")
             };
-            // UI selection is handled by XRI; no custom raycast/input dispatch implementation.
-            ray.selectInput = new XRInputButtonReader { inputSourceMode = XRInputButtonReader.InputSourceMode.Unused };
+            // Reuse the existing controller click action for XRI grab selection.
+            // FlatMediaPanelController gates the interactable outside Flat mode.
+            ray.selectInput = new XRInputButtonReader {
+                inputSourceMode = XRInputButtonReader.InputSourceMode.InputActionReference,
+                inputActionReferencePerformed = Reference(hand + " UI Click"),
+                inputActionReferenceValue = Reference(hand + " UI Click Value")
+            };
             controller.AddComponent<XRInteractorLineVisual>();
         }
 

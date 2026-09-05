@@ -75,6 +75,7 @@ namespace QuestPhoneStream
             {
                 mediaPlayback.vrRenderer?.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
                 mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
+                ConfigureFlatMediaPanel();
                 return;
             }
             var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -97,7 +98,18 @@ namespace QuestPhoneStream
             mediaPlayback.renderer.targetRenderer = meshRenderer;
             mediaPlayback.vrRenderer.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
             mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
+            ConfigureFlatMediaPanel();
             panel.SetActive(false);
+        }
+
+        private void ConfigureFlatMediaPanel()
+        {
+            if (mediaPlayback == null) return;
+            if (mediaPlayback.flatPanelController == null)
+                mediaPlayback.flatPanelController = mediaPlayback.gameObject.GetComponent<FlatMediaPanelController>() ??
+                    mediaPlayback.gameObject.AddComponent<FlatMediaPanelController>();
+            var target = mediaPlayback.renderer?.targetRenderer ?? mediaPlayback.gameObject.GetComponent<Renderer>();
+            mediaPlayback.flatPanelController.Initialize(xrCamera, target);
         }
 
         public void ToggleSettings()
