@@ -101,6 +101,12 @@ namespace QuestPhoneStream
             _homeUI?.Hide();
         }
 
+        public void SetPhoneScreenMode()
+        {
+            mediaPlayback?.SetPhoneScreenMode();
+            _homeUI?.Show();
+        }
+
         private void EnsureSettingsUI()
         {
             if (_settingsUI != null) return;
