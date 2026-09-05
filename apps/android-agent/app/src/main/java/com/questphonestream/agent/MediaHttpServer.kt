@@ -58,31 +58,40 @@ class MediaHttpServer(
 
     private fun handle(socket: Socket) {
         socket.use { client ->
-            client.soTimeout = 15_000
-            val input = BufferedInputStream(client.getInputStream())
-            val output = BufferedOutputStream(client.getOutputStream())
-            val requestLine = readLine(input) ?: return
-            val request = requestLine.split(' ', limit = 3)
-            if (request.size != 3) { sendError(output, 400, "Bad Request"); return }
-            val method = request[0].uppercase()
-            val target = request[1]
-            val headers = LinkedHashMap<String, String>()
-            while (true) {
-                val line = readLine(input) ?: return
-                if (line.isEmpty()) break
-                val colon = line.indexOf(':')
-                if (colon > 0) headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
-            }
-            val uri = runCatching { android.net.Uri.parse(target) }.getOrNull()
-            val path = uri?.path ?: run { sendError(output, 400, "Bad Request"); return }
-            when {
-                method == "GET" && path == "/v1/media" -> sendCatalog(output)
-                method == "GET" && path.matches(Regex("/v1/media/[^/]+")) -> sendMetadata(output, path.substringAfterLast('/'))
-                method == "POST" && path.matches(Regex("/v1/media/[^/]+/play-token")) ->
-                    issueToken(output, path.split('/')[3])
-                (method == "GET" || method == "HEAD") && path.matches(Regex("/v1/media/[^/]+/content")) ->
-                    sendContent(output, method == "HEAD", path.split('/')[3], uri, headers["range"])
-                else -> sendError(output, 404, "Not Found")
+            try {
+                client.soTimeout = 15_000
+                val input = BufferedInputStream(client.getInputStream())
+                val output = BufferedOutputStream(client.getOutputStream())
+                val requestLine = readLine(input) ?: return
+                val request = requestLine.split(' ', limit = 3)
+                if (request.size != 3) { sendError(output, 400, "Bad Request"); return }
+                val method = request[0].uppercase()
+                val target = request[1]
+                val headers = LinkedHashMap<String, String>()
+                while (true) {
+                    val line = readLine(input) ?: return
+                    if (line.isEmpty()) break
+                    val colon = line.indexOf(':')
+                    if (colon > 0) headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
+                }
+                val uri = runCatching { android.net.Uri.parse(target) }.getOrNull()
+                val path = uri?.path ?: run { sendError(output, 400, "Bad Request"); return }
+                Log.d(TAG, "HTTP $method $path (range=${headers["range"]})")
+                when {
+                    method == "GET" && path == "/v1/media" -> sendCatalog(output)
+                    method == "GET" && path.matches(Regex("/v1/media/[^/]+")) -> sendMetadata(output, path.substringAfterLast('/'))
+                    method == "POST" && path.matches(Regex("/v1/media/[^/]+/play-token")) ->
+                        issueToken(output, path.split('/')[3])
+                    (method == "GET" || method == "HEAD") && path.matches(Regex("/v1/media/[^/]+/content")) ->
+                        sendContent(output, method == "HEAD", path.split('/')[3], uri, headers["range"])
+                    else -> sendError(output, 404, "Not Found")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "HTTP handler crashed: ${e.javaClass.simpleName}: ${e.message}", e)
+                try {
+                    val output = BufferedOutputStream(client.getOutputStream())
+                    sendError(output, 500, "Internal Server Error")
+                } catch (_: Exception) {}
             }
         }
     }
@@ -115,6 +124,7 @@ class MediaHttpServer(
             sendError(output, 401, "Unauthorized")
             return
         }
+        Log.d(TAG, "sendContent: id=$id name=${item.displayName} size=${item.size} uri=${item.contentUri} range=$rangeHeader")
         val total = item.size
         if (total < 0) { sendError(output, 416, "Range Not Satisfiable", "bytes */*"); return }
         val range = if (rangeHeader == null) null else RangeParser.parse(rangeHeader, total)
@@ -132,16 +142,28 @@ class MediaHttpServer(
         if (range != null) headers["Content-Range"] = "bytes $start-$end/$total"
         writeHeaders(output, if (range == null) 200 else 206, if (range == null) "OK" else "Partial Content", headers)
         if (head || length == 0L) { output.flush(); return }
-        openStream(item).use { stream ->
-            if (!skipFully(stream, start)) { return }
-            val buffer = ByteArray(32 * 1024)
-            var remaining = length
-            while (remaining > 0) {
-                val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                if (read <= 0) break
-                output.write(buffer, 0, read)
-                remaining -= read
+        try {
+            openStream(item).use { stream ->
+                Log.d(TAG, "sendContent: stream opened, skipping to $start")
+                if (!skipFully(stream, start)) {
+                    Log.w(TAG, "sendContent: skipFully failed at $start")
+                    return
+                }
+                val buffer = ByteArray(32 * 1024)
+                var remaining = length
+                var totalSent = 0L
+                while (remaining > 0) {
+                    val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                    remaining -= read
+                    totalSent += read
+                }
+                Log.d(TAG, "sendContent: sent $totalSent / $length bytes")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendContent: stream error: ${e.javaClass.simpleName}: ${e.message}", e)
+            return
         }
         output.flush()
     }

@@ -20,7 +20,7 @@ class MediaCatalog(context: Context?) {
                 }
             }
             if (size == null) {
-                size = runCatching { appContext.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length.takeIf { length -> length >= 0 } } }.getOrNull()
+                size = runCatching { appContext?.contentResolver?.openAssetFileDescriptor(uri, "r")?.use { it.length.takeIf { length -> length >= 0 } } }.getOrNull()
             }
         }
         return repository.add(uri, mimeType, name, size)

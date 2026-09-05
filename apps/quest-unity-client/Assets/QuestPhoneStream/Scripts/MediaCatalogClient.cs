@@ -8,7 +8,7 @@ namespace QuestPhoneStream
 {
     public sealed class MediaCatalogClient : MonoBehaviour
     {
-        public string baseUrl = "http://192.168.1.11:8788";
+        public string baseUrl = "http://192.168.1.6:8788";
         public int timeoutSeconds = 10;
 
         public IEnumerator GetMedia(Action<List<MediaItemDto>, string> completed)
