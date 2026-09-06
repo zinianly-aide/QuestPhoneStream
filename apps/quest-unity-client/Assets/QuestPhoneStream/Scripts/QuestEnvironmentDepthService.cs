@@ -36,11 +36,6 @@ namespace QuestPhoneStream
         public static bool CanActivate(bool available, bool authorized, bool requested) => available && authorized && requested;
     }
 
-    /// <summary>
-    /// Optional Quest/Meta depth adapter backed by bounded provider discovery.
-    /// Discovery is lazy and binds only to an already-instantiated external provider.
-    /// QuestPhoneStream runtime types are never eligible reflection providers.
-    /// </summary>
     public sealed class MetaEnvironmentDepthProvider : IEnvironmentDepthProvider
     {
         private const string DiscoveryKey = "spatial.environment.depth.provider";
@@ -108,7 +103,11 @@ namespace QuestPhoneStream
         {
             _requested = true;
             if (_component == null) Discover(force: true);
-            if (!EnvironmentDepthCapabilityGate.CanActivate(IsAvailable, IsAuthorized, true)) return false;
+            if (!EnvironmentDepthCapabilityGate.CanActivate(IsAvailable, IsAuthorized, true))
+            {
+                _requested = false;
+                return false;
+            }
             if (_component is Behaviour behaviour) behaviour.enabled = true;
             return true;
         }
@@ -127,9 +126,6 @@ namespace QuestPhoneStream
 
             var texture = FindTextureProperty(_componentType);
             if (texture == null) { ClearBinding(); return; }
-
-            // External SDK/provider components must be created by their own integration or scene.
-            // Reflection discovery must never AddComponent an unknown type.
             var component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
             if (component == null) { ClearBinding(keepType: true); return; }
 
@@ -202,8 +198,6 @@ namespace QuestPhoneStream
         {
             if (signaling == null) signaling = GetComponent<QuestSignalingClient>();
             if (receiver == null) receiver = GetComponent<QuestWebRtcReceiver>();
-            // Do not reflect/probe optional providers during startup. First automatic
-            // probe occurs after the bounded refresh interval, or on explicit demand.
             _nextProbe = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
         }
 
@@ -216,6 +210,7 @@ namespace QuestPhoneStream
                 signaling.SubscriptionCancelRequested += OnSubscriptionCancel;
                 signaling.NegotiationInvalidated += OnNegotiationInvalidated;
             }
+            if (dataPlane != null) dataPlane.OpenStateChanged += OnFastOpenChanged;
             RefreshCapability();
         }
 
@@ -237,12 +232,11 @@ namespace QuestPhoneStream
                 var packet = new EnvironmentDepthSample
                 {
                     streamId = subscription.id,
-                    sequence = _sequence++,
+                    sequence = subscription.nextSequence++,
                     timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     width = texture.width,
                     height = texture.height
                 };
-                // Metadata only. DepthTexture never enters signaling or the network payload.
                 dataPlane.TrySendFastJson(packet.ToJson(), packet.sequence);
             }
         }
@@ -288,14 +282,24 @@ namespace QuestPhoneStream
                 _ = signaling.SendSpatialProtocolErrorAsync(request, "transport_unavailable", "Realtime Spatial DataChannel is unavailable", true);
                 return;
             }
+            var startNeeded = _subscriptions.Count == 0;
+            if (startNeeded && !StartDepth())
+            {
+                _ = signaling.SendSpatialProtocolErrorAsync(request, "capability_unavailable", "Environment depth provider could not start", true);
+                return;
+            }
             var subscription = new SpatialTelemetrySubscription
             {
                 id = Guid.NewGuid().ToString("N"), capability = "spatial.environment.depth",
                 rateHz = Mathf.Clamp(request.payload.rateHz <= 0 ? metadataHz : request.payload.rateHz, 0.5f, 5f),
                 nextAt = 0f, nextSequence = 0
             };
-            if (!_subscriptions.Add(subscription)) return;
-            metadataHz = subscription.rateHz;
+            if (!_subscriptions.Add(subscription))
+            {
+                if (startNeeded) StopDepth();
+                return;
+            }
+            metadataHz = _subscriptions.HighestRate();
             _ = signaling.SendSubscriptionCreatedAsync(request, subscription.id, subscription.rateHz,
                 "qps.depth.metadata+json", "webrtc.datachannel", "unreliable_unordered");
             RefreshCapability();
@@ -306,15 +310,30 @@ namespace QuestPhoneStream
             if (request.payload?.capability != "spatial.environment.depth") return;
             if (_subscriptions.Remove(request.payload.subscriptionId, out _))
                 _ = signaling.SendSubscriptionClosedAsync(request, request.payload.subscriptionId);
+            metadataHz = Mathf.Max(0.5f, _subscriptions.HighestRate());
+            if (_subscriptions.Count == 0) StopDepth();
+            else RefreshCapability();
+        }
+
+        private void OnFastOpenChanged(bool open)
+        {
+            if (!open && _subscriptions.Count > 0)
+            {
+                _subscriptions.Clear();
+                _provider?.StopDepth();
+            }
             RefreshCapability();
         }
 
         private void RefreshCapability() => signaling?.ReportCapabilityState("spatial.environment.depth",
-            available: IsAvailable, authorized: IsAuthorized, active: IsActive);
+            available: IsAvailable, authorized: IsAuthorized,
+            active: IsActive && _subscriptions.Count > 0 && dataPlane != null && dataPlane.IsFastOpen);
 
         private void OnNegotiationInvalidated()
         {
             _subscriptions.Clear();
+            _provider?.StopDepth();
+            _sequence = 0;
             RefreshCapability();
         }
 
@@ -322,6 +341,7 @@ namespace QuestPhoneStream
         {
             _subscriptions.Clear();
             _provider?.StopDepth();
+            if (dataPlane != null) dataPlane.OpenStateChanged -= OnFastOpenChanged;
             if (signaling != null)
             {
                 signaling.SubscriptionCreateRequested -= OnSubscriptionCreate;
