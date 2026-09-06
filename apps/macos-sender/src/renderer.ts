@@ -25,6 +25,13 @@ interface SessionMessage {
   negotiationId?: string;
 }
 
+interface SubscriptionSpec {
+  capability: string;
+  rateHz: number;
+  format: string;
+  reliability: "unreliable_unordered" | "reliable_ordered";
+}
+
 let config: SenderConfig;
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
@@ -32,7 +39,9 @@ let heartbeatTimer: number | null = null;
 let subscriptionRetryTimer: number | null = null;
 let stream: MediaStream | null = null;
 let peer: RTCPeerConnection | null = null;
-let spatialChannel: RTCDataChannel | null = null;
+let fastSpatialChannel: RTCDataChannel | null = null;
+let compatSpatialChannel: RTCDataChannel | null = null;
+let reliableSpatialChannel: RTCDataChannel | null = null;
 let activeSession: SessionMessage | null = null;
 let remoteReady = false;
 let authorized = false;
@@ -44,6 +53,13 @@ const subscriptions = new SpatialSubscriptionTracker();
 const lastSequenceByStream = new Map<string, number>();
 let telemetryDropped = 0;
 let telemetryLastSequence = -1;
+
+const subscriptionSpecs: SubscriptionSpec[] = [
+  { capability: "xr.head.pose", rateHz: 60, format: "qps.spatial.json", reliability: "unreliable_unordered" },
+  { capability: "xr.controller.pose", rateHz: 60, format: "qps.spatial.json", reliability: "unreliable_unordered" },
+  { capability: "xr.hand.pose", rateHz: 60, format: "qps.spatial.hand+json", reliability: "unreliable_unordered" },
+  { capability: "spatial.anchor", rateHz: 1, format: "qps.spatial.anchor+json", reliability: "reliable_ordered" }
+];
 
 const status = () => document.getElementById("status") as HTMLElement;
 const sourceList = () => document.getElementById("sources") as HTMLSelectElement;
@@ -164,7 +180,7 @@ function handleSpatial(message: SpatialEnvelope): void {
       String(payload?.subscriptionId ?? ""),
       String(payload?.capability ?? "")
     );
-    if (created && spatialChannel?.readyState === "open") subscriptions.markActive(created.capability);
+    if (created && isCapabilityTransportOpen(created.capability)) subscriptions.markActive(created.capability);
     return;
   }
   if (message.type === "subscription.closed") {
@@ -184,24 +200,24 @@ function handleSpatial(message: SpatialEnvelope): void {
   }
   if (message.type === "subscription.create" || message.type === "subscription.cancel") {
     send(spatialEnvelope("protocol.error", config, message.source, {
-      code: "not_implemented", message: "macOS sender is a telemetry consumer, not publisher", retryable: false
+      code: "not_implemented", message: "macOS sender is a Spatial data consumer, not publisher", retryable: false
     }, message.id));
   }
 }
 
 function requestTelemetrySubscriptions(): void {
   if (peer?.connectionState !== "connected" || socket?.readyState !== WebSocket.OPEN) return;
-  for (const capabilityName of ["xr.head.pose", "xr.controller.pose", "xr.hand.pose"]) {
-    const descriptor = questCapabilities.find(item => item.name === capabilityName);
-    if (!descriptor?.state?.available || !descriptor.transports?.includes("webrtc.datachannel") || subscriptions.has(capabilityName)) continue;
+  for (const spec of subscriptionSpecs) {
+    const descriptor = questCapabilities.find(item => item.name === spec.capability);
+    if (!descriptor?.state?.available || !descriptor.transports?.includes("webrtc.datachannel") || subscriptions.has(spec.capability)) continue;
     const request = spatialEnvelope("subscription.create", config, config.questDeviceId, {
-      capability: capabilityName,
-      rateHz: 60,
-      format: capabilityName === "xr.hand.pose" ? "qps.spatial.hand+json" : "qps.spatial.json",
+      capability: spec.capability,
+      rateHz: spec.rateHz,
+      format: spec.format,
       transport: "webrtc.datachannel",
-      reliability: "unreliable_unordered"
+      reliability: spec.reliability
     }, "", activeSession?.sessionId ?? "");
-    if (!subscriptions.begin(capabilityName, request.id)) continue;
+    if (!subscriptions.begin(spec.capability, request.id)) continue;
     send(request);
   }
 }
@@ -220,24 +236,72 @@ function clearSubscriptionRetry(): void {
   subscriptionRetryTimer = null;
 }
 
+function isReliableCapability(capabilityName: string): boolean {
+  return capabilityName === "spatial.anchor";
+}
+
+function isFastOpen(): boolean {
+  return fastSpatialChannel?.readyState === "open" || compatSpatialChannel?.readyState === "open";
+}
+
+function isCapabilityTransportOpen(capabilityName: string): boolean {
+  return isReliableCapability(capabilityName)
+    ? reliableSpatialChannel?.readyState === "open"
+    : isFastOpen();
+}
+
+function activateCreatedSubscriptions(): void {
+  for (const state of subscriptions.snapshot()) {
+    if (state.phase === "created" && isCapabilityTransportOpen(state.capability)) subscriptions.markActive(state.capability);
+  }
+}
+
+function clearSubscriptionsForTransport(reliable: boolean): void {
+  for (const state of subscriptions.snapshot()) {
+    if (isReliableCapability(state.capability) === reliable) subscriptions.close(state.subscriptionId, state.capability);
+  }
+}
+
 function attachSpatialChannel(channel: RTCDataChannel): void {
-  if (spatialChannel && spatialChannel !== channel) spatialChannel.close();
-  spatialChannel = channel;
+  const label = channel.label;
+  if (label !== "spatial-fast" && label !== "spatial" && label !== "spatial-reliable") {
+    channel.close();
+    return;
+  }
+  if (label === "spatial-fast") {
+    if (fastSpatialChannel && fastSpatialChannel !== channel) fastSpatialChannel.close();
+    fastSpatialChannel = channel;
+  } else if (label === "spatial") {
+    if (compatSpatialChannel && compatSpatialChannel !== channel) compatSpatialChannel.close();
+    compatSpatialChannel = channel;
+  } else {
+    if (reliableSpatialChannel && reliableSpatialChannel !== channel) reliableSpatialChannel.close();
+    reliableSpatialChannel = channel;
+  }
+
   channel.binaryType = "arraybuffer";
   channel.onopen = () => {
-    if (channel !== spatialChannel) return;
-    subscriptions.markCreatedSubscriptionsActive();
+    if (!isCurrentSpatialChannel(channel)) return;
+    activateCreatedSubscriptions();
   };
-  channel.onmessage = event => { if (channel === spatialChannel) handleTelemetryData(event.data); };
+  channel.onmessage = event => { if (isCurrentSpatialChannel(channel)) handleTelemetryData(event.data); };
   channel.onclose = () => handleSpatialChannelLoss(channel);
   channel.onerror = () => handleSpatialChannelLoss(channel);
 }
 
+function isCurrentSpatialChannel(channel: RTCDataChannel): boolean {
+  return channel === fastSpatialChannel || channel === compatSpatialChannel || channel === reliableSpatialChannel;
+}
+
 function handleSpatialChannelLoss(channel: RTCDataChannel): void {
-  if (channel !== spatialChannel) return;
-  spatialChannel = null;
-  subscriptions.reset();
-  scheduleSubscriptionRetry();
+  const wasReliable = channel === reliableSpatialChannel;
+  const wasFast = channel === fastSpatialChannel || channel === compatSpatialChannel;
+  if (channel === fastSpatialChannel) fastSpatialChannel = null;
+  if (channel === compatSpatialChannel) compatSpatialChannel = null;
+  if (channel === reliableSpatialChannel) reliableSpatialChannel = null;
+  if (wasReliable) clearSubscriptionsForTransport(true);
+  if (wasFast && !isFastOpen()) clearSubscriptionsForTransport(false);
+  if (wasReliable || (wasFast && !isFastOpen())) scheduleSubscriptionRetry();
 }
 
 function handleTelemetryData(data: unknown): void {
@@ -255,7 +319,7 @@ function handleTelemetryData(data: unknown): void {
   if (previous != null && sequence <= previous) { telemetryDropped++; return; }
   lastSequenceByStream.set(streamId, sequence);
   telemetryLastSequence = sequence;
-  if (active) setStatus(`Streaming 1080p / 30fps · XR seq ${telemetryLastSequence} · drop ${telemetryDropped}`);
+  if (active) setStatus(`Streaming 1080p / 30fps · Spatial seq ${telemetryLastSequence} · drop ${telemetryDropped}`);
 }
 
 function matchesSession(message: any): boolean {
@@ -278,13 +342,12 @@ async function createPeer(session: SessionMessage): Promise<void> {
   telemetryLastSequence = -1;
   current.addTrack(track, stream!);
 
-  // Negotiate SCTP in the original offer without pretending the Mac implements
-  // display.control. Quest closes this bootstrap channel and creates the real
-  // unreliable/unordered `spatial` channel after subscription negotiation.
+  // Negotiate SCTP in the original offer. Quest may then open realtime and reliable
+  // Spatial channels in-band without another SDP negotiation.
   const bootstrapChannel = current.createDataChannel("spatial-bootstrap", { ordered: false, maxRetransmits: 0, protocol: "qps-spatial-v1" });
   bootstrapChannel.onopen = () => bootstrapChannel.close();
   current.ondatachannel = event => {
-    if (current !== peer || event.channel.label !== "spatial") { event.channel.close(); return; }
+    if (current !== peer) { event.channel.close(); return; }
     attachSpatialChannel(event.channel);
   };
   current.onicecandidate = event => {
@@ -297,7 +360,7 @@ async function createPeer(session: SessionMessage): Promise<void> {
     const connected = current.connectionState === "connected";
     setRuntimeState(authorized, connected);
     if (connected) {
-      setStatus("Streaming 1080p / 30fps · negotiating XR telemetry");
+      setStatus("Streaming 1080p / 30fps · negotiating Spatial telemetry");
       requestTelemetrySubscriptions();
     }
     if (["failed", "disconnected", "closed"].includes(current.connectionState)) {
@@ -320,9 +383,15 @@ function closePeer(updateState = true): void {
   pendingIce = [];
   subscriptions.reset();
   lastSequenceByStream.clear();
-  const oldSpatial = spatialChannel;
-  spatialChannel = null;
-  oldSpatial?.close();
+  const oldFast = fastSpatialChannel;
+  const oldCompat = compatSpatialChannel;
+  const oldReliable = reliableSpatialChannel;
+  fastSpatialChannel = null;
+  compatSpatialChannel = null;
+  reliableSpatialChannel = null;
+  oldFast?.close();
+  oldCompat?.close();
+  oldReliable?.close();
   old?.close();
   if (updateState) setRuntimeState(authorized, false);
 }
