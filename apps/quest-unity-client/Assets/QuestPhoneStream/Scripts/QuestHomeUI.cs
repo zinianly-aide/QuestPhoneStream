@@ -1,4 +1,348 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíëİ7N‹Z–‹­¦ëeŠw¬ÕÕÍ¥¹œMåÍÑ•´ì)ÕÍ¥¹œMåÍÑ•´¹½±±•Ñ¥½¹Ìì)ÕÍ¥¹œMåÍÑ•´¹½±±•Ñ¥½¹Ì¹•¹•É¥Œì)ÕÍ¥¹œU¹¥Ñå¹¥¹”ì)ÕÍ¥¹œU¹¥Ñå¹¥¹”¹U$ì)ÕÍ¥¹œU¹¥Ñå¹¥¹”¹aH¹%¹Ñ•É…Ñ¥½¸¹Q½½±­¥Ğ¹U$ì()¹…µ•ÍÁ…”EÕ•ÍÑA¡½¹•MÑÉ•…´)ì(€€€€¼¼¼€ñÍÕµµ…Éäø(€€€€¼¼¼½µÁ…Ğ•¹µÕÍ•È¡½µ”ÍÕÉ™…”¸¹¥¹••É¥¹œ™¥•±‘ÌÍÑ…ä‰•¡¥¹M•ÑÑ¥¹Ìì(€€€€¼¼¼Ñ¡”¹½Éµ…°Á…Ñ ¥Ì‘•Ù¥”É•…‘¥¹•ÍÌ€´øMÉ••¸€¼5•‘¥„€¼-•å‰½…É¸(€€€€¼¼¼€ğ½ÍÕµµ…Éäø(€€€ÁÕ‰±¥ŒÍ•…±•±…ÍÌEÕ•ÍÑ!½µ•U$€è5½¹½	•¡…Ù¥½ÕÈ(€€€ì(€€€€€€€ÁÉ¥Ù…Ñ”…¹Ù…Ì}…¹Ù…Ìì(€€€€€€€ÁÉ¥Ù…Ñ”EÕ•ÍÑM¥¹…±¥¹±¥•¹Ğ}Í¥¹…±¥¹œì(€€€€€€€ÁÉ¥Ù…Ñ”EÕ•ÍÑ]•‰IÑI••¥Ù•È}É••¥Ù•Èì(€€€€€€€ÁÉ¥Ù…Ñ”…µ•É„}…µ•É„ì(€€€€€€€ÁÉ¥Ù…Ñ”Q•áĞ}Á¡½¹•MÑ…ÑÕÌ°}ÍÉ••¹MÑ…ÑÕÌ°}½¹ÑÉ½±MÑ…ÑÕÌ°}µ•‘¥…MÑ…ÑÕÌì(€€€€€€€ÁÉ¥Ù…Ñ”	ÕÑÑ½¸}Á¡½¹•Q…ˆ°}Ù¥‘•½ÍQ…ˆ°}­•å‰½…É‘	ÕÑÑ½¸°}…‘Ù…¹•‘M•ÑÑ¥¹Í	ÕÑÑ½¸ì(€€€€€€€ÁÉ¥Ù…Ñ”Q•áĞ}¡¥¹Ğì(€€€€€€€ÁÉ¥Ù…Ñ”QÉ…¹Í™½É´}µ•‘¥…•Ù¥•1¥ÍĞì(€€€€€€€ÁÉ¥Ù…Ñ”Q•áĞ}µ•‘¥…•Ù¥•µÁÑåQ•áĞì(€€€€€€€ÁÉ¥Ù…Ñ”É•…‘½¹±ä¥Ñ¥½¹…ÉäñÍÑÉ¥¹œ°	ÕÑÑ½¸ø}µ•‘¥…•Ù¥•	ÕÑÑ½¹Ì€ô¹•Ü¥Ñ¥½¹…ÉäñÍÑÉ¥¹œ°	ÕÑÑ½¸ø ¤ì(€€€€€€€ÁÉ¥Ù…Ñ”‰½½°}¥¹¥Ñ¥…±¥é•ì(€€€€€€€ÁÉ¥Ù…Ñ”‰½½°}Ù¥‘•½ÍM•±•Ñ•ì(€€€€€€€ÁÉ¥Ù…Ñ”½É½ÕÑ¥¹”}­•å‰½…É‘I½ÕÑ¥¹”ì(€€€€€€€ÁÉ¥Ù…Ñ”ÍÑÉ¥¹œ}¹½Ñ¥•Q•áĞì(€€€€€€€ÁÉ¥Ù…Ñ”™±½…Ğ}¹½Ñ¥•U¹Ñ¥°ì((€€€€€€€ÁÕ‰±¥Œ‰½½°%ÍY¥Í¥‰±”€ôø}…¹Ù…Ì€„ô¹Õ±°€˜˜}…¹Ù…Ì¹…µ•=‰©•Ğ¹…Ñ¥Ù•%¹!¥•É…É¡äì((€€€€€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒY•Ñ½ÈÌ!½µ•]½É±‘A½Í¥Ñ¥½¸¡Y•Ñ½ÈÌ…µ•É…A½Í¥Ñ¥½¸°Y•Ñ½ÈÌ…µ•É…½Éİ…É¤(€€€€€€€ì(€€€€€€€€€€€Ù…È™½Éİ…É€ôY•Ñ½ÈÌ¹AÉ½©•Ñ=¹A±…¹”¡…µ•É…½Éİ…É°Y•Ñ½ÈÌ¹ÕÀ¤ì(€€€€€€€€€€€¥˜€¡™½Éİ…É¹ÍÅÉ5…¹¥ÑÕ‘”€ğ€À¸ÀÀÅ˜¤™½Éİ…É€ôY•Ñ½ÈÌ¹™½Éİ…Éì(€€€€€€€€€€€É•ÑÕÉ¸…µ•É…A½Í¥Ñ¥½¸€¬™½Éİ…É¹¹½Éµ…±¥é•€¨€Ä¸Õ˜€¬Y•Ñ½ÈÌ¹‘½İ¸€¨€À¸ÄÕ˜ì(€€€€€€€ô((€€€€€€€ÁÕ‰±¥ŒÙ½¥%¹¥Ñ¥…±¥é”¡EÕ•ÍÑM¥¹…±¥¹±¥•¹ĞÍ¥¹…±¥¹œ°…µ•É„áÉ…µ•É„°EÕ•ÍÑ]•‰IÑI••¥Ù•ÈÉ••¥Ù•È¤(€€€€€€€ì(€€€€€€€€€€€¥˜€¡}¥¹¥Ñ¥…±¥é•¤É•ÑÕÉ¸ì(€€€€€€€€€€€¥˜€¡Í¥¹…±¥¹œ€ôô¹Õ±°ñğáÉ…µ•É„€ôô¹Õ±°ñğÉ••¥Ù•È€ôô¹Õ±°¤(€€€€€€€€€€€€€€€Ñ¡É½Ü¹•ÜMåÍÑ•´¹ÉÕµ•¹Ñá•ÁÑ¥½¸ ‰EÕ•ÍĞ¡½µ”U$É•ÅÕ¥É•ÌÍ¥¹…±¥¹œ°…µ•É„…¹É••¥Ù•Èˆ¤ì(€€€€€€€€€€€}Í¥¹…±¥¹œ€ôÍ¥¹…±¥¹œì(€€€€€€€€€€€}…µ•É„€ôáÉ…µ•É„ì(€€€€€€€€€€€}É••¥Ù•È€ôÉ••¥Ù•Èì(€€€€€€€€€€€	Õ¥± ¤ì(€€€€€€€€€€€}Í¥¹…±¥¹œ¹MÑ…Ñ•¡…¹•€¬ô=¹MÑ…Ñ•¡…¹•ì(€€€€€€€€€€€}Í¥¹…±¥¹œ¹Q…É•Ñ¡…¹•€¬ô=¹Q…É•Ñ¡…¹•ì(€€€€€€€€€€€¥˜€¡}É••¥Ù•È¹µ•‘¥…¥Í½Ù•Éä€„ô¹Õ±°¤(€€€€€€€€€€€€€€€}É••¥Ù•È¹µ•‘¥…¥Í½Ù•Éä¹•Ù¥•Í¡…¹•€¬ôI•™É•Í¡5•‘¥…•Ù¥•Ìì(€€€€€€€€€€€UÁ‘…Ñ•MÑ…ÑÕÌ¡}Í¥¹…±¥¹œ¹MÑ…Ñ”¤ì(€€€€€€€€€€€I•™É•Í¡5•‘¥…•Ù¥•Ì ¤ì(€€€€€€€€€€€M¡½Ü ¤ì(€€€€€€€€€€€}¥¹¥Ñ¥…±¥é•€ôÑÉÕ”ì(€€€€€€€ô((€€€€€€€ÁÕ‰±¥ŒÙ½¥M¡½Ü ¤(€€€€€€€ì(€€€€€€€€€€€¥˜€¡}…¹Ù…Ì€ôô¹Õ±°ñğ}…µ•É„€ôô¹Õ±°¤É•ÑÕÉ¸ì(€€€€€€€€€€€Ù…È™½Éİ…É€ôY•Ñ½ÈÌ¹AÉ½©•Ñ=¹A±…¹”¡}…µ•É„¹ÑÉ…¹Í™½É´¹™½Éİ…É°Y•Ñ½ÈÌ¹ÕÀ¤ì(€€€€€€€€€€€¥˜€¡™½Éİ…É¹ÍÅÉ5…¹¥ÑÕ‘”€ğ€À¸ÀÀÅ˜¤™½Éİ…É€ôY•Ñ½ÈÌ¹™½Éİ…Éì(€€€€€€€€€€€™½Éİ…É¹9½Éµ…±¥é” ¤ì(€€€€€€€€€€€}…¹Ù…Ì¹ÑÉ…¹Í™½É´¹Á½Í¥Ñ¥½¸€ô!½µ•]½É±‘A½Í¥Ñ¥½¸¡}…µ•É„¹ÑÉ…¹Í™½É´¹Á½Í¥Ñ¥½¸°}…µ•É„¹ÑÉ…¹Í™½É´¹™½Éİ…É¤ì(€€€€€€€€€€€}…¹Ù…Ì¹ÑÉ…¹Í™½É´¹É½Ñ…Ñ¥½¸€ôEÕ…Ñ•É¹¥½¸¹1½½­I½Ñ…Ñ¥½¸¡™½Éİ…É°Y•Ñ½ÈÌ¹ÕÀ¤ì(€€€€€€€€€€€}…¹Ù…Ì¹…µ•=‰©•Ğ¹M•ÑÑ¥Ù”¡ÑÉÕ”¤ì(€€€€€€€€€€€}É••¥Ù•Èü¹AÉ½‰•5•‘¥„ ¤ì(€€€€€€€€€€€I•™É•Í¡MÑ…ÑÕÌ ¤ì(€€€€€€€ô((€€€€€€€ÁÕ‰±¥ŒÙ½¥!¥‘” ¤ì¥˜€¡}…¹Ù…Ì€„ô¹Õ±°¤}…¹Ù…Ì¹…µ•=‰©•Ğ¹M•ÑÑ¥Ù”¡™…±Í”¤ìô(€€€€€€€ÁÕ‰±¥ŒÙ½¥Q½±” ¤ì¥˜€¡%ÍY¥Í¥‰±”¤!¥‘” ¤ì•±Í”M¡½Ü ¤ìô((€€€€€€€ÁÉ¥Ù…Ñ”Ù½¥	Õ¥± ¤(€€€€€€€ì(€€€€€€€€€€€Ù…È…¹Ù…Í¼€ô¹•Ü…µ•=‰©•Ğ ‰EÕ•ÍÑ!½µ•…¹Ù…Ìˆ¤ì(€€€€€€€€€€€…¹Ù…Í¼¹ÑÉ…¹Í™½É´¹M•ÑA…É•¹Ğ¡ÑÉ…¹Í™½É´°™…±Í”¤ì(€€€€€€€€€€€}…¹Ù…Ì€ô…¹Ù…Í¼¹‘‘½µÁ½¹•¹Ğñ…¹Ù…Ìø ¤ì(€€€€€€€€€€€}…¹Ù…Ì¹É•¹‘•É5½‘”€ôI•¹‘•É5½‘”¹]½É±‘MÁ…”ì(€€€€€€€€€€€}…¹Ù…Ì¹İ½É±‘…µ•É„€ô}…µ•É„ì(€€€€€€€€€€€}…¹Ù…Ì¹Í½ÉÑ¥¹=É‘•È€ô€äÀì(€€€€€€€€€€€Ù…ÈÍ…±•È€ô…¹Ù…Í¼¹‘‘½µÁ½¹•¹Ğñ…¹Ù…ÍM…±•Èø ¤ì(€€€€€€€€€€€Í…±•È¹‘å¹…µ¥A¥á•±ÍA•ÉU¹¥Ğ€ô€Äì(€€€€€€€€€€€…¹Ù…Í¼¹‘‘½µÁ½¹•¹ĞñQÉ…­•‘•Ù¥•É…Á¡¥I…å…ÍÑ•Èø ¤ì(€€€€€€€€€€€Ù…È…¹Ù…ÍI•Ğ€ô…¹Ù…Í¼¹•Ñ½µÁ½¹•¹ĞñI•ÑQÉ…¹Í™½É´ø ¤ì(€€€€€€€€€€€…¹Ù…ÍI•Ğ¹Í¥é••±Ñ„€ô¹•ÜY•Ñ½ÈÈ äÀÀ°€ÔÈÀ¤ì(€€€€€€€€€€€…¹Ù…ÍI•Ğ¹±½…±M…±”€ôY•Ñ½ÈÌ¹½¹”€¨€À¸ÀÀÄÕ˜ì((€€€€€€€€€€€Ù…ÈÁ…¹•±¼€ô¹•Ü…µ•=‰©•Ğ ‰!½µ•A…¹•°ˆ¤ì(€€€€€€€€€€€Á…¹•±¼¹ÑÉ…¹Í™½É´¹M•ÑA…É•¹Ğ¡…¹Ù…Í¼¹ÑÉ…¹Í™½É´°™…±Í”¤ì(€€€€€€€€€€€Ù…ÈÁ…¹•°€ôÁ…¹•±¼¹‘‘½µÁ½¹•¹Ğñ%µ…”ø ¤ì(€€€€€€€€€€€Á…¹•°¹½±½È€ô¹•Ü½±½È À¸ÀÑ˜°€À¸ÀÕ˜°€À¸Àá˜°€À¸äÙ˜¤ì(€€€€€€€€€€€Ù…ÈÁ…¹•±I•Ğ€ôÁ…¹•±¼¹•Ñ½µÁ½¹•¹ĞñI•ÑQÉ…¹Í™½É´ø ¤ì(€€€€€€€€€€€Á…¹•±I•Ğ¹…¹¡½É5¥¸€ôY•Ñ½ÈÈ¹é•É¼ì(€€€€€€€€€€€Á…¹•±I•Ğ¹…¹¡½É5…à€ôY•Ñ½ÈÈ¹½¹”ì(€€€€€€€€€€€Á…¹•±I•Ğ¹Í¥é••±Ñ„€ôY•Ñ½ÈÈ¹é•É¼ì((€€€€€€€€€€€Ù…ÈÑ¥Ñ±”€ô5…­•Q•áĞ¡Á…¹•±¼¹ÑÉ…¹Í™½É´°€‰EÕ•ÍÑA¡½¹•MÑÉ•…´ˆ°€ÈãtŞÚ$z{-®éÜj×state)
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit.UI;
+
+namespace QuestPhoneStream
+{
+    /// <summary>
+    /// Compact end-user home surface. Engineering fields stay behind Settings;
+    /// the normal path is device readiness -> Screen / Media / Keyboard.
+    /// </summary>
+    public sealed class QuestHomeUI : MonoBehaviour
+    {
+        private Canvas _canvas;
+        private QuestSignalingClient _signaling;
+        private QuestWebRtcReceiver _receiver;
+        private Camera _camera;
+        private Text _phoneStatus, _screenStatus, _controlStatus, _mediaStatus;
+        private Button _phoneTab, _videosTab, _keyboardButton, _advancedSettingsButton;
+        private Text _hint;
+        private Transform _mediaDeviceList;
+        private Text _mediaDeviceEmptyText;
+        private readonly Dictionary<string, Button> _mediaDeviceButtons = new Dictionary<string, Button>();
+        private bool _initialized;
+        private bool _videosSelected;
+        private Coroutine _keyboardRoutine;
+        private string _noticeText;
+        private float _noticeUntil;
+
+        public bool IsVisible => _canvas != null && _canvas.gameObject.activeInHierarchy;
+
+        public static Vector3 HomeWorldPosition(Vector3 cameraPosition, Vector3 cameraForward)
+        {
+            var forward = Vector3.ProjectOnPlane(cameraForward, Vector3.up);
+            if (forward.sqrMagnitude < 0.001f) forward = Vector3.forward;
+            return cameraPosition + forward.normalized * 1.5f + Vector3.down * 0.15f;
+        }
+
+        public void Initialize(QuestSignalingClient signaling, Camera xrCamera, QuestWebRtcReceiver receiver)
+        {
+            if (_initialized) return;
+            if (signaling == null || xrCamera == null || receiver == null)
+                throw new System.ArgumentException("Quest home UI requires signaling, camera and receiver");
+            _signaling = signaling;
+            _camera = xrCamera;
+            _receiver = receiver;
+            Build();
+            _signaling.StateChanged += OnStateChanged;
+            _signaling.TargetChanged += OnTargetChanged;
+            if (_receiver.mediaDiscovery != null)
+                _receiver.mediaDiscovery.DevicesChanged += RefreshMediaDevices;
+            UpdateStatus(_signaling.State);
+            RefreshMediaDevices();
+            Show();
+            _initialized = true;
+        }
+
+        public void Show()
+        {
+            if (_canvas == null || _camera == null) return;
+            var forward = Vector3.ProjectOnPlane(_camera.transform.forward, Vector3.up);
+            if (forward.sqrMagnitude < 0.001f) forward = Vector3.forward;
+            forward.Normalize();
+            _canvas.transform.position = HomeWorldPosition(_camera.transform.position, _camera.transform.forward);
+            _canvas.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            _canvas.gameObject.SetActive(true);
+            _receiver?.ProbeMedia();
+            RefreshStatus();
+        }
+
+        public void Hide() { if (_canvas != null) _canvas.gameObject.SetActive(false); }
+        public void Toggle() { if (IsVisible) Hide(); else Show(); }
+
+        private void Build()
+        {
+            var canvasGo = new GameObject("QuestHomeCanvas");
+            canvasGo.transform.SetParent(transform, false);
+            _canvas = canvasGo.AddComponent<Canvas>();
+            _canvas.renderMode = RenderMode.WorldSpace;
+            _canvas.worldCamera = _camera;
+            _canvas.sortingOrder = 90;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.dynamicPixelsPerUnit = 1;
+            canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
+            var canvasRect = canvasGo.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(900, 520);
+            canvasRect.localScale = Vector3.one * 0.0015f;
+
+            var panelGo = new GameObject("HomePanel");
+            panelGo.transform.SetParent(canvasGo.transform, false);
+            var panel = panelGo.AddComponent<Image>();
+            panel.color = new Color(0.04f, 0.05f, 0.08f, 0.96f);
+            var panelRect = panelGo.GetComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.sizeDelta = Vector2.zero;
+
+            var title = MakeText(panelGo.transform, "QuestPhoneStream", 28, TextAnchor.MiddleLeft);
+            Anchor(title.rectTransform, 0.05f, 0.85f, 0.58f, 0.97f);
+            var phone = MakeText(panelGo.transform, "Device  Â·  Disconnected", 20, TextAnchor.MiddleRight);
+            Anchor(phone.rectTransform, 0.58f, 0.85f, 0.95f, 0.97f);
+            _phoneStatus = phone.textComponent;
+
+            _screenStatus = AddStatus(panelGo.transform, "Screen", 0.05f, 0.68f);
+            _controlStatus = AddStatus(panelGo.transform, "Control", 0.30f, 0.68f);
+            _mediaStatus = AddStatus(panelGo.transform, "Media", 0.55f, 0.68f);
+
+            _phoneTab = MakeButton(panelGo.transform, "Screen", 0.05f, 0.49f, 0.27f, 0.61f, OnPhone);
+            _videosTab = MakeButton(panelGo.transform, "Media", 0.29f, 0.49f, 0.51f, 0.61f, OnVideos);
+            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.53f, 0.49f, 0.75f, 0.61f, OpenKeyboard);
+            _advancedSettingsButton = MakeButton(panelGo.transform, "âš™ Settings", 0.77f, 0.49f, 0.95f, 0.61f, OpenSettings);
+
+            var devicesTitle = MakeText(panelGo.transform, "Devices", 17, TextAnchor.MiddleLeft);
+            Anchor(devicesTitle.rectTransform, 0.05f, 0.37f, 0.95f, 0.44f);
+            BuildDeviceScroll(panelGo.transform);
+
+            var hint = MakeText(panelGo.transform, "Select Screen, Media, or a discovered device", 16, TextAnchor.MiddleLeft);
+            hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
+            Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.07f);
+            _hint = hint.textComponent;
+        }
+
+        private void BuildDeviceScroll(Transform parent)
+        {
+            var scrollGo = new GameObject("DeviceScroll");
+            scrollGo.transform.SetParent(parent, false);
+            var scrollRectTransform = scrollGo.AddComponent<RectTransform>();
+            Anchor(scrollRectTransform, 0.05f, 0.09f, 0.95f, 0.36f);
+            var scroll = scrollGo.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 18f;
+
+            var viewportGo = new GameObject("Viewport");
+            viewportGo.transform.SetParent(scrollGo.transform, false);
+            var viewportRect = viewportGo.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewportGo.AddComponent<RectMask2D>();
+            var viewportImage = viewportGo.AddComponent<Image>();
+            viewportImage.color = new Color(0.08f, 0.10f, 0.15f, 0.55f);
+            scroll.viewport = viewportRect;
+
+            var contentGo = new GameObject("Content");
+            contentGo.transform.SetParent(viewportGo.transform, false);
+            var contentRect = contentGo.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = Vector2.zero;
+            var deviceLayout = contentGo.AddComponent<VerticalLayoutGroup>();
+            deviceLayout.spacing = 5;
+            deviceLayout.padding = new RectOffset(6, 6, 6, 6);
+            deviceLayout.childForceExpandWidth = true;
+            deviceLayout.childForceExpandHeight = false;
+            var fitter = contentGo.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scroll.content = contentRect;
+            _mediaDeviceList = contentRect;
+
+            var empty = MakeText(contentGo.transform, "Searching for devicesâ€¦", 15, TextAnchor.MiddleLeft);
+            var emptyLayout = empty.textComponent.gameObject.AddComponent<LayoutElement>();
+            emptyLayout.preferredHeight = 36;
+            _mediaDeviceEmptyText = empty.textComponent;
+        }
+
+        private Text AddStatus(Transform parent, string label, float x, float y)
+        {
+            var text = MakeText(parent, label + "  Â·  â€”", 17, TextAnchor.MiddleLeft);
+            Anchor(text.rectTransform, x, y, x + 0.25f, y + 0.12f);
+            return text.textComponent;
+        }
+
+        private void OnPhone()
+        {
+            _videosSelected = false;
+            _receiver?.SetPhoneScreenMode();
+            SetTab(_phoneTab, true);
+            SetTab(_videosTab, false);
+            SetNotice("Phone screen selected", 2f);
+        }
+
+        private void OnVideos()
+        {
+            if (_receiver == null) return;
+            _videosSelected = true;
+            if (!_receiver.HasMediaUrl)
+            {
+                _videosSelected = false;
+                if (_receiver.HasReadyMediaDevice)
+                {
+                    SetNotice("Select a Ready device below", 4f);
+                    return;
+                }
+                SetNotice("Media isn't configured. Open Settings to add a manual source.", 4f);
+                _receiver.ToggleSettings();
+                Hide();
+                return;
+            }
+            if (!_receiver.IsMediaReady)
+            {
+                _videosSelected = false;
+                SetNotice(_receiver.IsMediaFailed || _receiver.IsMediaStale
+                    ? "Media is unreachable. Retryingâ€¦"
+                    : "Checking media. Try again shortly.", 4f);
+                _receiver.ProbeMedia();
+                return;
+            }
+            _receiver.OpenVideoLibrary();
+            Hide();
+        }
+
+        private void OnMediaDeviceSelected(string deviceId)
+        {
+            if (_receiver == null || !_receiver.SelectMediaDevice(deviceId)) return;
+            SetNotice("Device selected. Connectingâ€¦ Choose Screen or Media when ready.", 3f);
+        }
+
+        private void OpenSettings()
+        {
+            _receiver?.ToggleSettings();
+            Hide();
+        }
+
+        private void OpenKeyboard()
+        {
+            if (_receiver == null || !_receiver.IsControlConnected)
+            {
+                SetNotice("Connect a control channel to use Keyboard", 3f);
+                return;
+            }
+            if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
+            _keyboardRoutine = StartCoroutine(ReadKeyboard());
+        }
+
+        private IEnumerator ReadKeyboard()
+        {
+            if (!TouchScreenKeyboard.isSupported)
+            {
+                SetNotice("Native keyboard is unavailable on this build", 4f);
+                Debug.LogWarning("[QuestPhoneStream] Native keyboard is unavailable on this platform");
+                yield break;
+            }
+            var keyboard = TouchScreenKeyboard.Open(string.Empty, TouchScreenKeyboardType.Default, false, false, false);
+            while (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Visible)
+                yield return null;
+            if (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Done && !string.IsNullOrEmpty(keyboard.text))
+                _receiver?.controlChannel?.SendText(keyboard.text);
+            _keyboardRoutine = null;
+        }
+
+        private void SetNotice(string message, float seconds)
+        {
+            _noticeText = message ?? string.Empty;
+            _noticeUntil = Time.unscaledTime + Mathf.Max(0.5f, seconds);
+            if (_hint != null) _hint.text = _noticeText;
+        }
+
+        private bool HasActiveNotice => !string.IsNullOrEmpty(_noticeText) && Time.unscaledTime < _noticeUntil;
+
+        private void OnStateChanged(ConnectionState state)
+        {
+            UpdateStatus(state);
+            RefreshMediaDevices();
+        }
+
+        private void OnTargetChanged()
+        {
+            // Device selection changes the row label immediately, even when the
+            // old and new reconnect attempts share WebSocketConnecting state.
+            UpdateStatus(_signaling.State);
+            RefreshMediaDevices();
+        }
+
+        private string DeviceConnectionLabel(MediaDeviceInfo device)
+        {
+            if (!device.IsReady) return "â—‹ Lost";
+            if (_signaling == null) return "â— Ready";
+            var isActive = string.Equals(device.deviceId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.streamId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.deviceId, _signaling.androidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.streamId, _signaling.androidDeviceId, StringComparison.Ordinal);
+            if (!isActive) return "â— Ready";
+            var state = _signaling.State;
+            if (state == ConnectionState.Registered) return "âœ“ Found";
+            if ((int)state >= (int)ConnectionState.SessionRequesting && (int)state < (int)ConnectionState.MediaConnected) return "âŸ³ Connecting";
+            if (state == ConnectionState.MediaConnected) return _receiver != null && _receiver.HasVideoFrame ? "â— Live" : "âœ“ Connected";
+            if (ConnectionStatus.IsFailure(state)) return "âœ— Failed";
+            return "âŸ³ Connecting";
+        }
+
+        private void Update()
+        {
+            if (!_initialized || !IsVisible) return;
+            if (!HasActiveNotice && !string.IsNullOrEmpty(_noticeText)) _noticeText = null;
+            UpdateStatus(_signaling.State);
+        }
+
+        public void RefreshStatus() => UpdateStatus(_signaling.State);
+
+        private void RefreshMediaDevices()
+        {
+            if (_mediaDeviceList == null || _receiver == null) return;
+            var visible = new HashSet<string>();
+            if (_receiver.mediaDiscovery != null)
+            {
+                foreach (var device in _receiver.mediaDiscovery.Devices)
+                {
+                    if (string.IsNullOrWhiteSpace(device.deviceId)) continue;
+                    visible.Add(device.deviceId);
+                    if (!_mediaDeviceButtons.TryGetValue(device.deviceId, out var button))
+                    {
+                        var selectedDeviceId = device.deviceId;
+                        button = MakeButton(_mediaDeviceList, device.name, 0, 0, 1, 1, () => OnMediaDeviceSelected(selectedDeviceId));
+                        var layout = button.gameObject.AddComponent<LayoutElement>();
+                        layout.preferredHeight = 42;
+                        layout.minHeight = 42;
+                        _mediaDeviceButtons[device.deviceId] = button;
+                    }
+                    var label = button.GetComponentInChildren<Text>();
+                    if (label != null)
+                    {
+                        var status = DeviceConnectionLabel(device);
+                        label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
+                            "    " + status;
+                    }
+                    button.interactable = device.IsReady;
+                    button.gameObject.SetActive(true);
+                }
+            }
+            foreach (var pair in _mediaDeviceButtons)
+                if (!visible.Contains(pair.Key)) pair.Value.gameObject.SetActive(false);
+            if (_mediaDeviceEmptyText != null)
+            {
+                _mediaDeviceEmptyText.gameObject.SetActive(visible.Count == 0);
+                _mediaDeviceEmptyText.text = _receiver.mediaDiscovery != null && _receiver.mediaDiscovery.IsDiscovering
+                    ? "Searching for devicesâ€¦" : "No devices found. Settings supports a manual URL.";
+            }
+        }
+
+        private void UpdateStatus(ConnectionState state)
         {
             if (_phoneStatus == null || _receiver == null) return;
             var failed = ConnectionStatus.IsFailure(state);
