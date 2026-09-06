@@ -276,6 +276,14 @@ test("Android media server advertises a persistent UUID through NSD for its curr
   assert.match(androidMediaServer, /MediaNsdRegistration\(context\) \{ port \}/);
   assert.match(androidMediaServer, /nsdRegistration\.start\(\)/);
   assert.match(androidMediaServer, /nsdRegistration\.stop\(\)/);
+  assert.match(androidNsd, /WifiManager/);
+  assert.match(androidNsd, /Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S/);
+  assert.match(androidNsd, /createMulticastLock/);
+  assert.match(androidNsd, /setReferenceCounted\(false\)/);
+  assert.match(androidNsd, /lock\.acquire\(\)/);
+  assert.match(androidNsd, /lock\.release\(\)/);
+  assert.match(androidNsd, /onRegistrationFailed[\s\S]*started = false[\s\S]*releaseMulticastLock\(\)/);
+  assert.match(read("apps/android-agent/app/src/main/AndroidManifest.xml"), /CHANGE_WIFI_MULTICAST_STATE/);
 });
 
 test("Quest NSD discovery deduplicates by device id, resolves services, handles loss and brackets IPv6 URLs", () => {
@@ -286,6 +294,20 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(mediaDiscovery, /_devices\[deviceId\]/);
   assert.match(mediaDiscovery, /HasReadyDevice/);
   assert.match(mediaDiscovery, /device\.IsReady = false/);
+  assert.match(mediaDiscovery, /_activeServiceKeys/);
+  assert.match(mediaDiscovery, /_discoveryGeneration/);
+  assert.match(mediaDiscovery, /!IsCurrent\(bridge, generation\) \|\| !_activeServiceKeys\.Contains\(serviceKey\)/);
+  assert.match(mediaDiscovery, /previousBridge\?\.Dispose\(\)/);
+  assert.match(mediaDiscovery, /bridge\?\.Dispose\(\)/);
+  assert.match(mediaDiscovery, /onServiceFound[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onServiceResolved[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onServiceLost[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onStartDiscoveryFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onStopDiscoveryFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onResolveFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /createMulticastLock/);
+  assert.match(mediaDiscovery, /setReferenceCounted.*false/);
+  assert.match(mediaDiscovery, /_multicastLock\.Call\("release"\)/);
   assert.match(mediaDiscovery, /normalizedHost\.IndexOf\(/);
   assert.match(mediaDiscovery, /normalizedHost = "\[" \+ normalizedHost\.Trim\('\[', '\]'\) \+ "\]"/);
   assert.match(mediaDiscovery, /TryGetReadyDevice/);

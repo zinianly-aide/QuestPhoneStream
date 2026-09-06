@@ -27,8 +27,10 @@ namespace QuestPhoneStream
         public const string ServiceType = "_qps-media._tcp.";
 
         private readonly Dictionary<string, MediaDeviceInfo> _devices = new Dictionary<string, MediaDeviceInfo>();
+        private readonly HashSet<string> _activeServiceKeys = new HashSet<string>();
         private readonly Dictionary<string, string> _serviceToDevice = new Dictionary<string, string>();
         private readonly Dictionary<string, HashSet<string>> _servicesByDevice = new Dictionary<string, HashSet<string>>();
+        private int _discoveryGeneration;
 #if UNITY_ANDROID && !UNITY_EDITOR
         private AndroidNsdBridge _bridge;
 #endif
@@ -49,34 +51,48 @@ namespace QuestPhoneStream
         public void StartDiscovery()
         {
             if (IsDiscovering) return;
-            IsDiscovering = true;
 #if UNITY_ANDROID && !UNITY_EDITOR
+            var generation = ++_discoveryGeneration;
+            var previousBridge = _bridge;
+            _bridge = null;
+            previousBridge?.Dispose();
+            IsDiscovering = true;
+            AndroidNsdBridge bridge = null;
             try
             {
-                _bridge = new AndroidNsdBridge(this);
-                _bridge.Start();
+                bridge = new AndroidNsdBridge(this, generation);
+                _bridge = bridge;
+                bridge.Start();
             }
             catch (Exception error)
             {
                 IsDiscovering = false;
+                ++_discoveryGeneration;
+                if (ReferenceEquals(_bridge, bridge)) _bridge = null;
+                bridge?.Dispose();
+                ClearDiscoveredServices();
                 Debug.LogError($"[MediaDeviceDiscovery] NSD bridge start failed: {error.Message}");
+                DevicesChanged?.Invoke();
             }
 #else
+            ++_discoveryGeneration;
+            IsDiscovering = true;
             Debug.Log("[MediaDeviceDiscovery] NSD is available only on the Android Quest build; manual media URL remains available.");
 #endif
         }
 
         public void StopDiscovery()
         {
-            if (!IsDiscovering) return;
+            var wasDiscovering = IsDiscovering;
             IsDiscovering = false;
+            ++_discoveryGeneration;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            _bridge?.Dispose();
+            var bridge = _bridge;
             _bridge = null;
+            bridge?.Dispose();
 #endif
-            foreach (var device in _devices.Values)
-                device.IsReady = false;
-            DevicesChanged?.Invoke();
+            var changed = ClearDiscoveredServices();
+            if (wasDiscovering || changed) DevicesChanged?.Invoke();
         }
 
         public bool TryGetReadyDevice(string deviceId, out MediaDeviceInfo device)
@@ -97,13 +113,22 @@ namespace QuestPhoneStream
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        private void OnServiceFound(AndroidJavaObject serviceInfo)
+        private bool IsCurrent(AndroidNsdBridge bridge, int generation) =>
+            IsDiscovering && generation == _discoveryGeneration && ReferenceEquals(_bridge, bridge);
+
+        private void OnServiceFound(AndroidNsdBridge bridge, int generation, AndroidJavaObject serviceInfo)
         {
-            _bridge?.Resolve(serviceInfo);
+            if (!IsCurrent(bridge, generation)) return;
+            var serviceKey = CallString(serviceInfo, "getServiceName");
+            if (string.IsNullOrWhiteSpace(serviceKey)) return;
+            _activeServiceKeys.Add(serviceKey);
+            bridge.Resolve(serviceInfo);
         }
 
-        private void OnServiceResolved(string serviceKey, AndroidJavaObject serviceInfo)
+        private void OnServiceResolved(AndroidNsdBridge bridge, int generation, string serviceKey, AndroidJavaObject serviceInfo)
         {
+            bridge.RemoveResolveListener(serviceKey);
+            if (!IsCurrent(bridge, generation) || !_activeServiceKeys.Contains(serviceKey)) return;
             var attributes = ReadAttributes(serviceInfo);
             var version = GetAttribute(attributes, "v");
             var deviceId = GetAttribute(attributes, "id");
@@ -138,10 +163,12 @@ namespace QuestPhoneStream
             DevicesChanged?.Invoke();
         }
 
-        private void OnServiceLost(AndroidJavaObject serviceInfo)
+        private void OnServiceLost(AndroidNsdBridge bridge, int generation, AndroidJavaObject serviceInfo)
         {
+            if (!IsCurrent(bridge, generation)) return;
             var serviceKey = CallString(serviceInfo, "getServiceName");
-            if (string.IsNullOrWhiteSpace(serviceKey) || !_serviceToDevice.TryGetValue(serviceKey, out var deviceId)) return;
+            if (string.IsNullOrWhiteSpace(serviceKey) || !_activeServiceKeys.Remove(serviceKey)) return;
+            if (!_serviceToDevice.TryGetValue(serviceKey, out var deviceId)) return;
             _serviceToDevice.Remove(serviceKey);
             if (_servicesByDevice.TryGetValue(deviceId, out var services))
             {
@@ -155,11 +182,37 @@ namespace QuestPhoneStream
             }
         }
 
-        private void OnDiscoveryFailed(string message)
+        private void OnDiscoveryFailed(AndroidNsdBridge bridge, int generation, string message)
         {
+            if (!IsCurrent(bridge, generation)) return;
             IsDiscovering = false;
+            ++_discoveryGeneration;
+            _bridge = null;
+            bridge.Dispose();
+            ClearDiscoveredServices();
             Debug.LogError("[MediaDeviceDiscovery] " + message);
             DevicesChanged?.Invoke();
+        }
+
+        private void OnServiceResolveFailed(AndroidNsdBridge bridge, int generation, string serviceKey, int errorCode)
+        {
+            bridge.RemoveResolveListener(serviceKey);
+            if (!IsCurrent(bridge, generation)) return;
+            Debug.LogWarning($"[MediaDeviceDiscovery] NSD resolve failed service={serviceKey} error={errorCode}");
+        }
+
+        private bool ClearDiscoveredServices()
+        {
+            var changed = _activeServiceKeys.Count != 0 || _serviceToDevice.Count != 0;
+            _activeServiceKeys.Clear();
+            _serviceToDevice.Clear();
+            _servicesByDevice.Clear();
+            foreach (var device in _devices.Values)
+            {
+                if (device.IsReady) changed = true;
+                device.IsReady = false;
+            }
+            return changed;
         }
 
         private static string CallString(AndroidJavaObject value, string method) =>
@@ -200,19 +253,29 @@ namespace QuestPhoneStream
         private sealed class AndroidNsdBridge : IDisposable
         {
             private readonly MediaDeviceDiscovery _owner;
+            private readonly int _generation;
             private AndroidJavaObject _manager;
+            private AndroidJavaObject _multicastLock;
+            private bool _multicastLockHeld;
             private DiscoveryListenerProxy _discoveryListener;
             private readonly Dictionary<string, ResolveListenerProxy> _resolveListeners = new Dictionary<string, ResolveListenerProxy>();
 
-            public AndroidNsdBridge(MediaDeviceDiscovery owner) { _owner = owner; }
+            public AndroidNsdBridge(MediaDeviceDiscovery owner, int generation)
+            {
+                _owner = owner;
+                _generation = generation;
+            }
 
             public void Start()
             {
                 using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
                 using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                {
+                    TryAcquireMulticastLock(activity);
                     _manager = activity.Call<AndroidJavaObject>("getSystemService", "servicediscovery");
+                }
                 if (_manager == null) throw new InvalidOperationException("NsdManager is unavailable");
-                _discoveryListener = new DiscoveryListenerProxy(_owner);
+                _discoveryListener = new DiscoveryListenerProxy(_owner, this, _generation);
                 _manager.Call("discoverServices", ServiceType, 1, _discoveryListener);
             }
 
@@ -235,22 +298,80 @@ namespace QuestPhoneStream
                         _manager.Call("stopServiceDiscovery", _discoveryListener);
                 }
                 catch (Exception error) { Debug.LogWarning("[MediaDeviceDiscovery] NSD stop failed: " + error.Message); }
-                _resolveListeners.Clear();
-                _discoveryListener = null;
-                _manager?.Dispose();
-                _manager = null;
+                finally
+                {
+                    _resolveListeners.Clear();
+                    _discoveryListener = null;
+                    try { _manager?.Dispose(); }
+                    catch (Exception error) { Debug.LogWarning("[MediaDeviceDiscovery] NSD manager dispose failed: " + error.Message); }
+                    _manager = null;
+                    ReleaseMulticastLock();
+                }
+            }
+
+            private void TryAcquireMulticastLock(AndroidJavaObject activity)
+            {
+                if (activity == null) return;
+                try
+                {
+                    using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
+                    {
+                        if (version.GetStatic<int>("SDK_INT") >= 31) return;
+                    }
+                    using (var wifiManager = activity.Call<AndroidJavaObject>("getSystemService", "wifi"))
+                    {
+                        if (wifiManager == null) return;
+                        _multicastLock = wifiManager.Call<AndroidJavaObject>("createMulticastLock", "QuestPhoneStreamNSD");
+                    }
+                    if (_multicastLock == null) return;
+                    _multicastLock.Call("setReferenceCounted", false);
+                    _multicastLock.Call("acquire");
+                    _multicastLockHeld = true;
+                }
+                catch (Exception error)
+                {
+                    Debug.LogWarning("[MediaDeviceDiscovery] MulticastLock acquire failed: " + error.Message);
+                    ReleaseMulticastLock();
+                }
+            }
+
+            private void ReleaseMulticastLock()
+            {
+                if (_multicastLock == null) return;
+                try
+                {
+                    if (_multicastLockHeld) _multicastLock.Call("release");
+                }
+                catch (Exception error) { Debug.LogWarning("[MediaDeviceDiscovery] MulticastLock release failed: " + error.Message); }
+                finally
+                {
+                    _multicastLock.Dispose();
+                    _multicastLock = null;
+                    _multicastLockHeld = false;
+                }
             }
 
             private sealed class DiscoveryListenerProxy : AndroidJavaProxy
             {
                 private readonly MediaDeviceDiscovery _owner;
-                public DiscoveryListenerProxy(MediaDeviceDiscovery owner) : base("android.net.nsd.NsdManager$DiscoveryListener") { _owner = owner; }
+                private readonly AndroidNsdBridge _bridge;
+                private readonly int _generation;
+                public DiscoveryListenerProxy(MediaDeviceDiscovery owner, AndroidNsdBridge bridge, int generation) : base("android.net.nsd.NsdManager$DiscoveryListener")
+                {
+                    _owner = owner;
+                    _bridge = bridge;
+                    _generation = generation;
+                }
                 public void onDiscoveryStarted(string serviceType) { }
-                public void onServiceFound(AndroidJavaObject serviceInfo) { _owner.OnServiceFound(serviceInfo); }
-                public void onServiceLost(AndroidJavaObject serviceInfo) { _owner.OnServiceLost(serviceInfo); }
+                public void onServiceFound(AndroidJavaObject serviceInfo) =>
+                    UnityMainThread.Enqueue(() => _owner.OnServiceFound(_bridge, _generation, serviceInfo));
+                public void onServiceLost(AndroidJavaObject serviceInfo) =>
+                    UnityMainThread.Enqueue(() => _owner.OnServiceLost(_bridge, _generation, serviceInfo));
                 public void onDiscoveryStopped(string serviceType) { }
-                public void onStartDiscoveryFailed(string serviceType, int errorCode) => _owner.OnDiscoveryFailed($"NSD discovery start failed error={errorCode}");
-                public void onStopDiscoveryFailed(string serviceType, int errorCode) => _owner.OnDiscoveryFailed($"NSD discovery stop failed error={errorCode}");
+                public void onStartDiscoveryFailed(string serviceType, int errorCode) =>
+                    UnityMainThread.Enqueue(() => _owner.OnDiscoveryFailed(_bridge, _generation, $"NSD discovery start failed error={errorCode}"));
+                public void onStopDiscoveryFailed(string serviceType, int errorCode) =>
+                    UnityMainThread.Enqueue(() => _owner.OnDiscoveryFailed(_bridge, _generation, $"NSD discovery stop failed error={errorCode}"));
             }
 
             private sealed class ResolveListenerProxy : AndroidJavaProxy
@@ -258,20 +379,15 @@ namespace QuestPhoneStream
                 private readonly MediaDeviceDiscovery _owner;
                 private readonly AndroidNsdBridge _bridge;
                 private readonly string _serviceKey;
+                private readonly int _generation;
                 public ResolveListenerProxy(MediaDeviceDiscovery owner, AndroidNsdBridge bridge, string serviceKey) : base("android.net.nsd.NsdManager$ResolveListener")
                 {
-                    _owner = owner; _bridge = bridge; _serviceKey = serviceKey;
+                    _owner = owner; _bridge = bridge; _serviceKey = serviceKey; _generation = bridge._generation;
                 }
-                public void onServiceResolved(AndroidJavaObject serviceInfo)
-                {
-                    _bridge.RemoveResolveListener(_serviceKey);
-                    _owner.OnServiceResolved(_serviceKey, serviceInfo);
-                }
-                public void onResolveFailed(AndroidJavaObject serviceInfo, int errorCode)
-                {
-                    _bridge.RemoveResolveListener(_serviceKey);
-                    Debug.LogWarning($"[MediaDeviceDiscovery] NSD resolve failed service={_serviceKey} error={errorCode}");
-                }
+                public void onServiceResolved(AndroidJavaObject serviceInfo) =>
+                    UnityMainThread.Enqueue(() => _owner.OnServiceResolved(_bridge, _generation, _serviceKey, serviceInfo));
+                public void onResolveFailed(AndroidJavaObject serviceInfo, int errorCode) =>
+                    UnityMainThread.Enqueue(() => _owner.OnServiceResolveFailed(_bridge, _generation, _serviceKey, errorCode));
             }
         }
 #endif
