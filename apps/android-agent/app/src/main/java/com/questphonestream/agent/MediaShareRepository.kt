@@ -18,13 +18,13 @@ class MediaShareRepository(context: Context?) {
     init { load() }
 
     @Synchronized
-    fun add(uri: Uri, mimeType: String?, displayName: String? = null, size: Long? = null): MediaItem {
-        val name = displayName ?: uri.lastPathSegment?.substringAfterLast('/') ?: "media"
+    fun add(contentUri: String, mimeType: String?, displayName: String? = null, size: Long? = null): MediaItem {
+        val name = displayName ?: contentUri.substringBefore('?').substringAfterLast('/').ifBlank { "media" }
         val actualSize = size ?: -1L
         val id = newId()
         val spatialFormat = inferSpatialFormat(name, mimeType)
         val item = MediaItem(
-            id, name, mimeType ?: "video/*", actualSize, uri.toString(), detectSeekable(uri), true,
+            id, name, mimeType ?: "video/*", actualSize, contentUri, detectSeekable(contentUri), true,
             spatialFormat = spatialFormat
         )
         items[id] = item
@@ -78,9 +78,10 @@ class MediaShareRepository(context: Context?) {
         return "media_" + bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun detectSeekable(uri: Uri): Boolean {
+    private fun detectSeekable(contentUri: String): Boolean {
         val context = appContext ?: return true
         return runCatching {
+            val uri = Uri.parse(contentUri)
             context.contentResolver.openFileDescriptor(uri, "r")?.use {
                 if (!it.fileDescriptor.valid()) return@use false
                 Os.lseek(it.fileDescriptor, 0L, OsConstants.SEEK_CUR)
