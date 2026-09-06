@@ -32,10 +32,20 @@ namespace QuestPhoneStream
             if (vrRenderer == null) vrRenderer = gameObject.GetComponent<VrMediaRenderer>() ?? gameObject.AddComponent<VrMediaRenderer>();
             if (flatPanelController == null) flatPanelController = gameObject.GetComponent<FlatMediaPanelController>();
             vrRenderer.Initialize(null, renderer);
-            videoPlayer.playOnAwake = false;
-            videoPlayer.source = VideoSource.Url;
-            videoPlayer.renderMode = VideoRenderMode.RenderTexture;
-            videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+            // The headless Unity editor image can expose VideoPlayer as an
+            // unavailable native component. Keep Stop and non-video UI flows
+            // usable there; a runtime-capable player is configured normally.
+            try
+            {
+                videoPlayer.playOnAwake = false;
+                videoPlayer.source = VideoSource.Url;
+                videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+                videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+            }
+            catch (MissingComponentException)
+            {
+                videoPlayer = null;
+            }
         }
 
         public void PlayUrl(string url) => PlayUrl(url, MediaVideoProfile.Default);
