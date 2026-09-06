@@ -63,6 +63,7 @@ namespace QuestPhoneStream.Tests
             flat.targetRenderer = flatObject.GetComponent<Renderer>();
             var vr = _object.AddComponent<VrMediaRenderer>();
             vr.Initialize(null, flat);
+            vr.vrBackend = VrBackend.SphereCustom;
             var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
             texture.Create();
             vr.Apply(texture, ProjectionMode.Equirectangular, 360, StereoMode.Sbs, EyeOrder.Lr);
@@ -77,6 +78,56 @@ namespace QuestPhoneStream.Tests
             texture.Release();
             Object.Destroy(texture);
             Object.Destroy(flatObject);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator UnityPanoramicBackendUsesSkyboxForAllFlatAndStereoModes()
+        {
+            var originalSkybox = RenderSettings.skybox;
+            var flatObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            flatObject.transform.SetParent(_object.transform, false);
+            var flat = _object.AddComponent<FlatMediaRenderer>();
+            flat.targetRenderer = flatObject.GetComponent<Renderer>();
+            var vr = _object.AddComponent<VrMediaRenderer>();
+            vr.Initialize(null, flat);
+            vr.vrBackend = VrBackend.UnityPanoramic;
+            var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
+            texture.Create();
+
+            try
+            {
+                Assert.IsNotNull(Shader.Find("Skybox/Panoramic"));
+                var modes = new[]
+                {
+                    new { Fov = 360, Stereo = StereoMode.Mono },
+                    new { Fov = 360, Stereo = StereoMode.Sbs },
+                    new { Fov = 180, Stereo = StereoMode.Mono },
+                    new { Fov = 180, Stereo = StereoMode.Sbs }
+                };
+                foreach (var mode in modes)
+                {
+                    vr.Apply(texture, ProjectionMode.Equirectangular, mode.Fov, mode.Stereo, EyeOrder.Lr);
+                    Assert.IsTrue(vr.IsVrVisible);
+                    Assert.IsTrue(vr.IsPanoramicVisible);
+                    Assert.IsFalse(flat.targetRenderer.enabled);
+                }
+
+                vr.Apply(texture, ProjectionMode.Flat, 360, StereoMode.Mono, EyeOrder.Lr);
+                Assert.IsFalse(vr.IsVrVisible);
+                Assert.IsFalse(vr.IsPanoramicVisible);
+                Assert.AreSame(originalSkybox, RenderSettings.skybox);
+                Assert.IsTrue(flat.targetRenderer.enabled);
+            }
+            finally
+            {
+                vr.Release();
+                Assert.AreSame(originalSkybox, RenderSettings.skybox);
+                texture.Release();
+                Object.Destroy(texture);
+                Object.Destroy(flatObject);
+            }
+
             yield return null;
         }
     }

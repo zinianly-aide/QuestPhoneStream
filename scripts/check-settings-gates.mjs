@@ -23,6 +23,8 @@ const mediaDiscovery = read(scripts + "MediaDeviceDiscovery.cs");
 const mediaDto = read(scripts + "MediaItemDto.cs");
 const settings = read(scripts + "SettingsUI.cs");
 const vrShader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Shaders/VRMediaStereo.shader");
+const build = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/QuestPhoneStreamBuild.cs");
+const panoramicMaterial = read("apps/quest-unity-client/Assets/QuestPhoneStream/Materials/UnityPanoramic.mat");
 const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaItem.kt");
 const androidMediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
 const androidNsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
@@ -214,9 +216,42 @@ test("VR playback preserves overrides and explicitly references the VR shader as
   assert.match(mediaRenderer, /VR media shader is unavailable/);
   assert.match(mediaRenderer, /projection=.*fov=.*stereo=.*eye=.*shader=.*sphereVisible=/);
   assert.match(receiver, /public Material vrMaterialTemplate/);
-  assert.match(receiver, /Initialize\(xrCamera, mediaPlayback\.renderer, vrMaterialTemplate\)/);
+  assert.match(receiver, /Initialize\(xrCamera, mediaPlayback\.renderer, vrMaterialTemplate, panoramicMaterialTemplate\)/);
   assert.match(vrMaterial, /guid: 7f3ef1a3e7c04b1d9a6c8f20e3b64512/);
   assert.match(scene, /vrMaterialTemplate: \{fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2\}/);
+});
+
+test("UnityPanoramic backend is an explicit skybox POC and does not create a sphere", () => {
+  assert.match(mediaRenderer, /public enum VrBackend/);
+  assert.match(mediaRenderer, /SphereCustom/);
+  assert.match(mediaRenderer, /UnityPanoramic/);
+  assert.match(mediaRenderer, /public VrBackend vrBackend = VrBackend\.UnityPanoramic/);
+  assert.match(mediaRenderer, /public Material panoramicMaterialTemplate/);
+  assert.match(mediaRenderer, /RenderSettings\.skybox/);
+  assert.match(mediaRenderer, /_originalSkybox/);
+  assert.match(mediaRenderer, /RestoreOriginalSkybox\(\)/);
+  assert.match(mediaRenderer, /public void ExitVr\(\) => HideVr\(\)/);
+  assert.match(mediaRenderer, /private void OnDisable\(\) => HideVr\(\)/);
+  assert.match(mediaRenderer, /Shader\.Find\("Skybox\/Panoramic"\)/);
+  assert.match(mediaRenderer, /_panoramicMaterial\.SetTexture\("_MainTex", texture\)/);
+  assert.match(mediaRenderer, /SetFloat\("_Mapping", 1f\)/);
+  assert.match(mediaRenderer, /SetFloat\("_ImageType", fov == 180 \? 1f : 0f\)/);
+  assert.match(mediaRenderer, /SetFloat\("_Layout", stereo == StereoMode\.Sbs \? 1f : 0f\)/);
+  const panoramicBranch = mediaRenderer.slice(mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)"), mediaRenderer.indexOf("RestoreOriginalSkybox();", mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)")));
+  assert.doesNotMatch(panoramicBranch, /EnsureSphere|CreatePrimitive\(PrimitiveType\.Sphere\)/);
+  assert.match(mediaRenderer, /backend=\{vrBackend\} shader=\{ShaderName\(\)\} sphereVisible=\{IsSphereVisible\}/);
+  assert.match(build, /PanoramicMaterialPath = MaterialDir \+ "\/UnityPanoramic\.mat"/);
+  assert.match(build, /PanoramicShaderName = "Skybox\/Panoramic"/);
+  assert.match(build, /EnsureUnityPanoramicMaterial\(\)/);
+  assert.match(build, /receiver\.panoramicMaterialTemplate = panoramicMaterial/);
+  assert.match(receiver, /public VrBackend vrBackend = VrBackend\.UnityPanoramic/);
+  assert.match(receiver, /mediaPlayback\.vrRenderer\.vrBackend = vrBackend/);
+  assert.match(panoramicMaterial, /m_Shader: \{fileID: 108, guid: 0000000000000000f000000000000000, type: 0\}/);
+  for (const property of ["_MainTex", "_ImageType", "_Layout", "_Mapping"])
+    assert.match(panoramicMaterial, new RegExp(property));
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /panoramicMaterialTemplate: \{fileID: 2100000, guid: 5e7d2b8c9f4a4e1b8c2d6f3071a9b5e4, type: 2\}/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /vrBackend: 1/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /UnityPanoramicBackendUsesSkyboxForAllFlatAndStereoModes/);
 });
 
 test("Flat playback preserves aspect ratio and gates XRI interaction by projection", () => {

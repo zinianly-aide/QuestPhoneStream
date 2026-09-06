@@ -2,28 +2,45 @@ using UnityEngine;
 
 namespace QuestPhoneStream
 {
+    public enum VrBackend
+    {
+        SphereCustom,
+        UnityPanoramic
+    }
+
     /// <summary>
     /// Quest-side projection renderer. It consumes the same RenderTexture as the
     /// VideoPlayer and only changes the surface and sampling mode.
     /// </summary>
     public sealed class VrMediaRenderer : MonoBehaviour
     {
+        public VrBackend vrBackend = VrBackend.UnityPanoramic;
         public Camera xrCamera;
         public FlatMediaRenderer flatRenderer;
         public Material vrMaterialTemplate;
+        public Material panoramicMaterialTemplate;
 
         private GameObject _sphere;
         private Renderer _sphereRenderer;
         private Material _vrMaterial;
+        private Material _panoramicMaterial;
+        private Material _originalSkybox;
+        private bool _skyboxSaved;
         private bool _vrVisible;
+        private bool _panoramicVisible;
 
-        public bool IsVrVisible => _vrVisible && _sphere != null && _sphere.activeSelf;
+        public bool IsVrVisible => vrBackend == VrBackend.UnityPanoramic
+            ? _panoramicVisible && _panoramicMaterial != null && RenderSettings.skybox == _panoramicMaterial
+            : IsSphereVisible;
+        public bool IsPanoramicVisible => _panoramicVisible;
+        public bool IsSphereVisible => _vrVisible && _sphere != null && _sphere.activeSelf;
 
-        public void Initialize(Camera camera, FlatMediaRenderer flat, Material materialTemplate = null)
+        public void Initialize(Camera camera, FlatMediaRenderer flat, Material materialTemplate = null, Material panoramicTemplate = null)
         {
             xrCamera = camera;
             flatRenderer = flat;
             if (materialTemplate != null) vrMaterialTemplate = materialTemplate;
+            if (panoramicTemplate != null) panoramicMaterialTemplate = panoramicTemplate;
         }
 
         public void Apply(RenderTexture texture, ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder)
@@ -42,6 +59,24 @@ namespace QuestPhoneStream
                 return;
             }
 
+            HideSphere();
+            if (vrBackend == VrBackend.UnityPanoramic)
+            {
+                if (!ApplyUnityPanoramic(texture, fov, stereo, eyeOrder))
+                {
+                    RestoreOriginalSkybox();
+                    if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
+                    Debug.LogError($"[VrMediaRenderer] Apply failed: UnityPanoramic backend is unavailable; VR media was not shown. " +
+                        $"projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsSphereVisible}");
+                    LogApply(projection, fov, stereo, eyeOrder);
+                    return;
+                }
+                if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
+                LogApply(projection, fov, stereo, eyeOrder);
+                return;
+            }
+
+            RestoreOriginalSkybox();
             if (!EnsureSphere())
             {
                 if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
@@ -65,17 +100,87 @@ namespace QuestPhoneStream
 
         public void HideVr()
         {
+            HideSphere();
+            RestoreOriginalSkybox();
+        }
+
+        public void Release() => HideVr();
+
+        public void ExitVr() => HideVr();
+
+        private void LateUpdate()
+        {
+            if (vrBackend != VrBackend.SphereCustom || !IsVrVisible || xrCamera == null) return;
+            _sphere.transform.position = xrCamera.transform.position;
+        }
+
+        private bool ApplyUnityPanoramic(RenderTexture texture, int fov, StereoMode stereo, EyeOrder eyeOrder)
+        {
+            if (!EnsurePanoramicMaterial()) return false;
+            if (!_skyboxSaved)
+            {
+                _originalSkybox = RenderSettings.skybox;
+                _skyboxSaved = true;
+            }
+
+            _panoramicMaterial.SetTexture("_MainTex", texture);
+            if (_panoramicMaterial.HasProperty("_Mapping")) _panoramicMaterial.SetFloat("_Mapping", 1f); // Latitude Longitude
+            if (_panoramicMaterial.HasProperty("_ImageType")) _panoramicMaterial.SetFloat("_ImageType", fov == 180 ? 1f : 0f); // 180 / 360
+            if (_panoramicMaterial.HasProperty("_Layout")) _panoramicMaterial.SetFloat("_Layout", stereo == StereoMode.Sbs ? 1f : 0f); // None / Side by Side
+            if (_panoramicMaterial.HasProperty("_MirrorOnBack")) _panoramicMaterial.SetFloat("_MirrorOnBack", 0f);
+            if (_panoramicMaterial.HasProperty("_Rotation")) _panoramicMaterial.SetFloat("_Rotation", 0f);
+            if (eyeOrder == EyeOrder.Rl && stereo == StereoMode.Sbs)
+            {
+                Debug.LogWarning("[VrMediaRenderer] UnityPanoramic uses Unity's standard LR SBS layout; EyeOrder=Rl requires SphereCustom.");
+            }
+
+            RenderSettings.skybox = _panoramicMaterial;
+            _panoramicVisible = true;
+            return true;
+        }
+
+        private bool EnsurePanoramicMaterial()
+        {
+            if (_panoramicMaterial != null && _panoramicMaterial.shader != null &&
+                _panoramicMaterial.shader.name == "Skybox/Panoramic") return true;
+
+            var shader = panoramicMaterialTemplate != null ? panoramicMaterialTemplate.shader : null;
+            if (shader == null) shader = Shader.Find("Skybox/Panoramic");
+            if (shader == null || shader.name != "Skybox/Panoramic")
+            {
+                Debug.LogError("[VrMediaRenderer] UnityPanoramic shader is unavailable. Assign the explicit UnityPanoramic.mat asset or include Skybox/Panoramic in the build.");
+                return false;
+            }
+
+            if (_panoramicMaterial != null) Destroy(_panoramicMaterial);
+            _panoramicMaterial = panoramicMaterialTemplate != null
+                ? new Material(panoramicMaterialTemplate)
+                : new Material(shader);
+            _panoramicMaterial.name = "QuestPhoneStream Unity Panoramic (Runtime)";
+            return true;
+        }
+
+        private void HideSphere()
+        {
             if (_sphere != null) _sphere.SetActive(false);
             if (_vrMaterial != null) _vrMaterial.SetTexture("_MainTex", null);
             _vrVisible = false;
         }
 
-        public void Release() => HideVr();
-
-        private void LateUpdate()
+        private void RestoreOriginalSkybox()
         {
-            if (!IsVrVisible || xrCamera == null) return;
-            _sphere.transform.position = xrCamera.transform.position;
+            if (!_skyboxSaved)
+            {
+                _panoramicVisible = false;
+                return;
+            }
+
+            if (_panoramicMaterial != null && _panoramicMaterial.HasProperty("_MainTex"))
+                _panoramicMaterial.SetTexture("_MainTex", null);
+            RenderSettings.skybox = _originalSkybox;
+            _originalSkybox = null;
+            _skyboxSaved = false;
+            _panoramicVisible = false;
         }
 
         private bool EnsureSphere()
@@ -106,17 +211,23 @@ namespace QuestPhoneStream
             return true;
         }
 
-        private string ShaderName() => _vrMaterial?.shader?.name ?? vrMaterialTemplate?.shader?.name ?? "<unavailable>";
+        private string ShaderName() => vrBackend == VrBackend.UnityPanoramic
+            ? _panoramicMaterial?.shader?.name ?? panoramicMaterialTemplate?.shader?.name ?? "<unavailable>"
+            : _vrMaterial?.shader?.name ?? vrMaterialTemplate?.shader?.name ?? "<unavailable>";
 
         private void LogApply(ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder)
         {
-            Debug.Log($"[VrMediaRenderer] Apply projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsVrVisible}");
+            Debug.Log($"[VrMediaRenderer] Apply projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} " +
+                $"backend={vrBackend} shader={ShaderName()} sphereVisible={IsSphereVisible} panoramicVisible={_panoramicVisible}");
         }
+
+        private void OnDisable() => HideVr();
 
         private void OnDestroy()
         {
             if (_sphere != null) Destroy(_sphere);
             if (_vrMaterial != null) Destroy(_vrMaterial);
+            if (_panoramicMaterial != null) Destroy(_panoramicMaterial);
         }
     }
 }

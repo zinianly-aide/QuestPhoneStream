@@ -26,6 +26,8 @@ namespace QuestPhoneStream.Editor
         private const string MaterialDir = "Assets/QuestPhoneStream/Materials";
         private const string PanelMaterialPath = MaterialDir + "/PhonePanel.mat";
         private const string PanelShaderName = "QuestPhoneStream/UnlitVideo";
+        private const string PanoramicMaterialPath = MaterialDir + "/UnityPanoramic.mat";
+        private const string PanoramicShaderName = "Skybox/Panoramic";
 
         [MenuItem("QuestPhoneStream/Create MVP Scene")]
         public static void CreateMvpScene()
@@ -45,6 +47,7 @@ namespace QuestPhoneStream.Editor
             light.transform.rotation = Quaternion.Euler(45f, 25f, 0f);
 
             var material = EnsurePanelMaterial();
+            var panoramicMaterial = EnsureUnityPanoramicMaterial();
 
             var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
             panel.name = "PhonePanel";
@@ -71,6 +74,8 @@ namespace QuestPhoneStream.Editor
             receiver.xrUiRig = app.AddComponent<QuestXrUiRig>();
             receiver.xrUiRig.actionAsset = AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/QuestPhoneStream/Resources/QuestUi.inputactions");
             receiver.targetMaterial = material;
+            receiver.panoramicMaterialTemplate = panoramicMaterial;
+            receiver.vrBackend = VrBackend.UnityPanoramic;
             mapper.rayCamera = camera;
             mapper.panelCollider = panel.GetComponent<Collider>();
             mapper.controlChannel = control;
@@ -93,6 +98,7 @@ namespace QuestPhoneStream.Editor
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             }
             EnsurePanelMaterial();
+            EnsureUnityPanoramicMaterial();
             AssetDatabase.SaveAssets();
 
             const string output = "Builds/QuestPhoneStream.apk";
@@ -163,6 +169,36 @@ namespace QuestPhoneStream.Editor
                 EditorUtility.SetDirty(material);
             }
             if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
+            return material;
+        }
+
+        private static Material EnsureUnityPanoramicMaterial()
+        {
+            Directory.CreateDirectory(MaterialDir);
+            var shader = Shader.Find(PanoramicShaderName);
+            if (shader == null)
+                throw new InvalidOperationException("Unity Skybox/Panoramic shader was not found; VR panoramic backend cannot be built");
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(PanoramicMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, PanoramicMaterialPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+
+            if (material.HasProperty("_Mapping")) material.SetFloat("_Mapping", 1f); // Latitude Longitude
+            if (material.HasProperty("_ImageType")) material.SetFloat("_ImageType", 0f); // 360
+            if (material.HasProperty("_Layout")) material.SetFloat("_Layout", 0f); // Mono
+            if (material.HasProperty("_MirrorOnBack")) material.SetFloat("_MirrorOnBack", 0f);
+            if (material.HasProperty("_Rotation")) material.SetFloat("_Rotation", 0f);
+            if (material.HasProperty("_Exposure")) material.SetFloat("_Exposure", 1f);
+            if (material.HasProperty("_Tint")) material.SetColor("_Tint", Color.white);
+            EditorUtility.SetDirty(material);
             return material;
         }
 

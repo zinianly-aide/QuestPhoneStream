@@ -16,6 +16,8 @@ namespace QuestPhoneStream
         public Transform mediaPanelAnchor;
         public Material targetMaterial;
         public Material vrMaterialTemplate;
+        public Material panoramicMaterialTemplate;
+        public VrBackend vrBackend = VrBackend.UnityPanoramic;
         public Renderer phoneScreenRenderer;
         public int textureWidth = 1280, textureHeight = 720;
         public bool connectOnStart = true;
@@ -76,7 +78,8 @@ namespace QuestPhoneStream
         {
             if (mediaPlayback != null)
             {
-                mediaPlayback.vrRenderer?.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
+                if (mediaPlayback.vrRenderer != null) mediaPlayback.vrRenderer.vrBackend = vrBackend;
+                mediaPlayback.vrRenderer?.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate, panoramicMaterialTemplate);
                 mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
                 ConfigureFlatMediaPanel();
                 return;
@@ -99,7 +102,8 @@ namespace QuestPhoneStream
             if (targetMaterial != null) meshRenderer.material = new Material(targetMaterial);
             mediaPlayback = panel.AddComponent<MediaPlaybackController>();
             mediaPlayback.renderer.targetRenderer = meshRenderer;
-            mediaPlayback.vrRenderer.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate);
+            mediaPlayback.vrRenderer.vrBackend = vrBackend;
+            mediaPlayback.vrRenderer.Initialize(xrCamera, mediaPlayback.renderer, vrMaterialTemplate, panoramicMaterialTemplate);
             mediaPlayback.phoneScreenRenderer = phoneScreenRenderer;
             ConfigureFlatMediaPanel();
             panel.SetActive(false);
