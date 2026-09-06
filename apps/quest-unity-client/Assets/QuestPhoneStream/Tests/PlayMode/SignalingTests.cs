@@ -111,6 +111,11 @@ namespace QuestPhoneStream.Tests
             var pending = new TaskCompletionSource<bool>();
             Set("<IsConnecting>k__BackingField", true);
             Set("_attempt", pending.Task);
+            Set("_activeSignalingUrl", _client.signalingUrl);
+            Set("_activeSession", "s");
+            Set("_activeQuest", "q");
+            Set("_activeAndroid", "a");
+            Set("_activeToken", _client.token);
             Assert.AreSame(pending.Task, _client.ReconnectAsync());
             Assert.AreSame(pending.Task, _client.ReconnectAsync());
             pending.SetResult(false);
