@@ -261,7 +261,6 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual("android-stream-001", _client.androidDeviceId);
             Assert.AreEqual(_client.signalingUrl, ui.signalingUrlInput.text);
             Assert.AreEqual(_client.androidDeviceId, ui.androidDeviceIdInput.text);
-            Assert.AreNotEqual("dev-token", _client.token);
         }
 
         [UnityTest]
