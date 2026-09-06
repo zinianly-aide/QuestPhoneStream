@@ -215,6 +215,8 @@ namespace QuestPhoneStream.Tests
             {
                 LogAssert.Expect(LogType.Error,
                     "[VrMediaRenderer] UnityPanoramic shader is unavailable. Assign the explicit UnityPanoramic.mat asset or include Skybox/Panoramic in the build.");
+                LogAssert.Expect(LogType.Error,
+                    "[VrMediaRenderer] Apply failed: UnityPanoramic backend is unavailable; VR media was not shown. projection=Equirectangular fov=360 stereo=Mono eye=Lr shader=Unlit/Color sphereVisible=False");
                 vr.Apply(texture, ProjectionMode.Equirectangular, 360, StereoMode.Mono, EyeOrder.Lr);
                 Assert.IsFalse(vr.IsVrVisible);
                 Assert.IsFalse(vr.IsPanoramicVisible);
