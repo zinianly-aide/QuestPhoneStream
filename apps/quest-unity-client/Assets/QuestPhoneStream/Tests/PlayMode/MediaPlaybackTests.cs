@@ -41,6 +41,17 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(EyeOrder.Rl, profile.eyeOrder);
         }
 
+        [Test]
+        public void PanoramicRotationMatchesUnitySkyboxYawSign()
+        {
+            Assert.That(VrMediaRenderer.CameraYawForForward(Vector3.left), Is.EqualTo(-90f).Within(0.001f));
+            Assert.That(VrMediaRenderer.PanoramicRotationForForward(Vector3.forward), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(VrMediaRenderer.PanoramicRotationForForward(Vector3.right), Is.EqualTo(90f).Within(0.001f));
+            Assert.That(VrMediaRenderer.PanoramicRotationForForward(Vector3.back), Is.EqualTo(180f).Within(0.001f));
+            Assert.That(VrMediaRenderer.PanoramicRotationForForward(Vector3.left), Is.EqualTo(270f).Within(0.001f));
+            Assert.That(VrMediaRenderer.PanoramicRotationForForward(new Vector3(1f, 4f, 0f)), Is.EqualTo(90f).Within(0.001f));
+        }
+
         [UnityTest]
         public IEnumerator StopReleasesMediaResourcesAndLeavesPhoneMode()
         {
@@ -89,11 +100,15 @@ namespace QuestPhoneStream.Tests
             flatObject.transform.SetParent(_object.transform, false);
             var flat = _object.AddComponent<FlatMediaRenderer>();
             flat.targetRenderer = flatObject.GetComponent<Renderer>();
+            var cameraObject = new GameObject("xr camera");
+            cameraObject.transform.rotation = Quaternion.Euler(0f, 30f, 0f);
+            var camera = cameraObject.AddComponent<Camera>();
             var vr = _object.AddComponent<VrMediaRenderer>();
-            vr.Initialize(null, flat);
+            vr.Initialize(camera, flat);
             vr.vrBackend = VrBackend.UnityPanoramic;
             var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
             texture.Create();
+            Material panoramicMaterial = null;
 
             try
             {
@@ -111,12 +126,19 @@ namespace QuestPhoneStream.Tests
                     Assert.IsTrue(vr.IsVrVisible);
                     Assert.IsTrue(vr.IsPanoramicVisible);
                     Assert.IsFalse(flat.targetRenderer.enabled);
+                    Assert.AreSame(texture, RenderSettings.skybox.GetTexture("_MainTex"));
+                    panoramicMaterial = RenderSettings.skybox;
+                    Assert.AreEqual(mode.Fov == 180 ? 1f : 0f, RenderSettings.skybox.GetFloat("_ImageType"));
+                    Assert.AreEqual(mode.Stereo == StereoMode.Sbs ? 1f : 0f, RenderSettings.skybox.GetFloat("_Layout"));
                 }
+                Assert.That(RenderSettings.skybox.GetFloat("_Rotation"), Is.EqualTo(30f).Within(0.001f));
 
                 vr.Apply(texture, ProjectionMode.Flat, 360, StereoMode.Mono, EyeOrder.Lr);
                 Assert.IsFalse(vr.IsVrVisible);
                 Assert.IsFalse(vr.IsPanoramicVisible);
                 Assert.AreSame(originalSkybox, RenderSettings.skybox);
+                Assert.IsNotNull(panoramicMaterial);
+                Assert.IsNull(panoramicMaterial.GetTexture("_MainTex"));
                 Assert.IsTrue(flat.targetRenderer.enabled);
             }
             finally
@@ -126,6 +148,86 @@ namespace QuestPhoneStream.Tests
                 texture.Release();
                 Object.Destroy(texture);
                 Object.Destroy(flatObject);
+                Object.Destroy(cameraObject);
+            }
+
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ManualPanoramicRecenterUpdatesMaterialRotation()
+        {
+            var originalSkybox = RenderSettings.skybox;
+            var flatObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            flatObject.transform.SetParent(_object.transform, false);
+            var flat = _object.AddComponent<FlatMediaRenderer>();
+            flat.targetRenderer = flatObject.GetComponent<Renderer>();
+            var cameraObject = new GameObject("xr camera");
+            var camera = cameraObject.AddComponent<Camera>();
+            var vr = _object.AddComponent<VrMediaRenderer>();
+            vr.Initialize(camera, flat);
+            vr.vrBackend = VrBackend.UnityPanoramic;
+            var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
+            texture.Create();
+
+            try
+            {
+                camera.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
+                vr.Apply(texture, ProjectionMode.Equirectangular, 360, StereoMode.Mono, EyeOrder.Lr);
+                var firstRotation = RenderSettings.skybox.GetFloat("_Rotation");
+                camera.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+                Assert.IsTrue(vr.RecenterPanoramic());
+                var secondRotation = RenderSettings.skybox.GetFloat("_Rotation");
+                Assert.AreNotEqual(firstRotation, secondRotation);
+                Assert.That(secondRotation, Is.EqualTo(90f).Within(0.001f));
+            }
+            finally
+            {
+                vr.Release();
+                Assert.AreSame(originalSkybox, RenderSettings.skybox);
+                texture.Release();
+                Object.Destroy(texture);
+                Object.Destroy(flatObject);
+                Object.Destroy(cameraObject);
+            }
+
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator PanoramicFailureKeepsFlatRendererAndOriginalSkybox()
+        {
+            var originalSkybox = RenderSettings.skybox;
+            var flatObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            flatObject.transform.SetParent(_object.transform, false);
+            var flat = _object.AddComponent<FlatMediaRenderer>();
+            flat.targetRenderer = flatObject.GetComponent<Renderer>();
+            var cameraObject = new GameObject("xr camera");
+            var camera = cameraObject.AddComponent<Camera>();
+            var invalidMaterial = new Material(Shader.Find("Unlit/Color"));
+            var vr = _object.AddComponent<VrMediaRenderer>();
+            vr.Initialize(camera, flat, null, invalidMaterial);
+            vr.vrBackend = VrBackend.UnityPanoramic;
+            var texture = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32);
+            texture.Create();
+
+            try
+            {
+                vr.Apply(texture, ProjectionMode.Equirectangular, 360, StereoMode.Mono, EyeOrder.Lr);
+                Assert.IsFalse(vr.IsVrVisible);
+                Assert.IsFalse(vr.IsPanoramicVisible);
+                Assert.IsTrue(flat.targetRenderer.enabled);
+                Assert.AreSame(texture, flat.targetRenderer.material.mainTexture);
+                Assert.AreSame(originalSkybox, RenderSettings.skybox);
+            }
+            finally
+            {
+                vr.Release();
+                Object.Destroy(invalidMaterial);
+                texture.Release();
+                Object.Destroy(texture);
+                Object.Destroy(flatObject);
+                Object.Destroy(cameraObject);
             }
 
             yield return null;

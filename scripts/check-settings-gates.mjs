@@ -237,9 +237,24 @@ test("UnityPanoramic backend is an explicit skybox POC and does not create a sph
   assert.match(mediaRenderer, /SetFloat\("_Mapping", 1f\)/);
   assert.match(mediaRenderer, /SetFloat\("_ImageType", fov == 180 \? 1f : 0f\)/);
   assert.match(mediaRenderer, /SetFloat\("_Layout", stereo == StereoMode\.Sbs \? 1f : 0f\)/);
+  assert.match(mediaRenderer, /UnityPanoramic backend does not support RL eye order yet/);
+  assert.match(mediaRenderer, /public static float CameraYawForForward\(Vector3 cameraForward\)/);
+  assert.match(mediaRenderer, /Vector3\.ProjectOnPlane\(cameraForward, Vector3\.up\)/);
+  assert.match(mediaRenderer, /Mathf\.Atan2\(horizontal\.x, horizontal\.z\)/);
+  assert.match(mediaRenderer, /Mathf\.Repeat\(CameraYawForForward\(cameraForward\), 360f\)/);
+  assert.match(mediaRenderer, /public bool RecenterPanoramic\(\)/);
+  assert.match(mediaRenderer, /_panoramicMaterial\.SetFloat\("_Rotation", newRotation\)/);
+  assert.match(mediaRenderer, /RecenterPanoramic\(\);/);
+  assert.match(mediaRenderer, /flatRenderer\?\.SetTexture\(texture\)/);
+  assert.match(mediaRenderer, /flatRenderer\.targetRenderer\.enabled = true/);
+  assert.match(mediaRenderer, /UnityPanoramic backend is unavailable/);
+  assert.match(mediaRenderer, /backend=\{vrBackend\} projection=\{projection\} fov=\{fov\} stereo=\{stereo\} eyeOrder=\{eyeOrder\}/);
+  assert.match(mediaRenderer, /cameraYaw=\{cameraYaw\} panoramicRotation=\{panoramicRotation\}/);
+  assert.match(mediaRenderer, /_MainTex assigned=\{PanoramicTextureAssigned\(\)\} _ImageType=\{imageType\} _Layout=\{layout\}/);
+  assert.match(mediaRenderer, /skyboxChanged=\{_lastSkyboxChanged\}/);
   const panoramicBranch = mediaRenderer.slice(mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)"), mediaRenderer.indexOf("RestoreOriginalSkybox();", mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)")));
   assert.doesNotMatch(panoramicBranch, /EnsureSphere|CreatePrimitive\(PrimitiveType\.Sphere\)/);
-  assert.match(mediaRenderer, /backend=\{vrBackend\} shader=\{ShaderName\(\)\} sphereVisible=\{IsSphereVisible\}/);
+  assert.match(mediaRenderer, /backend=\{vrBackend\}[\s\S]*shader=\{ShaderName\(\)\}[\s\S]*sphereVisible=\{IsSphereVisible\}/);
   assert.match(build, /PanoramicMaterialPath = MaterialDir \+ "\/UnityPanoramic\.mat"/);
   assert.match(build, /PanoramicShaderName = "Skybox\/Panoramic"/);
   assert.match(build, /EnsureUnityPanoramicMaterial\(\)/);
@@ -252,6 +267,14 @@ test("UnityPanoramic backend is an explicit skybox POC and does not create a sph
   assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /panoramicMaterialTemplate: \{fileID: 2100000, guid: 5e7d2b8c9f4a4e1b8c2d6f3071a9b5e4, type: 2\}/);
   assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /vrBackend: 1/);
   assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /UnityPanoramicBackendUsesSkyboxForAllFlatAndStereoModes/);
+  assert.match(mediaUi, /private Button _recenterButton/);
+  assert.match(mediaUi, /MakeButton\(parent, "Recenter"/);
+  assert.match(mediaUi, /_playback\.Profile\.projection == ProjectionMode\.Equirectangular/);
+  assert.match(mediaUi, /_playback\.vrRenderer\.vrBackend == VrBackend\.UnityPanoramic/);
+  assert.match(mediaUi, /_playback\?\.vrRenderer\?\.RecenterPanoramic\(\)/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /PanoramicRotationMatchesUnitySkyboxYawSign/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /ManualPanoramicRecenterUpdatesMaterialRotation/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /PanoramicFailureKeepsFlatRendererAndOriginalSkybox/);
 });
 
 test("Flat playback preserves aspect ratio and gates XRI interaction by projection", () => {

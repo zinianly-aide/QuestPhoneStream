@@ -28,12 +28,29 @@ namespace QuestPhoneStream
         private bool _skyboxSaved;
         private bool _vrVisible;
         private bool _panoramicVisible;
+        private bool _lastSkyboxChanged;
 
         public bool IsVrVisible => vrBackend == VrBackend.UnityPanoramic
             ? _panoramicVisible && _panoramicMaterial != null && RenderSettings.skybox == _panoramicMaterial
             : IsSphereVisible;
         public bool IsPanoramicVisible => _panoramicVisible;
         public bool IsSphereVisible => _vrVisible && _sphere != null && _sphere.activeSelf;
+
+        /// <summary>
+        /// Converts a camera's horizontal forward direction to the Unity
+        /// Skybox/Panoramic _Rotation value. The built-in shader rotates the
+        /// panorama around Y before sampling, so the matching sign is the
+        /// camera yaw: +90 degrees camera yaw maps to +90 degrees material yaw.
+        /// </summary>
+        public static float CameraYawForForward(Vector3 cameraForward)
+        {
+            var horizontal = Vector3.ProjectOnPlane(cameraForward, Vector3.up);
+            if (horizontal.sqrMagnitude < 0.0001f) return 0f;
+            return Mathf.Atan2(horizontal.x, horizontal.z) * Mathf.Rad2Deg;
+        }
+
+        public static float PanoramicRotationForForward(Vector3 cameraForward) =>
+            Mathf.Repeat(CameraYawForForward(cameraForward), 360f);
 
         public void Initialize(Camera camera, FlatMediaRenderer flat, Material materialTemplate = null, Material panoramicTemplate = null)
         {
@@ -50,6 +67,7 @@ namespace QuestPhoneStream
                 Debug.LogError($"[VrMediaRenderer] Apply failed: texture=null projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsVrVisible}");
                 return;
             }
+            _lastSkyboxChanged = false;
             if (projection == ProjectionMode.Flat)
             {
                 HideVr();
@@ -65,7 +83,8 @@ namespace QuestPhoneStream
                 if (!ApplyUnityPanoramic(texture, fov, stereo, eyeOrder))
                 {
                     RestoreOriginalSkybox();
-                    if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = false;
+                    flatRenderer?.SetTexture(texture);
+                    if (flatRenderer?.targetRenderer != null) flatRenderer.targetRenderer.enabled = true;
                     Debug.LogError($"[VrMediaRenderer] Apply failed: UnityPanoramic backend is unavailable; VR media was not shown. " +
                         $"projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} shader={ShaderName()} sphereVisible={IsSphereVisible}");
                     LogApply(projection, fov, stereo, eyeOrder);
@@ -128,14 +147,36 @@ namespace QuestPhoneStream
             if (_panoramicMaterial.HasProperty("_ImageType")) _panoramicMaterial.SetFloat("_ImageType", fov == 180 ? 1f : 0f); // 180 / 360
             if (_panoramicMaterial.HasProperty("_Layout")) _panoramicMaterial.SetFloat("_Layout", stereo == StereoMode.Sbs ? 1f : 0f); // None / Side by Side
             if (_panoramicMaterial.HasProperty("_MirrorOnBack")) _panoramicMaterial.SetFloat("_MirrorOnBack", 0f);
-            if (_panoramicMaterial.HasProperty("_Rotation")) _panoramicMaterial.SetFloat("_Rotation", 0f);
             if (eyeOrder == EyeOrder.Rl && stereo == StereoMode.Sbs)
             {
-                Debug.LogWarning("[VrMediaRenderer] UnityPanoramic uses Unity's standard LR SBS layout; EyeOrder=Rl requires SphereCustom.");
+                Debug.LogWarning("[VrMediaRenderer] UnityPanoramic backend does not support RL eye order yet; use SphereCustom for RL.");
             }
 
+            _lastSkyboxChanged = RenderSettings.skybox != _panoramicMaterial;
             RenderSettings.skybox = _panoramicMaterial;
             _panoramicVisible = true;
+            return RecenterPanoramic();
+        }
+
+        public bool RecenterPanoramic()
+        {
+            if (vrBackend != VrBackend.UnityPanoramic || !_panoramicVisible ||
+                _panoramicMaterial == null || !_panoramicMaterial.HasProperty("_Rotation"))
+            {
+                Debug.LogWarning("[VrMediaRenderer] RecenterPanoramic ignored: UnityPanoramic backend is not active.");
+                return false;
+            }
+            if (xrCamera == null)
+            {
+                Debug.LogError("[VrMediaRenderer] RecenterPanoramic failed: xrCamera is unavailable.");
+                return false;
+            }
+
+            var oldRotation = _panoramicMaterial.GetFloat("_Rotation");
+            var newRotation = PanoramicRotationForForward(xrCamera.transform.forward);
+            _panoramicMaterial.SetFloat("_Rotation", newRotation);
+            Debug.Log($"[VrMediaRenderer] RecenterPanoramic oldRotation={oldRotation:F1} -> newRotation={newRotation:F1} " +
+                $"cameraYaw={CameraYawForForward(xrCamera.transform.forward):F1}");
             return true;
         }
 
@@ -217,9 +258,27 @@ namespace QuestPhoneStream
 
         private void LogApply(ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder)
         {
-            Debug.Log($"[VrMediaRenderer] Apply projection={projection} fov={fov} stereo={stereo} eye={eyeOrder} " +
-                $"backend={vrBackend} shader={ShaderName()} sphereVisible={IsSphereVisible} panoramicVisible={_panoramicVisible}");
+            var cameraYaw = CameraYawForLog();
+            var panoramicRotation = PanoramicRotationForLog();
+            var imageType = PanoramicFloat("_ImageType");
+            var layout = PanoramicFloat("_Layout");
+            Debug.Log($"[VrMediaRenderer] Apply backend={vrBackend} projection={projection} fov={fov} stereo={stereo} eyeOrder={eyeOrder} " +
+                $"cameraYaw={cameraYaw} panoramicRotation={panoramicRotation} shader={ShaderName()} " +
+                $"_MainTex assigned={PanoramicTextureAssigned()} _ImageType={imageType} _Layout={layout} " +
+                $"sphereVisible={IsSphereVisible} panoramicVisible={_panoramicVisible} " +
+                $"skyboxChanged={_lastSkyboxChanged}");
         }
+
+        private string CameraYawForLog() => xrCamera == null ? "<unavailable>" : CameraYawForForward(xrCamera.transform.forward).ToString("F1");
+
+        private string PanoramicRotationForLog() => _panoramicMaterial == null || !_panoramicMaterial.HasProperty("_Rotation")
+            ? "<unavailable>" : _panoramicMaterial.GetFloat("_Rotation").ToString("F1");
+
+        private string PanoramicFloat(string property) => _panoramicMaterial == null || !_panoramicMaterial.HasProperty(property)
+            ? "<unavailable>" : _panoramicMaterial.GetFloat(property).ToString("F0");
+
+        private bool PanoramicTextureAssigned() => _panoramicMaterial != null && _panoramicMaterial.HasProperty("_MainTex") &&
+            _panoramicMaterial.GetTexture("_MainTex") != null;
 
         private void OnDisable() => HideVr();
 

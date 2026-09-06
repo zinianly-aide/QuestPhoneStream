@@ -20,6 +20,7 @@ namespace QuestPhoneStream
         private Button _playPause;
         private Text _timeText;
         private Button _modeButton, _stereoButton, _eyeButton;
+        private Button _recenterButton;
         private Button _flatScaleDownButton, _flatScaleUpButton, _flatRotateButton, _flatResetButton;
         private MediaItemDto _selectedItem;
         private MediaVideoProfile _selectedProfile = MediaVideoProfile.Default;
@@ -108,6 +109,7 @@ namespace QuestPhoneStream
                 if (label != null) label.text = _playback.State == MediaPlaybackState.Playing ? "Pause" : "Resume";
             }
             UpdateFlatInteractionControls();
+            UpdateRecenterControl();
         }
 
         private void SetStatus(string message)
@@ -206,7 +208,10 @@ namespace QuestPhoneStream
                 _selectedProfile.eyeOrder = _selectedProfile.eyeOrder == EyeOrder.Lr ? EyeOrder.Rl : EyeOrder.Lr;
                 ApplySelectedProfile(true);
             });
+            _recenterButton = MakeButton(parent, "Recenter", new Vector2(.68f,.54f), new Vector2(.95f,.60f));
+            _recenterButton.onClick.AddListener(() => _playback?.vrRenderer?.RecenterPanoramic());
             UpdateProfileControls();
+            UpdateRecenterControl();
         }
 
         private void BuildFlatInteractionControls(Transform parent)
@@ -233,6 +238,18 @@ namespace QuestPhoneStream
                 button.gameObject.SetActive(active);
                 button.interactable = active;
             }
+        }
+
+        private void UpdateRecenterControl()
+        {
+            var active = _playback != null && _playback.IsMediaMode &&
+                _playback.Profile.projection == ProjectionMode.Equirectangular &&
+                _playback.vrRenderer != null &&
+                _playback.vrRenderer.vrBackend == VrBackend.UnityPanoramic &&
+                _playback.vrRenderer.IsPanoramicVisible;
+            if (_recenterButton == null) return;
+            _recenterButton.gameObject.SetActive(active);
+            _recenterButton.interactable = active;
         }
 
         private void ApplySelectedProfile(bool manualOverride)
