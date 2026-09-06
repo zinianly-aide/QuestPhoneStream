@@ -82,7 +82,7 @@ namespace QuestPhoneStream
             _settingsUI.videoLibraryButton = videoBtn;
 
             var statusRight = 0.95f;
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
             CreateButton(panel, "Developer Tools", 8, 0.52f, out var developerToolsButton);
             _settingsUI.developerToolsButton = developerToolsButton;
             var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();

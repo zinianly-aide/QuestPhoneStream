@@ -16,76 +16,92 @@ internal class MediaNsdRegistration(
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
     private val deviceId = MediaDeviceIdentity.getOrCreateDeviceId(context)
     private val deviceName = MediaDeviceIdentity.displayName()
+    private val advertisements = listOf(
+        Advertisement(UNIFIED_SERVICE_TYPE, "media,screen,control"),
+        Advertisement(LEGACY_SERVICE_TYPE, "media")
+    )
     private var started = false
-    private var registered = false
+    private val registeredTypes = mutableSetOf<String>()
     private var multicastLock: WifiManager.MulticastLock? = null
     private var multicastLockHeld = false
 
-    private val registrationListener = object : NsdManager.RegistrationListener {
-        override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
-            if (!started) {
-                runCatching { nsdManager.unregisterService(this) }
-                return
-            }
-            registered = true
-            Log.i(TAG, "Media NSD registered name=${serviceInfo.serviceName} type=${serviceInfo.serviceType} port=${serviceInfo.port}")
-        }
-
-        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            registered = false
-            started = false
-            releaseMulticastLock()
-            Log.e(TAG, "Media NSD registration failed error=$errorCode")
-        }
-
-        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
-            registered = false
-            started = false
-            releaseMulticastLock()
-            Log.i(TAG, "Media NSD unregistered name=${serviceInfo.serviceName}")
-        }
-
-        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            registered = false
-            started = false
-            releaseMulticastLock()
-            Log.w(TAG, "Media NSD unregistration failed error=$errorCode")
-        }
-    }
+    private val registrationListeners = advertisements.associate { it.type to createRegistrationListener(it.type) }
 
     fun start() {
         if (started) return
         started = true
         acquireMulticastLock()
         runCatching {
-            val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "QuestPhoneStream"
-                serviceType = SERVICE_TYPE
-                port = portProvider()
-                setAttribute("v", "1")
-                setAttribute("id", deviceId)
-                setAttribute("name", deviceName)
-                setAttribute("caps", "media")
+            advertisements.forEach { advertisement ->
+                val serviceInfo = NsdServiceInfo().apply {
+                    serviceName = "QuestPhoneStream"
+                    serviceType = advertisement.type
+                    port = portProvider()
+                    setAttribute("v", "1")
+                    setAttribute("id", deviceId)
+                    setAttribute("name", deviceName)
+                    setAttribute("caps", advertisement.capabilities)
+                }
+                nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListeners.getValue(advertisement.type))
             }
-            nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
         }.onFailure {
             started = false
-            registered = false
+            unregisterRegisteredServices()
+            registeredTypes.clear()
             releaseMulticastLock()
             Log.e(TAG, "Media NSD start failed: ${it.javaClass.simpleName}: ${it.message}")
         }
     }
 
     fun stop() {
-        if (!started && !registered && multicastLock == null) return
+        if (!started && registeredTypes.isEmpty() && multicastLock == null) return
         started = false
         try {
-            if (registered) nsdManager.unregisterService(registrationListener)
+            unregisterRegisteredServices()
         } catch (error: Exception) {
             Log.w(TAG, "Media NSD stop failed: ${error.javaClass.simpleName}: ${error.message}")
         } finally {
-            registered = false
+            registeredTypes.clear()
             releaseMulticastLock()
+        }
+    }
+
+    private fun createRegistrationListener(type: String) = object : NsdManager.RegistrationListener {
+        override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
+            if (!started) {
+                runCatching { nsdManager.unregisterService(this) }
+                return
+            }
+            registeredTypes += type
+            Log.i(TAG, "Media NSD registered name=${serviceInfo.serviceName} type=${serviceInfo.serviceType} port=${serviceInfo.port}")
+        }
+
+        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+            registeredTypes -= type
+            started = false
+            unregisterRegisteredServices()
+            releaseMulticastLock()
+            Log.e(TAG, "Media NSD registration failed type=$type error=$errorCode")
+        }
+
+        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
+            registeredTypes -= type
+            if (!started && registeredTypes.isEmpty()) releaseMulticastLock()
+            Log.i(TAG, "Media NSD unregistered name=${serviceInfo.serviceName} type=$type")
+        }
+
+        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+            registeredTypes -= type
+            if (!started && registeredTypes.isEmpty()) releaseMulticastLock()
+            Log.w(TAG, "Media NSD unregistration failed type=$type error=$errorCode")
+        }
+    }
+
+    private fun unregisterRegisteredServices() {
+        registeredTypes.toList().forEach { type ->
+            registrationListeners[type]?.let { listener ->
+                runCatching { nsdManager.unregisterService(listener) }
+            }
         }
     }
 
@@ -116,7 +132,11 @@ internal class MediaNsdRegistration(
     }
 
     companion object {
-        const val SERVICE_TYPE = "_qps-media._tcp."
+        const val UNIFIED_SERVICE_TYPE = "_qps-device._tcp."
+        const val LEGACY_SERVICE_TYPE = "_qps-media._tcp."
+        const val SERVICE_TYPE = LEGACY_SERVICE_TYPE
         private const val TAG = "QuestPhoneStreamNSD"
     }
+
+    private data class Advertisement(val type: String, val capabilities: String)
 }

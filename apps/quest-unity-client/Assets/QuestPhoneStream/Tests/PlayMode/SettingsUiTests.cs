@@ -235,6 +235,16 @@ namespace QuestPhoneStream.Tests
             Assert.IsFalse(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(false, true));
         }
 
+        [Test]
+        public void UnifiedDeviceCapabilitiesRemainDiscoverableWithoutSecrets()
+        {
+            var device = new MediaDeviceInfo { capabilities = "media,screen,control" };
+            Assert.IsTrue(device.HasCapability("media"));
+            Assert.IsTrue(device.HasCapability("screen"));
+            Assert.IsTrue(device.HasCapability("control"));
+            Assert.IsFalse(device.HasCapability("token"));
+        }
+
         [UnityTest]
         public IEnumerator DeveloperToolsIsAnAdvancedSettingsChildPage()
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -34,10 +35,12 @@ namespace QuestPhoneStream
         private Text _ipText, _portText, _statusText, _commandText, _helpText;
         private Action _onBack;
         private bool _initialized;
+        private Coroutine _probeRoutine;
+        private int _probeGeneration;
 
         public bool IsVisible => _page != null && _page.activeInHierarchy;
         public static bool IsDeveloperToolsAvailable =>
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
             true;
 #else
             false;
@@ -62,6 +65,7 @@ namespace QuestPhoneStream
 
         public void Hide()
         {
+            CancelProbe();
             if (_page != null) _page.SetActive(false);
         }
 
@@ -69,6 +73,7 @@ namespace QuestPhoneStream
         {
             if (!_initialized || !IsVisible) return;
 
+            CancelProbe();
             var ip = GetCurrentIpv4();
             _ipText.text = "Quest IP: " + (string.IsNullOrEmpty(ip) ? "Unavailable" : ip);
             _portText.text = "ADB TCP: :" + DefaultAdbPort;
@@ -80,11 +85,9 @@ namespace QuestPhoneStream
                 return;
             }
 
-            var status = ProbePort(ip, DefaultAdbPort, MaxProbeTimeoutMs);
-            SetProbeState(status, BuildConnectCommand(ip, DefaultAdbPort));
-            _helpText.text = status == WirelessAdbStatus.NotListening
-                ? "One-time setup over USB:\nadb devices\nadb tcpip 5555\nThen connect with the command above."
-                : "Use the command above from a computer on the same Wi-Fi network.\nADB authentication is managed by Android.";
+            SetProbeState(WirelessAdbStatus.Unknown, BuildConnectCommand(ip, DefaultAdbPort));
+            _helpText.text = "Checking port 5555...";
+            _probeRoutine = StartCoroutine(ProbeRoutine(ip, _probeGeneration));
         }
 
         public static string SelectIpv4(IEnumerable<string> addresses)
@@ -140,6 +143,80 @@ namespace QuestPhoneStream
                 return WirelessAdbStatus.Unknown;
             }
         }
+
+        private IEnumerator ProbeRoutine(string ip, int generation)
+        {
+            WirelessAdbStatus status = WirelessAdbStatus.Unknown;
+            using (var client = new TcpClient())
+            {
+                IAsyncResult result;
+                try
+                {
+                    result = client.BeginConnect(ip, DefaultAdbPort, null, null);
+                }
+                catch (SocketException)
+                {
+                    status = WirelessAdbStatus.NotListening;
+                    result = null;
+                }
+                catch (Exception)
+                {
+                    result = null;
+                }
+
+                var deadline = Time.realtimeSinceStartup + MaxProbeTimeoutMs / 1000f;
+                while (result != null && !result.IsCompleted && Time.realtimeSinceStartup < deadline)
+                {
+                    if (generation != _probeGeneration || !IsVisible) yield break;
+                    yield return null;
+                }
+
+                if (generation != _probeGeneration || !IsVisible) yield break;
+                if (result == null)
+                {
+                    // Keep Unknown for unexpected socket setup failures.
+                }
+                else if (!result.IsCompleted)
+                {
+                    status = WirelessAdbStatus.NotListening;
+                }
+                else
+                {
+                    try
+                    {
+                        client.EndConnect(result);
+                        status = client.Connected ? WirelessAdbStatus.Listening : WirelessAdbStatus.NotListening;
+                    }
+                    catch (SocketException)
+                    {
+                        status = WirelessAdbStatus.NotListening;
+                    }
+                    catch (Exception)
+                    {
+                        status = WirelessAdbStatus.Unknown;
+                    }
+                }
+            }
+
+            if (generation != _probeGeneration || !IsVisible) yield break;
+            _probeRoutine = null;
+            SetProbeState(status, BuildConnectCommand(ip, DefaultAdbPort));
+            _helpText.text = status == WirelessAdbStatus.NotListening
+                ? "One-time setup over USB:\nadb devices\nadb tcpip 5555\nThen connect with the command above."
+                : "Use the command above from a computer on the same Wi-Fi network.\nADB authentication is managed by Android.";
+        }
+
+        private void CancelProbe()
+        {
+            ++_probeGeneration;
+            if (_probeRoutine != null)
+            {
+                StopCoroutine(_probeRoutine);
+                _probeRoutine = null;
+            }
+        }
+
+        private void OnDestroy() => CancelProbe();
 
         public static string StatusLabel(WirelessAdbStatus status)
         {

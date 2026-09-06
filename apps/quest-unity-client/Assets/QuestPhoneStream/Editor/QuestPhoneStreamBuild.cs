@@ -28,6 +28,7 @@ namespace QuestPhoneStream.Editor
         private const string PanelShaderName = "QuestPhoneStream/UnlitVideo";
         private const string PanoramicMaterialPath = MaterialDir + "/UnityPanoramic.mat";
         private const string PanoramicShaderName = "Skybox/Panoramic";
+        private const string DevToolsDefine = "QPS_DEV_TOOLS";
 
         [MenuItem("QuestPhoneStream/Create MVP Scene")]
         public static void CreateMvpScene()
@@ -89,6 +90,17 @@ namespace QuestPhoneStream.Editor
 
         public static void BuildAndroid()
         {
+            BuildAndroidInternal(false);
+        }
+
+        [MenuItem("QuestPhoneStream/Build Android (Development Tools)")]
+        public static void BuildAndroidDevelopmentTools()
+        {
+            BuildAndroidInternal(true);
+        }
+
+        private static void BuildAndroidInternal(bool includeDevTools)
+        {
             if (!File.Exists(ScenePath))
             {
                 CreateMvpScene();
@@ -123,13 +135,21 @@ namespace QuestPhoneStream.Editor
             PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android, MergeDefines(
                 PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android),
                 "USE_INPUT_SYSTEM_POSE_CONTROL",
-                "USE_STICK_CONTROL_THUMBSTICKS"));
+                "USE_STICK_CONTROL_THUMBSTICKS",
+                includeDevTools ? DevToolsDefine : string.Empty));
+            if (!includeDevTools)
+                PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android,
+                    RemoveDefine(PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android), DevToolsDefine));
 #else
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android, MergeDefines(
                 PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android),
                 "USE_INPUT_SYSTEM_POSE_CONTROL",
-                "USE_STICK_CONTROL_THUMBSTICKS"));
+                "USE_STICK_CONTROL_THUMBSTICKS",
+                includeDevTools ? DevToolsDefine : string.Empty));
+            if (!includeDevTools)
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android,
+                    RemoveDefine(PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android), DevToolsDefine));
 #endif
             EnsureAndroidExternalTools();
             EnsureAndroidOpenXrLoader();
@@ -140,7 +160,7 @@ namespace QuestPhoneStream.Editor
                 scenes = new[] { ScenePath },
                 locationPathName = output,
                 target = BuildTarget.Android,
-                options = BuildOptions.None
+                options = includeDevTools ? BuildOptions.Development | BuildOptions.AllowDebugging : BuildOptions.None
             });
 
             if (report.summary.result != BuildResult.Succeeded)
@@ -148,7 +168,7 @@ namespace QuestPhoneStream.Editor
                 throw new Exception($"QuestPhoneStream Android build failed: {report.summary.result}");
             }
 
-            Debug.Log($"QuestPhoneStream Android build succeeded: {output}");
+            Debug.Log($"QuestPhoneStream Android build succeeded: {output} (devTools={includeDevTools})");
         }
 
         private static Material EnsurePanelMaterial()
@@ -501,6 +521,7 @@ namespace QuestPhoneStream.Editor
             var defines = currentDefines.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var define in requiredDefines)
             {
+                if (string.IsNullOrWhiteSpace(define)) continue;
                 if (Array.IndexOf(defines, define) < 0)
                 {
                     currentDefines = string.IsNullOrWhiteSpace(currentDefines)
@@ -510,6 +531,15 @@ namespace QuestPhoneStream.Editor
             }
 
             return currentDefines;
+        }
+
+        private static string RemoveDefine(string currentDefines, string defineToRemove)
+        {
+            var defines = currentDefines.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var kept = new List<string>();
+            foreach (var define in defines)
+                if (!string.Equals(define, defineToRemove, StringComparison.Ordinal)) kept.Add(define);
+            return string.Join(";", kept.ToArray());
         }
 
         private static XRGeneralSettingsPerBuildTarget LoadOrCreateXrBuildTargetSettings()

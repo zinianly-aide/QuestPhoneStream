@@ -169,7 +169,13 @@ test("Quest normal flow is compact and keeps engineering fields behind Advanced 
 });
 
 test("Quest wireless ADB helper is developer-only and non-invasive", () => {
-  assert.match(factory, /#if DEVELOPMENT_BUILD \|\| UNITY_EDITOR[\s\S]*Developer Tools/);
+  assert.match(build, /DevToolsDefine = "QPS_DEV_TOOLS"/);
+  assert.match(build, /BuildAndroidDevelopmentTools/);
+  assert.match(build, /BuildAndroidInternal\(false\)/);
+  assert.match(build, /BuildAndroidInternal\(true\)/);
+  assert.match(build, /includeDevTools \? BuildOptions\.Development \| BuildOptions\.AllowDebugging : BuildOptions\.None/);
+  assert.match(build, /RemoveDefine\([\s\S]*DevToolsDefine/);
+  assert.match(factory, /#if QPS_DEV_TOOLS \|\| DEVELOPMENT_BUILD \|\| UNITY_EDITOR[\s\S]*Developer Tools/);
   assert.match(ui, /developerToolsButton/);
   assert.match(ui, /ShowDeveloperTools\(\)/);
   assert.match(wirelessAdb, /WIRELESS_DEBUGGING_SETTINGS/);
@@ -177,6 +183,10 @@ test("Quest wireless ADB helper is developer-only and non-invasive", () => {
   assert.match(wirelessAdb, /TryOpenSettings\(StartSettingsActivity\)/);
   assert.match(wirelessAdb, /MaxProbeTimeoutMs = 500/);
   assert.match(wirelessAdb, /BeginConnect/);
+  assert.match(wirelessAdb, /StartCoroutine\(ProbeRoutine/);
+  assert.match(wirelessAdb, /CancelProbe()/);
+  assert.match(wirelessAdb, /StopCoroutine\(_probeRoutine\)/);
+  assert.doesNotMatch(wirelessAdb.slice(wirelessAdb.indexOf("public void Refresh"), wirelessAdb.indexOf("public static string SelectIpv4")), /ProbePort\(/);
   assert.match(wirelessAdb, /adb connect \{ip\}:\{port\}/);
   assert.doesNotMatch(wirelessAdb, /Runtime\.exec|Process\.Start|WRITE_SECURE_SETTINGS|settings put global|service\.adb/);
   assert.doesNotMatch(wirelessAdb, /void Update\(/);
@@ -359,7 +369,7 @@ test("Android media server advertises a persistent UUID through NSD for its curr
   for (const attribute of ["v", "id", "name", "caps"])
     assert.match(androidNsd, new RegExp(`setAttribute\\("${attribute}"`));
   assert.match(androidNsd, /setAttribute\("v", "1"\)/);
-  assert.match(androidNsd, /setAttribute\("caps", "media"\)/);
+  assert.match(androidNsd, /Advertisement\(LEGACY_SERVICE_TYPE, "media"\)/);
   assert.match(androidNsd, /port = portProvider\(\)/);
   assert.match(androidIdentity, /UUID\.randomUUID\(\)/);
   assert.match(androidIdentity, /getSharedPreferences/);
@@ -379,6 +389,8 @@ test("Android media server advertises a persistent UUID through NSD for its curr
 
 test("Quest NSD discovery deduplicates by device id, resolves services, handles loss and brackets IPv6 URLs", () => {
   assert.match(mediaDiscovery, /ServiceType = "_qps-media\._tcp\."/);
+  assert.match(mediaDiscovery, /UnifiedServiceType = "_qps-device\._tcp\."/);
+  assert.match(mediaDiscovery, /DiscoveryServiceTypes = \{ UnifiedServiceType, LegacyServiceType \}/);
   assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$DiscoveryListener"\)/);
   assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$ResolveListener"\)/);
   assert.match(mediaDiscovery, /Dictionary<string, MediaDeviceInfo>/);
@@ -403,7 +415,8 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(mediaDiscovery, /normalizedHost\.IndexOf\(/);
   assert.match(mediaDiscovery, /normalizedHost = "\[" \+ normalizedHost\.Trim\('\[', '\]'\) \+ "\]"/);
   assert.match(mediaDiscovery, /TryGetReadyDevice/);
-  assert.match(mediaDiscovery, /capabilities != "media"/);
+  assert.doesNotMatch(mediaDiscovery, /capabilities != "media"/);
+  assert.match(mediaDiscovery, /string\.IsNullOrWhiteSpace\(capabilities\)/);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /MediaDeviceDiscovery mediaDiscovery/);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /SelectMediaDevice\(string deviceId\)/);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.SetMediaBaseUrl\(device\.BaseUrl\)/);
@@ -413,6 +426,21 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(home, /device\.IsReady \? "Ready" : "Lost"/);
   assert.match(home, /button\.interactable = device\.IsReady/);
   assert.match(home, /OnMediaDeviceSelected/);
+});
+
+test("Unified NSD advertises and discovers capabilities without secrets", () => {
+  assert.match(androidNsd, /UNIFIED_SERVICE_TYPE = "_qps-device\._tcp\."/);
+  assert.match(androidNsd, /Advertisement\(UNIFIED_SERVICE_TYPE, "media,screen,control"\)/);
+  assert.match(androidNsd, /Advertisement\(LEGACY_SERVICE_TYPE, "media"\)/);
+  assert.match(androidNsd, /advertisements\.forEach/);
+  assert.match(androidNsd, /registrationListeners\.getValue\(advertisement\.type\)/);
+  assert.doesNotMatch(androidNsd, /token|sessionId|session_id|secret/i);
+  assert.match(mediaDiscovery, /public string capabilities/);
+  assert.match(mediaDiscovery, /HasCapability\(string capability\)/);
+  assert.match(mediaDiscovery, /GetServiceKey\(serviceInfo\)/);
+  assert.match(mediaDiscovery, /device\.capabilities = MergeCapabilitiesForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /DiscoveryServiceTypes\.Length/);
+  assert.match(mediaDiscovery, /_manager == null[\s\S]*return false/);
 });
 
 test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => {
@@ -438,7 +466,7 @@ test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => 
 
 test("Android NSD registration can retry and scopes multicast lock to lifecycle", () => {
   assert.match(androidNsd, /started = false/);
-  assert.match(androidNsd, /registered = false/);
+  assert.match(androidNsd, /registeredTypes\.clear\(\)/);
   assert.match(androidNsd, /onRegistrationFailed[\s\S]*started = false[\s\S]*releaseMulticastLock/);
   assert.match(androidNsd, /fun stop\(\)[\s\S]*releaseMulticastLock\(\)/);
   assert.match(androidNsd, /if \(started\) return/);
