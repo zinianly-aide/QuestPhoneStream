@@ -28,6 +28,8 @@ namespace QuestPhoneStream
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesChanged;
         public event Action<string, SpatialCapabilityDescriptor[]> PeerCapabilitiesReceived;
         public event Action<string, SpatialCapabilityDescriptor[]> PeerCapabilitiesChanged;
+        public event Action<SpatialEnvelope> SubscriptionCreateRequested;
+        public event Action<SpatialEnvelope> SubscriptionCancelRequested;
         public event Action NegotiationInvalidated;
 
         private ClientWebSocket _socket;
@@ -100,8 +102,7 @@ namespace QuestPhoneStream
                 await SendAsync(new SignalMessage { type = "register", token = _activeToken, role = "quest", deviceId = _activeQuest }, epoch);
                 if (!await WaitFor(_registered.Task, signalingTimeoutMs, ConnectionState.SignalingFailed, epoch, cancellation)) return;
 
-                // Spatial v1 is an additive semantic control layer. It never replaces
-                // the legacy session/negotiation flow below and does not carry the legacy token.
+                // Spatial v1 remains the low-frequency semantic control plane.
                 await SendSpatialBootstrapAsync(epoch);
 
                 SetState(ConnectionState.SessionRequesting);
@@ -205,8 +206,6 @@ namespace QuestPhoneStream
             {
                 if (!string.IsNullOrEmpty(message.negotiationId) && message.negotiationId != NegotiationId) return;
                 if (!string.IsNullOrEmpty(message.sessionId) && message.sessionId != _activeSession) return;
-                // Old signaling servers reject additive Spatial message types. Preserve the
-                // legacy connection and let the normal session request determine readiness.
                 if (message.code == "bad_request" && string.IsNullOrEmpty(message.sessionId) &&
                     string.IsNullOrEmpty(message.negotiationId) &&
                     (State == ConnectionState.Registered || State == ConnectionState.SessionRequesting))
@@ -284,8 +283,12 @@ namespace QuestPhoneStream
                     return;
                 }
                 case "subscription.create":
+                    if (SubscriptionCreateRequested != null) SubscriptionCreateRequested.Invoke(message);
+                    else _ = SendSpatialErrorAsync(source, message.id, "not_implemented", "No subscription provider is registered", epoch);
+                    return;
                 case "subscription.cancel":
-                    _ = SendSpatialErrorAsync(source, message.id, "not_implemented", "Subscription data plane is not implemented", epoch);
+                    if (SubscriptionCancelRequested != null) SubscriptionCancelRequested.Invoke(message);
+                    else _ = SendSpatialErrorAsync(source, message.id, "not_implemented", "No subscription provider is registered", epoch);
                     return;
                 case "subscription.created":
                 case "subscription.closed":
@@ -307,6 +310,55 @@ namespace QuestPhoneStream
         private Task SendSpatialErrorAsync(string target, string correlationId, string code, string message, int epoch) =>
             SendSpatialAsync(SpatialWire.Create("protocol.error", _activeQuest, target,
                 SpatialWire.ErrorPayload(code, message), _activeSession, "", correlationId), epoch);
+
+        private bool CanReply(SpatialEnvelope request) =>
+            request != null && !_destroyed && IsOpen && request.source == _activeAndroid && request.target == _activeQuest;
+
+        public Task SendSubscriptionCreatedAsync(
+            SpatialEnvelope request,
+            string subscriptionId,
+            float rateHz,
+            string format,
+            string transport,
+            string reliability)
+        {
+            if (!CanReply(request)) return Task.CompletedTask;
+            var payload = new SpatialPayload
+            {
+                subscriptionId = subscriptionId,
+                capability = request.payload?.capability,
+                rateHz = rateHz,
+                format = format,
+                transport = transport,
+                reliability = reliability
+            };
+            return SendSpatialAsync(SpatialWire.Create(
+                "subscription.created", _activeQuest, request.source, payload,
+                _activeSession, subscriptionId, request.id), _epoch);
+        }
+
+        public Task SendSubscriptionClosedAsync(SpatialEnvelope request, string subscriptionId)
+        {
+            if (!CanReply(request)) return Task.CompletedTask;
+            var payload = new SpatialPayload
+            {
+                subscriptionId = subscriptionId,
+                capability = request.payload?.capability
+            };
+            return SendSpatialAsync(SpatialWire.Create(
+                "subscription.closed", _activeQuest, request.source, payload,
+                _activeSession, subscriptionId, request.id), _epoch);
+        }
+
+        public Task SendSpatialProtocolErrorAsync(SpatialEnvelope request, string code, string message, bool retryable)
+        {
+            if (!CanReply(request)) return Task.CompletedTask;
+            var payload = SpatialWire.ErrorPayload(code, message);
+            payload.retryable = retryable;
+            return SendSpatialAsync(SpatialWire.Create(
+                "protocol.error", _activeQuest, request.source, payload,
+                _activeSession, request.streamId ?? string.Empty, request.id), _epoch);
+        }
 
         private Task SendSpatialAsync(SpatialEnvelope envelope, int epoch) =>
             SendTextAsync(SpatialWire.Serialize(envelope), epoch);
@@ -386,8 +438,8 @@ namespace QuestPhoneStream
             }
         }
 
-        public bool ReportCapabilityState(string name, bool? authorized = null, bool? active = null) =>
-            _capabilities != null && _capabilities.UpdateState(name, authorized, active);
+        public bool ReportCapabilityState(string name, bool? authorized = null, bool? active = null, bool? available = null) =>
+            _capabilities != null && _capabilities.UpdateState(name, available: available, authorized: authorized, active: active);
 
         private void SetState(ConnectionState state)
         {
@@ -410,6 +462,8 @@ namespace QuestPhoneStream
             _spatialPeers.Clear();
             _capabilities?.UpdateState("display.consume", active: false);
             _capabilities?.UpdateState("display.control", active: false);
+            _capabilities?.UpdateState("xr.head.pose", active: false);
+            _capabilities?.UpdateState("xr.controller.pose", active: false);
             NegotiationId = null;
             _registered?.TrySetResult(false);
             _sessionReady?.TrySetResult(false);

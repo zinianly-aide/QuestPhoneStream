@@ -9,6 +9,8 @@ namespace QuestPhoneStream
     {
         public string id;
         public string name;
+        public string platform;
+        public string sourceType;
         public string[] protocolVersions;
     }
 
@@ -148,7 +150,13 @@ namespace QuestPhoneStream
             {
                 supportedVersions = selectedVersion == null ? new[] { Version } : null,
                 selectedVersion = selectedVersion,
-                device = new SpatialDeviceDescriptor { id = deviceId, name = deviceId, protocolVersions = new[] { Version } }
+                device = new SpatialDeviceDescriptor {
+                    id = deviceId,
+                    name = deviceId,
+                    platform = "quest",
+                    sourceType = "xr",
+                    protocolVersions = new[] { Version }
+                }
             };
         }
 

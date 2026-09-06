@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.WebRTC;
@@ -54,6 +55,30 @@ namespace QuestPhoneStream
         private string CurrentMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
             ? _settingsUI.mediaBaseUrlInput.text.Trim()
             : PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", string.Empty).Trim();
+
+        /// <summary>
+        /// Creates the dedicated unreliable/unordered Spatial data channel on the
+        /// existing WebRTC peer. We only do this when the legacy control channel is
+        /// already open, which guarantees the SCTP m-line was negotiated by the offer.
+        /// </summary>
+        public RTCDataChannel CreateSpatialDataChannel()
+        {
+            if (_peer == null || !_peerConnected || !IsControlConnected) return null;
+            try
+            {
+                return _peer.CreateDataChannel("spatial", new RTCDataChannelInit
+                {
+                    ordered = false,
+                    maxRetransmits = 0,
+                    protocol = "qps-spatial-v1"
+                });
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("[QuestPhoneStream] Spatial DataChannel unavailable: " + error.Message);
+                return null;
+            }
+        }
 
         private void Start()
         {
@@ -304,7 +329,6 @@ namespace QuestPhoneStream
             EnsureRenderTexture(texture.width, texture.height);
             _receivedTexture = texture;
             if (targetMaterial != null) targetMaterial.mainTexture = _renderTexture;
-            // Push the incoming video dimensions to the input mapper so touch coords scale correctly.
             if (_panelInput == null) _panelInput = FindFirstObjectByType<PanelInputMapper>();
             _panelInput?.SetAndroidResolution(texture.width, texture.height);
         }

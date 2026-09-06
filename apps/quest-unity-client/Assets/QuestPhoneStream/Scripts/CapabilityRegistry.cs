@@ -51,12 +51,17 @@ namespace QuestPhoneStream
 
         public SpatialCapabilityDescriptor[] All() => _capabilities.Values.OrderBy(value => value.name, StringComparer.Ordinal).ToArray();
 
-        public bool UpdateState(string name, bool? authorized = null, bool? active = null)
+        public bool UpdateState(string name, bool? available = null, bool? authorized = null, bool? active = null)
         {
             if (!_capabilities.TryGetValue(name, out var capability)) return false;
+            var nextAvailable = available ?? capability.state.available;
             var nextAuthorized = authorized ?? capability.state.authorized;
             var nextActive = active ?? capability.state.active;
-            if (nextAuthorized == capability.state.authorized && nextActive == capability.state.active) return false;
+            if (!nextAvailable || !nextAuthorized) nextActive = false;
+            if (nextAvailable == capability.state.available &&
+                nextAuthorized == capability.state.authorized &&
+                nextActive == capability.state.active) return false;
+            capability.state.available = nextAvailable;
             capability.state.authorized = nextAuthorized;
             capability.state.active = nextActive;
             Changed?.Invoke(All());
@@ -71,8 +76,8 @@ namespace QuestPhoneStream
                 Descriptor("display.control", true, true, false, new[] { "webrtc.datachannel" }, new[] { "pointer", "gesture", "text" }),
                 Descriptor("media.consume", true, false, false, new[] { "http.range" }, new[] { "catalog", "range" }, new[] { "qps.media.pairing" }),
                 Descriptor("media.render", true, false, false, new[] { "http.range", "local" }, new[] { "flat", "panorama", "stereo-vr" }, new[] { "qps.media.pairing" }),
-                Descriptor("xr.head.pose", true, true, false, new[] { "local" }, new[] { "openxr.pose" }),
-                Descriptor("xr.controller.pose", true, true, false, new[] { "local" }, new[] { "openxr.pose", "left", "right" })
+                Descriptor("xr.head.pose", true, true, false, new[] { "local", "webrtc.datachannel" }, new[] { "openxr.pose", "60hz", "72hz" }),
+                Descriptor("xr.controller.pose", true, true, false, new[] { "local", "webrtc.datachannel" }, new[] { "openxr.pose", "left", "right", "60hz", "72hz" })
             });
         }
 
