@@ -6,6 +6,7 @@ import {
   type SpatialCapabilityDescriptor,
   type SpatialEnvelope
 } from "./protocol";
+import { SpatialSubscriptionTracker } from "./subscriptions";
 
 declare global {
   interface Window {
@@ -28,6 +29,7 @@ let config: SenderConfig;
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
 let heartbeatTimer: number | null = null;
+let subscriptionRetryTimer: number | null = null;
 let stream: MediaStream | null = null;
 let peer: RTCPeerConnection | null = null;
 let spatialChannel: RTCDataChannel | null = null;
@@ -38,7 +40,7 @@ let active = false;
 let pendingIce: RTCIceCandidateInit[] = [];
 let lastCapability: SpatialCapabilityDescriptor | null = null;
 let questCapabilities: SpatialCapabilityDescriptor[] = [];
-const requestedSubscriptions = new Set<string>();
+const subscriptions = new SpatialSubscriptionTracker();
 const lastSequenceByStream = new Map<string, number>();
 let telemetryDropped = 0;
 let telemetryLastSequence = -1;
@@ -155,12 +157,31 @@ function handleSpatial(message: SpatialEnvelope): void {
     }
     return;
   }
-  if (message.type === "subscription.closed") {
-    const capabilityName = String((message.payload as any)?.capability ?? "");
-    if (capabilityName) requestedSubscriptions.delete(capabilityName);
+  if (message.type === "subscription.created") {
+    const payload = message.payload as any;
+    const created = subscriptions.markCreated(
+      message.correlationId,
+      String(payload?.subscriptionId ?? ""),
+      String(payload?.capability ?? "")
+    );
+    if (created && spatialChannel?.readyState === "open") subscriptions.markActive(created.capability);
     return;
   }
-  if (message.type === "protocol.error") return;
+  if (message.type === "subscription.closed") {
+    const payload = message.payload as any;
+    const capabilityName = subscriptions.close(
+      String(payload?.subscriptionId ?? ""),
+      String(payload?.capability ?? "")
+    );
+    if (capabilityName) scheduleSubscriptionRetry();
+    return;
+  }
+  if (message.type === "protocol.error") {
+    const payload = message.payload as any;
+    const capabilityName = subscriptions.fail(message.correlationId);
+    if (capabilityName && payload?.retryable === true) scheduleSubscriptionRetry();
+    return;
+  }
   if (message.type === "subscription.create" || message.type === "subscription.cancel") {
     send(spatialEnvelope("protocol.error", config, message.source, {
       code: "not_implemented", message: "macOS sender is a telemetry consumer, not publisher", retryable: false
@@ -172,25 +193,51 @@ function requestTelemetrySubscriptions(): void {
   if (peer?.connectionState !== "connected" || socket?.readyState !== WebSocket.OPEN) return;
   for (const capabilityName of ["xr.head.pose", "xr.controller.pose", "xr.hand.pose"]) {
     const descriptor = questCapabilities.find(item => item.name === capabilityName);
-    if (!descriptor?.state?.available || !descriptor.transports?.includes("webrtc.datachannel") || requestedSubscriptions.has(capabilityName)) continue;
-    requestedSubscriptions.add(capabilityName);
-    send(spatialEnvelope("subscription.create", config, config.questDeviceId, {
+    if (!descriptor?.state?.available || !descriptor.transports?.includes("webrtc.datachannel") || subscriptions.has(capabilityName)) continue;
+    const request = spatialEnvelope("subscription.create", config, config.questDeviceId, {
       capability: capabilityName,
       rateHz: 60,
       format: capabilityName === "xr.hand.pose" ? "qps.spatial.hand+json" : "qps.spatial.json",
       transport: "webrtc.datachannel",
       reliability: "unreliable_unordered"
-    }, "", activeSession?.sessionId ?? ""));
+    }, "", activeSession?.sessionId ?? "");
+    if (!subscriptions.begin(capabilityName, request.id)) continue;
+    send(request);
   }
+}
+
+function scheduleSubscriptionRetry(): void {
+  clearSubscriptionRetry();
+  if (peer?.connectionState !== "connected" || socket?.readyState !== WebSocket.OPEN) return;
+  subscriptionRetryTimer = window.setTimeout(() => {
+    subscriptionRetryTimer = null;
+    requestTelemetrySubscriptions();
+  }, 500);
+}
+
+function clearSubscriptionRetry(): void {
+  if (subscriptionRetryTimer != null) window.clearTimeout(subscriptionRetryTimer);
+  subscriptionRetryTimer = null;
 }
 
 function attachSpatialChannel(channel: RTCDataChannel): void {
   if (spatialChannel && spatialChannel !== channel) spatialChannel.close();
   spatialChannel = channel;
   channel.binaryType = "arraybuffer";
+  channel.onopen = () => {
+    if (channel !== spatialChannel) return;
+    subscriptions.markCreatedSubscriptionsActive();
+  };
   channel.onmessage = event => { if (channel === spatialChannel) handleTelemetryData(event.data); };
-  channel.onclose = () => { if (channel === spatialChannel) spatialChannel = null; };
-  channel.onerror = () => { if (channel === spatialChannel) spatialChannel = null; };
+  channel.onclose = () => handleSpatialChannelLoss(channel);
+  channel.onerror = () => handleSpatialChannelLoss(channel);
+}
+
+function handleSpatialChannelLoss(channel: RTCDataChannel): void {
+  if (channel !== spatialChannel) return;
+  spatialChannel = null;
+  subscriptions.reset();
+  scheduleSubscriptionRetry();
 }
 
 function handleTelemetryData(data: unknown): void {
@@ -225,7 +272,7 @@ async function createPeer(session: SessionMessage): Promise<void> {
   peer = current;
   remoteReady = false;
   pendingIce = [];
-  requestedSubscriptions.clear();
+  subscriptions.reset();
   lastSequenceByStream.clear();
   telemetryDropped = 0;
   telemetryLastSequence = -1;
@@ -253,7 +300,10 @@ async function createPeer(session: SessionMessage): Promise<void> {
       setStatus("Streaming 1080p / 30fps · negotiating XR telemetry");
       requestTelemetrySubscriptions();
     }
-    if (["failed", "disconnected", "closed"].includes(current.connectionState)) setRuntimeState(authorized, false);
+    if (["failed", "disconnected", "closed"].includes(current.connectionState)) {
+      subscriptions.reset();
+      setRuntimeState(authorized, false);
+    }
   };
   const offer = await current.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
   if (current !== peer) return;
@@ -263,11 +313,12 @@ async function createPeer(session: SessionMessage): Promise<void> {
 }
 
 function closePeer(updateState = true): void {
+  clearSubscriptionRetry();
   const old = peer;
   peer = null;
   remoteReady = false;
   pendingIce = [];
-  requestedSubscriptions.clear();
+  subscriptions.reset();
   lastSequenceByStream.clear();
   const oldSpatial = spatialChannel;
   spatialChannel = null;
