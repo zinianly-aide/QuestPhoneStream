@@ -261,7 +261,28 @@ namespace QuestPhoneStream
 
         private bool HasActiveNotice => !string.IsNullOrEmpty(_noticeText) && Time.unscaledTime < _noticeUntil;
 
-        private void OnStateChanged(ConnectionState state) => UpdateStatus(state);
+        private void OnStateChanged(ConnectionState state)
+        {
+            UpdateStatus(state);
+            RefreshMediaDevices();
+        }
+
+        private string DeviceConnectionLabel(MediaDeviceInfo device)
+        {
+            if (!device.IsReady) return "○ Lost";
+            if (_signaling == null) return "● Ready";
+            var isActive = string.Equals(device.deviceId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.streamId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.deviceId, _signaling.androidDeviceId, StringComparison.Ordinal) ||
+                           string.Equals(device.streamId, _signaling.androidDeviceId, StringComparison.Ordinal);
+            if (!isActive) return "● Ready";
+            var state = _signaling.State;
+            if (state == ConnectionState.Registered) return "✓ Found";
+            if ((int)state >= (int)ConnectionState.SessionRequesting && (int)state < (int)ConnectionState.MediaConnected) return "⟳ Connecting";
+            if (state == ConnectionState.MediaConnected) return _receiver != null && _receiver.HasVideoFrame ? "● Live" : "✓ Connected";
+            if (ConnectionStatus.IsFailure(state)) return "✗ Failed";
+            return "⟳ Connecting";
+        }
 
         private void Update()
         {
@@ -293,8 +314,11 @@ namespace QuestPhoneStream
                     }
                     var label = button.GetComponentInChildren<Text>();
                     if (label != null)
+                    {
+                        var status = DeviceConnectionLabel(device);
                         label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
-                            "    " + (device.IsReady ? "● Ready" : "○ Lost");
+                            "    " + status;
+                    }
                     button.interactable = device.IsReady;
                     button.gameObject.SetActive(true);
                 }

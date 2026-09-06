@@ -11,7 +11,7 @@ namespace QuestPhoneStream
 {
     public sealed class QuestSignalingClient : MonoBehaviour
     {
-        public string signalingUrl = "ws://192.168.1.9:8787";
+        public string signalingUrl = "ws://192.168.1.16:8787";
         public string token = "dev-token";
         public string questDeviceId = "quest-3s-001";
         public string androidDeviceId = "android-phone-001";
@@ -53,7 +53,7 @@ namespace QuestPhoneStream
 
         private void Awake()
         {
-            signalingUrl = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl", signalingUrl);
+            signalingUrl = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", signalingUrl);
             token = PlayerPrefs.GetString("QuestPhoneStream_Token", token);
             questDeviceId = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", questDeviceId);
             androidDeviceId = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", androidDeviceId);

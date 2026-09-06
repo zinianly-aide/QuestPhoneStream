@@ -223,7 +223,7 @@ class MainActivity : AppCompatActivity() {
             "Normally no changes are needed here. Use these fields only when automatic discovery or pairing needs manual configuration."
         ))
         val configCard = cardLayout()
-        signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.9:8787")
+        signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.16:8787")
         tokenField = configRow(configCard, "Pairing token", "dev-token")
         mediaPairingToken = tokenField.text.toString().trim()
         tokenField.addTextChangedListener(object : TextWatcher {

@@ -172,9 +172,23 @@ namespace QuestPhoneStream
         public bool SelectMediaDevice(string deviceId)
         {
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
+            _selectedMediaDeviceId = deviceId;
             EnsureSettingsUI();
             _settingsUI.SetMediaBaseUrl(device.BaseUrl);
             _settingsUI.ApplyDiscoveredSignaling(device.signalingUrl, device.streamId);
+            // Persist discovered endpoint so restart keeps the same peer.
+            if (!string.IsNullOrWhiteSpace(device.signalingUrl))
+                PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl_v2", device.signalingUrl.Trim());
+            if (!string.IsNullOrWhiteSpace(device.streamId))
+                PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", device.streamId.Trim());
+            PlayerPrefs.Save();
+            // Auto-connect signaling for screen streaming. Media browsing works without this,
+            // but selecting a device should also establish the control/screen transport.
+            if (signaling != null && !string.IsNullOrWhiteSpace(device.signalingUrl))
+            {
+                Debug.Log($"[QuestPhoneStream] Auto-connect signaling after device select url={device.signalingUrl} android={device.streamId}");
+                _ = signaling.ReconnectAsync();
+            }
             _mediaProbeReady = false;
             _mediaProbeChecking = false;
             _mediaProbeFailed = false;
