@@ -82,21 +82,21 @@ class CapabilityRegistry private constructor(capabilities: List<CapabilityDescri
             ),
             CapabilityDescriptor(
                 name = "media.list",
-                state = CapabilityState(available = false, authorized = false, active = false),
+                state = CapabilityState(available = true, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("catalog"),
                 permissions = listOf("qps.media.pairing")
             ),
             CapabilityDescriptor(
                 name = "media.open",
-                state = CapabilityState(available = false, authorized = false, active = false),
+                state = CapabilityState(available = true, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("metadata", "range"),
                 permissions = listOf("qps.media.pairing")
             ),
             CapabilityDescriptor(
                 name = "media.publish",
-                state = CapabilityState(available = false, authorized = false, active = false),
+                state = CapabilityState(available = true, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("user_selected_media"),
                 permissions = listOf("qps.media.pairing")
