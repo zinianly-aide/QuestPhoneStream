@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
 using System.Text;
@@ -23,11 +24,15 @@ namespace QuestPhoneStream
         public string NegotiationId { get; private set; }
         public event Action<ConnectionState> StateChanged;
         public event Action<SignalMessage> MessageReceived;
+        public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
+        public event Action<SpatialCapabilityDescriptor[]> CapabilitiesChanged;
         public event Action NegotiationInvalidated;
 
         private ClientWebSocket _socket;
         private CancellationTokenSource _cts;
         private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
+        private readonly HashSet<string> _spatialPeers = new HashSet<string>(StringComparer.Ordinal);
+        private CapabilityRegistry _capabilities;
         private Task _attempt;
         private int _epoch;
         private bool _destroyed;
@@ -41,9 +46,10 @@ namespace QuestPhoneStream
             questDeviceId = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", questDeviceId);
             androidDeviceId = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", androidDeviceId);
             sessionId = PlayerPrefs.GetString("QuestPhoneStream_SessionId", sessionId);
+            _capabilities = CapabilityRegistry.CreateQuestDefaults();
+            _capabilities.Changed += BroadcastCapabilityChange;
         }
 
-        // Called by the receiver after all media event subscriptions are installed.
         public Task ReconnectAsync()
         {
             if (_destroyed) return Task.CompletedTask;
@@ -81,7 +87,6 @@ namespace QuestPhoneStream
                 if (await Task.WhenAny(connecting, Task.Delay(signalingTimeoutMs, cancellation)) != connecting)
                 {
                     Fail(ConnectionState.SignalingFailed, epoch);
-                    // Observe the aborted connect task, without allowing a stale continuation to change state.
                     try { await connecting; } catch (Exception) { }
                     return;
                 }
@@ -92,6 +97,11 @@ namespace QuestPhoneStream
                 _ = ReceiveLoop(socket, epoch, cancellation);
                 await SendAsync(new SignalMessage { type = "register", token = _activeToken, role = "quest", deviceId = _activeQuest }, epoch);
                 if (!await WaitFor(_registered.Task, signalingTimeoutMs, ConnectionState.SignalingFailed, epoch, cancellation)) return;
+
+                // Spatial v1 is an additive semantic control layer. It never replaces
+                // the legacy session/negotiation flow below and does not carry the legacy token.
+                await SendSpatialBootstrapAsync(epoch);
+
                 SetState(ConnectionState.SessionRequesting);
                 await SendAsync(new SignalMessage {
                     type = "create_session", token = _activeToken, sessionId = _activeSession,
@@ -155,7 +165,7 @@ namespace QuestPhoneStream
                         UnityMainThread.Enqueue(() =>
                         {
                             if (!IsCurrent(epoch)) return;
-                            try { HandleMessage(JsonUtility.FromJson<SignalMessage>(json), epoch); }
+                            try { HandleJson(json, epoch); }
                             catch (Exception) { Fail(ConnectionState.SignalingFailed, epoch); }
                         });
                     }
@@ -165,6 +175,16 @@ namespace QuestPhoneStream
             {
                 UnityMainThread.Enqueue(() => { if (IsCurrent(epoch)) Fail(ConnectionState.SignalingFailed, epoch); });
             }
+        }
+
+        private void HandleJson(string json, int epoch)
+        {
+            if (SpatialWire.TryParse(json, out var spatial))
+            {
+                HandleSpatial(spatial, epoch);
+                return;
+            }
+            HandleMessage(JsonUtility.FromJson<SignalMessage>(json), epoch);
         }
 
         private void HandleMessage(SignalMessage message, int epoch)
@@ -183,6 +203,12 @@ namespace QuestPhoneStream
             {
                 if (!string.IsNullOrEmpty(message.negotiationId) && message.negotiationId != NegotiationId) return;
                 if (!string.IsNullOrEmpty(message.sessionId) && message.sessionId != _activeSession) return;
+                // Old signaling servers reject additive Spatial message types. Preserve the
+                // legacy connection and let the normal session request determine readiness.
+                if (message.code == "bad_request" && string.IsNullOrEmpty(message.sessionId) &&
+                    string.IsNullOrEmpty(message.negotiationId) &&
+                    (State == ConnectionState.Registered || State == ConnectionState.SessionRequesting))
+                    return;
                 Fail(message.code == "unauthorized" ? ConnectionState.AuthFailed :
                     State == ConnectionState.Registering ? ConnectionState.SignalingFailed : ConnectionState.SessionFailed, epoch);
                 return;
@@ -206,6 +232,78 @@ namespace QuestPhoneStream
                 MessageReceived?.Invoke(message);
         }
 
+        private void HandleSpatial(SpatialEnvelope message, int epoch)
+        {
+            if (!IsCurrent(epoch) || message.target != _activeQuest) return;
+            var source = message.source;
+            switch (message.type)
+            {
+                case "device.hello":
+                {
+                    var selected = !string.IsNullOrEmpty(message.payload.selectedVersion)
+                        ? (message.payload.selectedVersion == SpatialWire.Version ? SpatialWire.Version : null)
+                        : SpatialWire.NegotiateVersion(message.payload.supportedVersions);
+                    if (selected == null)
+                    {
+                        _ = SendSpatialErrorAsync(source, message.id, "unsupported_version", "No compatible Spatial Protocol version", epoch);
+                        return;
+                    }
+                    _spatialPeers.Add(source);
+                    if (string.IsNullOrEmpty(message.payload.selectedVersion))
+                        _ = SendSpatialAsync(SpatialWire.Create("device.hello", _activeQuest, source,
+                            SpatialWire.HelloPayload(_activeQuest, selected), _activeSession, "", message.id), epoch);
+                    return;
+                }
+                case "device.capabilities.get":
+                    _spatialPeers.Add(source);
+                    _ = SendSpatialAsync(SpatialWire.Create("device.capabilities.result", _activeQuest, source,
+                        SpatialWire.CapabilitiesPayload(_capabilities.All()), _activeSession, "", message.id), epoch);
+                    return;
+                case "device.capabilities.result":
+                    _spatialPeers.Add(source);
+                    CapabilitiesReceived?.Invoke(message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>());
+                    return;
+                case "device.capabilities.changed":
+                    _spatialPeers.Add(source);
+                    CapabilitiesChanged?.Invoke(message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>());
+                    return;
+                case "subscription.create":
+                case "subscription.cancel":
+                    _ = SendSpatialErrorAsync(source, message.id, "not_implemented", "Subscription data plane is not implemented", epoch);
+                    return;
+                case "subscription.created":
+                case "subscription.closed":
+                    return;
+                case "protocol.error":
+                    Debug.LogWarning("[QuestPhoneStream] Spatial peer error: " + (message.payload.code ?? "error"));
+                    return;
+            }
+        }
+
+        private async Task SendSpatialBootstrapAsync(int epoch)
+        {
+            var hello = SpatialWire.Create("device.hello", _activeQuest, _activeAndroid, SpatialWire.HelloPayload(_activeQuest));
+            await SendSpatialAsync(hello, epoch);
+            var get = SpatialWire.Create("device.capabilities.get", _activeQuest, _activeAndroid, new SpatialPayload(), "", "", hello.id);
+            await SendSpatialAsync(get, epoch);
+        }
+
+        private Task SendSpatialErrorAsync(string target, string correlationId, string code, string message, int epoch) =>
+            SendSpatialAsync(SpatialWire.Create("protocol.error", _activeQuest, target,
+                SpatialWire.ErrorPayload(code, message), _activeSession, "", correlationId), epoch);
+
+        private Task SendSpatialAsync(SpatialEnvelope envelope, int epoch) =>
+            SendTextAsync(SpatialWire.Serialize(envelope), epoch);
+
+        private void BroadcastCapabilityChange(SpatialCapabilityDescriptor[] capabilities)
+        {
+            if (_destroyed || !IsOpen) return;
+            var epoch = _epoch;
+            foreach (var peer in new List<string>(_spatialPeers))
+                _ = SendSpatialAsync(SpatialWire.Create("device.capabilities.changed", _activeQuest, peer,
+                    SpatialWire.CapabilitiesPayload(capabilities), _activeSession), epoch);
+        }
+
         public Task SendAnswerAsync(string sdp, string id) =>
             SendRelay(new SignalMessage { type = "answer", sdp = sdp }, id);
         public Task SendIceAsync(IceCandidateDto candidate, string id) =>
@@ -224,7 +322,10 @@ namespace QuestPhoneStream
             catch (Exception) { Fail(ConnectionState.SignalingFailed, epoch); }
         }
 
-        private async Task SendAsync(SignalMessage message, int epoch)
+        private Task SendAsync(SignalMessage message, int epoch) =>
+            SendTextAsync(SignalingWire.Serialize(message), epoch);
+
+        private async Task SendTextAsync(string json, int epoch)
         {
             if (!IsCurrent(epoch) || !IsOpen) throw new OperationCanceledException();
             var socket = _socket;
@@ -233,7 +334,7 @@ namespace QuestPhoneStream
             try
             {
                 if (!IsCurrent(epoch)) throw new OperationCanceledException();
-                var bytes = Encoding.UTF8.GetBytes(SignalingWire.Serialize(message));
+                var bytes = Encoding.UTF8.GetBytes(json);
                 await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellation);
             }
             finally { _sendLock.Release(); }
@@ -264,6 +365,7 @@ namespace QuestPhoneStream
             if (state == ConnectionState.MediaConnected && State == ConnectionState.PeerConnected)
             {
                 SetState(state);
+                _capabilities.UpdateState("display.consume", authorized: true, active: true);
                 _mediaReady.TrySetResult(true);
             }
         }
@@ -286,6 +388,8 @@ namespace QuestPhoneStream
         private void StopTransport()
         {
             ++_epoch;
+            _spatialPeers.Clear();
+            _capabilities?.UpdateState("display.consume", active: false);
             NegotiationId = null;
             _registered?.TrySetResult(false);
             _sessionReady?.TrySetResult(false);
@@ -302,6 +406,7 @@ namespace QuestPhoneStream
         private void OnDestroy()
         {
             _destroyed = true;
+            if (_capabilities != null) _capabilities.Changed -= BroadcastCapabilityChange;
             StopTransport();
         }
     }

@@ -42,6 +42,7 @@ class ScreenStreamService : Service() {
                 override fun onSessionCreated(session: StreamSession) {
                     if (session.androidDeviceId == config.deviceId && session.questDeviceId == config.questDeviceId) {
                         streamer?.startSession(session)
+                        signalingClient?.updateCapabilityState("display.publish", authorized = true, active = true)
                     }
                 }
 
@@ -54,10 +55,14 @@ class ScreenStreamService : Service() {
                 }
 
                 override fun onRegistered() {
+                    signalingClient?.updateCapabilityState("display.publish", authorized = true, active = false)
                     signalingClient?.createSession(config.sessionId, config.deviceId, config.questDeviceId)
                 }
 
-                override fun onSessionEnded() { streamer?.resetPeer() }
+                override fun onSessionEnded() {
+                    signalingClient?.updateCapabilityState("display.publish", authorized = true, active = false)
+                    streamer?.resetPeer()
+                }
             }
         )
 
@@ -74,6 +79,7 @@ class ScreenStreamService : Service() {
     }
 
     override fun onDestroy() {
+        signalingClient?.updateCapabilityState("display.publish", authorized = false, active = false)
         streamer?.dispose()
         signalingClient?.close()
         super.onDestroy()

@@ -5,8 +5,8 @@
   "scripts": {
     "dev:signaling": "pnpm --dir apps/signaling-server dev",
     "test:signaling": "pnpm --dir apps/signaling-server test",
-    "build:signaling": "pnpm --dir apps/signaling-server build"
+    "build:signaling": "pnpm --dir apps/signaling-server build",
+    "check:spatial": "node scripts/check-spatial-protocol.mjs"
   },
   "packageManager": "pnpm@9.12.0"
 }
-

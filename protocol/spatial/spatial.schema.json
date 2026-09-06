@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/spatial.schema.json",
+  "title": "Spatial Pose and Transform",
+  "$defs": {
+    "Vector3Meters": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "Quaternion": {
+      "type": "object",
+      "required": ["x", "y", "z", "w"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "w": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "SpatialPose": {
+      "type": "object",
+      "required": ["space", "timestamp", "position", "orientation"],
+      "properties": {
+        "space": { "type": "string", "enum": ["local", "stage", "view", "unbounded", "device"] },
+        "timestamp": { "type": "integer", "minimum": 0 },
+        "position": { "$ref": "#/$defs/Vector3Meters" },
+        "orientation": { "$ref": "#/$defs/Quaternion" }
+      },
+      "additionalProperties": true
+    },
+    "SpatialTransform": {
+      "type": "object",
+      "required": ["spaceFrom", "spaceTo", "timestamp", "translation", "rotation"],
+      "properties": {
+        "spaceFrom": { "type": "string", "minLength": 1 },
+        "spaceTo": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "integer", "minimum": 0 },
+        "translation": { "$ref": "#/$defs/Vector3Meters" },
+        "rotation": { "$ref": "#/$defs/Quaternion" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/SpatialPose" },
+    { "$ref": "#/$defs/SpatialTransform" }
+  ]
+}

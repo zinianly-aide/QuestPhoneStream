@@ -1,7 +1,8 @@
 import https from "node:https";
 import path from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
-import { parseClientMessage, serialize, type ClientMessage, type ClientRole, type RelayMessage, type ServerMessage } from "./protocol.js";
+import { parseClientMessage, serialize, isSpatialEnvelope, type ClientMessage, type ClientRole, type RelayMessage, type ServerMessage } from "./protocol.js";
+import { makeSpatialError } from "./spatial.js";
 
 interface RegisteredClient {
   socket: WebSocket;
@@ -35,8 +36,6 @@ export interface RunningSignalingServer {
 
 const DEFAULT_TOKEN = "dev-token";
 
-// Global safety net: any unexpected error in callbacks/timers is logged instead
-// of crashing the process (which would kill all active signaling sessions).
 process.on("uncaughtException", (error) => {
   console.error("[uncaughtException]", error instanceof Error ? error.stack : error);
 });
@@ -44,9 +43,6 @@ process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason instanceof Error ? reason.stack : reason);
 });
 
-// Robust entry-point detection: works with direct `node dist/index.js`,
-// pm2 (which may wrap the script and change process.argv[1]), and tests
-// (which import startSignalingServer without auto-starting).
 const isDirectRun = (() => {
   try {
     const entry = path.resolve(process.argv[1] ?? "");
@@ -57,7 +53,6 @@ const isDirectRun = (() => {
 })();
 const isPM2 = !!process.env.pm_id;
 if (isDirectRun || isPM2) {
-  // Load dotenv only in standalone mode
   await import("dotenv/config");
   const certPath = process.env.SIGNALING_CERT;
   const keyPath = process.env.SIGNALING_KEY;
@@ -112,7 +107,7 @@ export function startSignalingServer(options: SignalingServerOptions = {}): Runn
     socket.on("message", (raw) => {
       try {
         const message = parseClientMessage(raw);
-        if (message.token !== token) {
+        if (!isSpatialEnvelope(message) && message.token !== token) {
           console.log(`[auth] rejected invalid token from ${remoteAddr}`);
           send(socket, { type: "error", code: "unauthorized", message: "Invalid signaling token" });
           socket.close(1008, "unauthorized");
@@ -187,12 +182,31 @@ function handleMessage(
   sessions: Map<string, Session>
 ): void {
   const sender = [...clients.values()].find(client => client.socket === socket);
+
+  if (isSpatialEnvelope(message)) {
+    if (!sender) {
+      send(socket, makeSpatialError("signaling", message.source, message.id, "not_registered", "Register the signaling connection first"));
+      return;
+    }
+    if (message.source !== sender.deviceId) {
+      send(socket, makeSpatialError("signaling", sender.deviceId, message.id, "identity_mismatch", "Spatial source must match the registered device"));
+      return;
+    }
+    const target = clients.get(message.target);
+    if (!target || target.socket.readyState !== WebSocket.OPEN) {
+      send(socket, makeSpatialError("signaling", sender.deviceId, message.id, "peer_unavailable", "Spatial target is unavailable"));
+      return;
+    }
+    console.log(`[spatial] type=${message.type} source=${message.source} target=${message.target} id=${message.id}`);
+    send(target.socket, message);
+    return;
+  }
+
   if (message.type !== "register" && !sender) {
     send(socket, { type: "error", code: "not_registered", message: "Register first" });
     return;
   }
-  // 调试日志:记录所有消息类型和关键字段,帮助排查协商失败问题。
-  // 上线前可移除。
+
   switch (message.type) {
     case "register":
       console.log(`[register] role=${message.role} deviceId=${message.deviceId}`);
@@ -210,9 +224,9 @@ function handleMessage(
       console.log(`[ice] session=${message.sessionId} from=${message.from} to=${message.to}`);
       break;
     case "heartbeat":
-      // 太频繁,不打印
       break;
   }
+
   switch (message.type) {
     case "register": {
       if (sender && (sender.deviceId !== message.deviceId || sender.role !== message.role)) {
@@ -221,7 +235,6 @@ function handleMessage(
       }
       const previous = clients.get(message.deviceId);
       if (previous && previous.socket !== socket) {
-        // Invalidate sessions before replacing the socket; old close callbacks cannot delete the new identity.
         removeSessions(message.deviceId, clients, sessions);
         previous.socket.close(1000, "replaced");
       }
@@ -261,15 +274,10 @@ function handleMessage(
         send(socket, { type: "error", code: "session_conflict", message: "Session belongs to other devices" });
         return;
       }
-      // A late Android bootstrap must not replace a Quest-initiated negotiation.
       if (existing && sender!.role === "android") {
         send(socket, { type: "session_created", ...existing });
         return;
       }
-      // The Android side only registers availability; it does not own the negotiation.
-      // Without a negotiationId it would establish a guid-less session whose broadcast
-      // the Quest rejects (negotiationId mismatch), causing an infinite request/reconnect
-      // loop. Wait for the Quest to create the session with its own negotiationId.
       if (sender!.role === "android" && !message.negotiationId) {
         return;
       }
@@ -279,7 +287,6 @@ function handleMessage(
         questDeviceId: message.questDeviceId,
         negotiationId: message.negotiationId
       };
-      // One active stream per phone/Quest. Old sessions cannot keep routing after a switch.
       for (const [id, old] of sessions) {
         if (id !== session.sessionId && (old.androidDeviceId === session.androidDeviceId || old.questDeviceId === session.questDeviceId)) {
           sessions.delete(id);

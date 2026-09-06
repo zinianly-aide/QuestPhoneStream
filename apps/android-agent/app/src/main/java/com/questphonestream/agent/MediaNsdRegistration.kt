@@ -69,6 +69,8 @@ internal class MediaNsdRegistration(
                 setAttribute("id", deviceId)
                 setAttribute("name", deviceName)
                 setAttribute("caps", advertisement.capabilities)
+                setAttribute("capv", "1")
+                setAttribute("spatial", "1")
                 if (advertisement.type == UNIFIED_SERVICE_TYPE) {
                     setAttribute("streamId", streamIdProvider().ifBlank { deviceId })
                     setAttribute("signalingUrl", signalingEndpointProvider())
