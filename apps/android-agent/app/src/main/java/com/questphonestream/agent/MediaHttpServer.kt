@@ -41,6 +41,10 @@ class MediaHttpServer(
     private val acceptThread = Thread({ acceptLoop() }, "quest-phone-media-accept")
     private val random = SecureRandom()
     private val capabilities = ConcurrentHashMap<String, Capability>()
+    private val mediaLifecycle = MediaCapabilityLifecycle { state ->
+        DeviceControlPlane.reportCapabilityState(state.name, state.available, state.authorized, state.active)
+        CapabilityRuntime.setMediaCapability(state.name, state.available, state.authorized, state.active)
+    }
     private var controlPlaneListenerAttached = false
     private var lastSpatialReady = false
 
@@ -69,6 +73,7 @@ class MediaHttpServer(
             )
             appliedConfig = initial
             DeviceControlPlane.configure(initial.signalingUrl, initial.token, initial.deviceId)
+            mediaLifecycle.startServer()
             lastSpatialReady = DeviceControlPlane.isSpatialReady
             acceptThread.start()
             nsdRegistration.start()
@@ -78,6 +83,8 @@ class MediaHttpServer(
     fun stop() {
         if (!running.compareAndSet(true, false)) return
         nsdRegistration.stop()
+        capabilities.clear()
+        mediaLifecycle.stopServer()
         if (controlPlaneListenerAttached) {
             DeviceControlPlane.removeListener(controlPlaneListener)
             controlPlaneListenerAttached = false
@@ -85,20 +92,19 @@ class MediaHttpServer(
         DeviceControlPlane.release(DeviceControlPlane.Owner.MEDIA)
         runCatching { server.close() }
         workers.shutdownNow()
-        capabilities.clear()
-        CapabilityRuntime.setMediaCatalog(available = false, authorized = false, active = false)
     }
 
     /**
      * Called only from the explicit Save/Apply path. Snapshot the committed endpoint
-     * identity, revoke old play capabilities if the pairing token changed, and refresh
-     * only the unified advertisement. Draft EditText changes never reach this state.
+     * identity, revoke old play capabilities if the pairing token changed, reset media
+     * authorization, and refresh only the unified advertisement.
      */
     fun refreshNsdMetadata() {
         val next = AppliedConfigStore.current() ?: return
         val previous = appliedConfig
         appliedConfig = next
         if (previous?.token != null && previous.token != next.token) capabilities.clear()
+        mediaLifecycle.resetPairingAuthorization()
         nsdRegistration.refreshUnifiedAdvertisement()
     }
 
@@ -140,11 +146,11 @@ class MediaHttpServer(
                 Log.d(TAG, "HTTP $method $path (range=${headers["range"]})")
                 when {
                     method == "GET" && path == "/v1/media" ->
-                        ifAuthorized(headers, output) { sendCatalog(output) }
+                        ifAuthorized(MediaCapabilityLifecycle.MEDIA_LIST, headers, output) { sendCatalog(output) }
                     method == "GET" && path.matches(Regex("/v1/media/[^/]+")) ->
-                        ifAuthorized(headers, output) { sendMetadata(output, path.substringAfterLast('/')) }
+                        ifAuthorized(MediaCapabilityLifecycle.MEDIA_OPEN, headers, output) { sendMetadata(output, path.substringAfterLast('/')) }
                     method == "POST" && path.matches(Regex("/v1/media/[^/]+/play-token")) ->
-                        ifAuthorized(headers, output) { issueToken(output, path.split('/')[3]) }
+                        ifAuthorized(MediaCapabilityLifecycle.MEDIA_OPEN, headers, output) { issueToken(output, path.split('/')[3]) }
                     (method == "GET" || method == "HEAD") && path.matches(Regex("/v1/media/[^/]+/content")) ->
                         sendContent(output, method == "HEAD", path.split('/')[3], uri, headers["range"])
                     else -> sendError(output, 404, "Not Found")
@@ -160,18 +166,24 @@ class MediaHttpServer(
     }
 
     private inline fun ifAuthorized(
+        capabilityName: String,
         headers: Map<String, String>,
         output: BufferedOutputStream,
         action: () -> Unit
     ) {
         val token = appliedConfig?.token.orEmpty()
         val authorized = token.isNotEmpty() && MediaPairingAuth.isAuthorized(headers, token)
-        Log.d(TAG, "ifAuthorized: headersKeys=${headers.keys.joinToString(",")} result=$authorized")
+        Log.d(TAG, "ifAuthorized: capability=$capabilityName headersKeys=${headers.keys.joinToString(",")} result=$authorized")
         if (!authorized) {
             sendError(output, 401, "Unauthorized")
             return
         }
-        action()
+        mediaLifecycle.markPairingAuthorized()
+        if (!mediaLifecycle.beginRequest(capabilityName)) {
+            sendError(output, 503, "Service Unavailable")
+            return
+        }
+        try { action() } finally { mediaLifecycle.endRequest(capabilityName) }
     }
 
     private fun sendCatalog(output: BufferedOutputStream) {
@@ -202,7 +214,23 @@ class MediaHttpServer(
             sendError(output, 401, "Unauthorized")
             return
         }
-        Log.d(TAG, "sendContent: id=$id name=${item.displayName} size=${item.size} range=$rangeHeader")
+
+        // A valid short-lived play capability proves the request passed pairing when it
+        // was minted, so media.publish is authorized for this request lifecycle.
+        mediaLifecycle.markPairingAuthorized()
+        if (!mediaLifecycle.beginRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH)) {
+            sendError(output, 503, "Service Unavailable")
+            return
+        }
+        try {
+            sendAuthorizedContent(output, head, item, rangeHeader)
+        } finally {
+            mediaLifecycle.endRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH)
+        }
+    }
+
+    private fun sendAuthorizedContent(output: BufferedOutputStream, head: Boolean, item: MediaItem, rangeHeader: String?) {
+        Log.d(TAG, "sendContent: id=${item.id} name=${item.displayName} size=${item.size} range=$rangeHeader")
         val total = item.size
         if (total < 0) { sendError(output, 416, "Range Not Satisfiable", "bytes */*"); return }
         val range = if (rangeHeader == null) null else RangeParser.parse(rangeHeader, total)

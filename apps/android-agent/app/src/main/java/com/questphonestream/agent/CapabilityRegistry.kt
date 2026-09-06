@@ -38,12 +38,18 @@ class CapabilityRegistry private constructor(capabilities: List<CapabilityDescri
         listeners += listener
     }
 
-    fun updateState(name: String, authorized: Boolean? = null, active: Boolean? = null): Boolean {
+    fun updateState(
+        name: String,
+        authorized: Boolean? = null,
+        active: Boolean? = null,
+        available: Boolean? = null
+    ): Boolean {
         val snapshot: List<CapabilityDescriptor>
         val callbacks: List<(List<CapabilityDescriptor>) -> Unit>
         synchronized(this) {
             val current = values[name] ?: return false
             val nextState = current.state.copy(
+                available = available ?: current.state.available,
                 authorized = authorized ?: current.state.authorized,
                 active = active ?: current.state.active
             )
@@ -76,21 +82,21 @@ class CapabilityRegistry private constructor(capabilities: List<CapabilityDescri
             ),
             CapabilityDescriptor(
                 name = "media.list",
-                state = CapabilityState(available = true, authorized = false, active = false),
+                state = CapabilityState(available = false, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("catalog"),
                 permissions = listOf("qps.media.pairing")
             ),
             CapabilityDescriptor(
                 name = "media.open",
-                state = CapabilityState(available = true, authorized = false, active = false),
+                state = CapabilityState(available = false, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("metadata", "range"),
                 permissions = listOf("qps.media.pairing")
             ),
             CapabilityDescriptor(
                 name = "media.publish",
-                state = CapabilityState(available = true, authorized = false, active = false),
+                state = CapabilityState(available = false, authorized = false, active = false),
                 transports = listOf("http.range"),
                 features = listOf("user_selected_media"),
                 permissions = listOf("qps.media.pairing")

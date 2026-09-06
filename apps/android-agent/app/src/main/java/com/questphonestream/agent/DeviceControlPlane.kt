@@ -155,6 +155,16 @@ object DeviceControlPlane : StreamSignaling {
         return currentRegistry.updateState(name, authorized, active)
     }
 
+    fun reportCapabilityState(name: String, available: Boolean, authorized: Boolean, active: Boolean): Boolean {
+        val currentRegistry = synchronized(this) { registry }
+        return currentRegistry.updateState(
+            name,
+            authorized = authorized,
+            active = active,
+            available = available
+        )
+    }
+
     fun setControlAuthorized(authorized: Boolean) {
         val currentRegistry: CapabilityRegistry
         val transportActive: Boolean
