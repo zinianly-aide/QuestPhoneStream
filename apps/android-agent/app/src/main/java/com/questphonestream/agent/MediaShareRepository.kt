@@ -116,6 +116,7 @@ class MediaShareRepository(context: Context?) {
     }
 
     private fun persist() {
+        val store = preferences ?: return
         val json = JSONArray()
         items.values.forEach { item ->
             json.put(JSONObject().apply {
@@ -141,7 +142,7 @@ class MediaShareRepository(context: Context?) {
                 }
             })
         }
-        preferences?.edit()?.putString(KEY_ITEMS, json.toString())?.apply()
+        store.edit().putString(KEY_ITEMS, json.toString()).apply()
     }
 
     private fun inferSpatialFormat(name: String, mimeType: String?): String {
