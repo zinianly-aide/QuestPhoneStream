@@ -41,12 +41,17 @@ for (const forbidden of ["camera.", "ai.", "xr.hand", "hand.pose"])
   assert(!androidRegistry.includes(`name = "${forbidden}`), `Android registry must not advertise unimplemented ${forbidden}`);
 
 const questRegistry = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/CapabilityRegistry.cs");
-for (const name of ["display.consume", "display.control", "media.consume", "media.render", "xr.head.pose", "xr.controller.pose"])
-  assert(questRegistry.includes(`"${name}"`), `Quest registry missing ${name}`);
-for (const forbidden of ["camera.", "ai.", "xr.hand", "hand.pose"])
-  assert(!questRegistry.includes(`"${forbidden}`), `Quest registry must not advertise unimplemented ${forbidden}`);
-assert(questRegistry.includes('"xr.head.pose", true, true, false, new[] { "local" }'), "XR head pose must stay local until a data transport exists");
-assert(questRegistry.includes('"xr.controller.pose", true, true, false, new[] { "local" }'), "XR controller pose must stay local until a data transport exists");
+for (const name of [
+  "display.consume", "display.control", "media.consume", "media.render",
+  "xr.head.pose", "xr.controller.pose", "xr.hand.pose", "camera.rgb", "ai.vision"
+]) assert(questRegistry.includes(`"${name}"`), `Quest registry missing ${name}`);
+for (const forbidden of ["spatial.anchor", "environment.depth", "video.6dof", "gaussian.splatting"])
+  assert(!questRegistry.includes(`"${forbidden}"`), `P3 capability leaked into P2 registry: ${forbidden}`);
+assert(questRegistry.includes('"xr.head.pose", true, true, false, new[] { "local", "webrtc.datachannel" }'), "XR head pose must expose the Spatial DataChannel transport");
+assert(questRegistry.includes('"xr.controller.pose", true, true, false, new[] { "local", "webrtc.datachannel" }'), "XR controller pose must expose the Spatial DataChannel transport");
+assert(questRegistry.includes('"xr.hand.pose", false, false, false, new[] { "local", "webrtc.datachannel" }'), "Hand capability must start unavailable until the runtime subsystem exists");
+assert(questRegistry.includes('"camera.rgb", false, false, false'), "Camera capability must start permission-gated and unavailable until a provider exists");
+assert(questRegistry.includes('"ai.vision", true, false, false'), "AI capability must keep endpoint authorization separate from camera permission");
 
 const nsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
 assert(nsd.includes("_qps-device._tcp."), "Unified NSD service missing");
@@ -82,6 +87,7 @@ assert(serverIndex.includes("!isSpatialEnvelope(message) && message.token !== to
 
 const questSignaling = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestSignalingClient.cs");
 const controlChannel = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ControlChannel.cs");
+const questReceiver = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestWebRtcReceiver.cs");
 const bootstrapCall = questSignaling.indexOf('await SendSpatialBootstrapAsync(epoch);');
 const sessionIndex = questSignaling.indexOf('type = "create_session"');
 const helloIndex = questSignaling.indexOf('SpatialWire.Create("device.hello"');
@@ -92,8 +98,39 @@ assert(questSignaling.includes('case "device.capabilities.changed"'), "Quest doe
 assert(questSignaling.includes("source != _activeAndroid"), "Quest Spatial messages are not isolated to the selected Android peer");
 assert(questSignaling.includes('message.type == "protocol.error" && source == "signaling"'), "Quest peer isolation must preserve signaling-server protocol errors");
 assert(questSignaling.includes("PeerCapabilitiesChanged?.Invoke(source, capabilities)"), "Quest capability change events must preserve source device identity");
-assert(controlChannel.includes('ReportCapabilityState("display.control", active: true)') &&
-       controlChannel.includes('ReportCapabilityState("display.control", active: false)'),
+assert(controlChannel.includes('ReportCapabilityState("display.control", active: true)') && controlChannel.includes('ReportCapabilityState("display.control", active: false)'),
   "Quest DataChannel state is not wired to display.control.active");
+assert(questReceiver.includes('CreateDataChannel("spatial"') && !questReceiver.includes('!IsControlConnected) return null'),
+  "Spatial DataChannel must be independent from the legacy control channel");
 
-console.log("Spatial Protocol v1 source checks passed");
+const telemetry = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SpatialTelemetryService.cs");
+const telemetryWire = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SpatialTelemetry.cs");
+assert(telemetry.includes('payload.capability == "xr.head.pose"') || telemetry.includes('payload.capability != "xr.head.pose"'), "Head telemetry subscription missing");
+assert(telemetry.includes('"xr.controller.pose"'), "Controller telemetry subscription missing");
+assert(telemetry.includes("NormalizeRate") && telemetry.includes("webrtc.datachannel"), "XR telemetry rate/transport negotiation missing");
+assert(telemetryWire.includes("SpatialSequenceGate") && telemetryWire.includes("sequence <= previous"), "Stale telemetry sequence handling missing");
+assert(telemetryWire.includes("ToCanonicalPosition") && telemetryWire.includes("ToCanonicalRotation"), "Canonical coordinate conversion missing");
+
+const vision = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestVisionService.cs");
+assert(vision.includes("horizonos.permission.HEADSET_CAMERA") && vision.includes("QuestVisionPermissionGate"), "Camera permission gating missing");
+assert(vision.includes("CaptureSingleFrame") && vision.includes("SetSampledPreview"), "Camera single-frame/sample preview missing");
+
+const ai = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestAiClient.cs");
+assert(ai.includes("QuestAiResponseParser") && ai.includes("AiVisionResult"), "Structured AI response parser missing");
+assert(ai.includes("LastLatencyMs") && ai.includes("endpointUrl") && ai.includes("model"), "AI endpoint abstraction/latency missing");
+
+const hand = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/HandTrackingProvider.cs");
+const handService = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SpatialHandTrackingService.cs");
+assert(hand.includes("XRHandSubsystem") && hand.includes("JointIds") && hand.includes("XRHandJointID.Wrist"), "OpenXR hand provider missing");
+assert(handService.includes('"xr.hand.pose"') && handService.includes("qps.spatial.hand+json"), "Hand Spatial subscription missing");
+
+const macSender = read("apps/macos-sender/src/renderer.ts");
+assert(macSender.includes('createDataChannel("spatial-bootstrap"') && macSender.includes("current.ondatachannel"), "Mac must negotiate SCTP without advertising display.control");
+assert(macSender.includes('"subscription.create"') && macSender.includes('"xr.head.pose"') && macSender.includes('"xr.controller.pose"'), "Mac telemetry subscription consumer missing");
+assert(macSender.includes("sequence <= previous") && macSender.includes("telemetryDropped"), "Mac stale telemetry handling missing");
+
+const hud = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestDeveloperHud.cs");
+for (const metric of ["PoseStreamHz", "DroppedFrames", "LastSequence", "CameraState", "LastLatencyMs", "HandTrackingState"])
+  assert(hud.includes(metric), `Developer HUD missing ${metric}`);
+
+console.log("Spatial Protocol v1 + P2 source checks passed");

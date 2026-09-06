@@ -58,12 +58,12 @@ namespace QuestPhoneStream
 
         /// <summary>
         /// Creates the dedicated unreliable/unordered Spatial data channel on the
-        /// existing WebRTC peer. We only do this when the legacy control channel is
-        /// already open, which guarantees the SCTP m-line was negotiated by the offer.
+        /// existing WebRTC peer. A peer-created bootstrap DataChannel can negotiate
+        /// SCTP without implying display.control support, so control is not a gate.
         /// </summary>
         public RTCDataChannel CreateSpatialDataChannel()
         {
-            if (_peer == null || !_peerConnected || !IsControlConnected) return null;
+            if (_peer == null || !_peerConnected) return null;
             try
             {
                 return _peer.CreateDataChannel("spatial", new RTCDataChannelInit
