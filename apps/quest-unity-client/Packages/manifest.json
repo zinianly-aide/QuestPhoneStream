@@ -1,6 +1,9 @@
 {
   "dependencies": {
     "com.meta.xr.mrutilitykit": "85.0.0",
+    "com.meta.xr.sdk.core": "85.0.0",
+    "com.unity.ai.navigation": "1.1.6",
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
     "com.unity.test-framework": "1.1.33",
     "com.unity.webrtc": "3.0.0-pre.8",
     "com.unity.xr.openxr": "1.14.1",
@@ -25,5 +28,16 @@
     "com.unity.modules.unitywebrequestwww": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.video": "1.0.0"
-  }
+  },
+  "scopedRegistries": [
+    {
+      "name": "UnityCN",
+      "url": "https://packages.unity.cn",
+      "scopes": [
+        "com.meta.xr",
+        "com.unity.ai",
+        "com.unity.nuget"
+      ]
+    }
+  ]
 }
