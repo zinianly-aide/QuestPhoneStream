@@ -1,14 +1,14 @@
 package com.questphonestream.agent
 
 /**
- * Compatibility facade for older UI call sites. Spatial/signaling ownership lives in
- * DeviceControlPlane; this object only commits an explicit Save/Apply into AppliedConfig.
+ * Compatibility facade for the legacy Save call site. The actual signaling reconfigure
+ * is performed once by MediaHttpServer.refreshNsdMetadata() after AppliedConfig is
+ * committed, so editing fields never changes the live control plane.
  */
 internal object AndroidSpatialControlPlane {
     @Synchronized
     fun start(requested: StreamConfig) {
-        val applied = AppliedConfigStore.apply(requested)
-        DeviceControlPlane.configure(applied.signalingUrl, applied.token, applied.deviceId)
+        AppliedConfigStore.apply(requested)
     }
 
     /** Legacy no-op hooks retained so older callers compile while the process-wide

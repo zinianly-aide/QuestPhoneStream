@@ -22,24 +22,34 @@ internal object AppliedConfigStore {
     @Synchronized
     fun initializeIfAbsent(signalingUrl: String, token: String, deviceId: String): AppliedConfig {
         applied?.let { return it }
-        return AppliedConfig(signalingUrl.trim(), token, deviceId.trim()).also { applied = it }
+        return make(signalingUrl, token, deviceId).also { applied = it }
     }
 
     @Synchronized
-    fun apply(config: StreamConfig): AppliedConfig = AppliedConfig(
-        signalingUrl = config.signalingUrl.trim(),
-        token = config.token,
-        deviceId = config.deviceId.trim()
-    ).also { applied = it }
+    fun apply(config: StreamConfig): AppliedConfig =
+        apply(config.signalingUrl, config.token, config.deviceId)
+
+    @Synchronized
+    fun apply(signalingUrl: String, token: String, deviceId: String): AppliedConfig =
+        make(signalingUrl, token, deviceId).also { applied = it }
 
     @Synchronized
     fun current(): AppliedConfig? = applied
 
     @Synchronized
-    fun merge(config: StreamConfig): StreamConfig = (applied ?: return config).mergeInto(config)
+    fun merge(config: StreamConfig): StreamConfig {
+        val current = applied ?: return config
+        return current.mergeInto(config)
+    }
 
     @Synchronized
     internal fun resetForTests() {
         applied = null
     }
+
+    private fun make(signalingUrl: String, token: String, deviceId: String) = AppliedConfig(
+        signalingUrl = signalingUrl.trim(),
+        token = token,
+        deviceId = deviceId.trim()
+    )
 }

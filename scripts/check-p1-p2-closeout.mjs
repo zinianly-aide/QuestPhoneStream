@@ -24,13 +24,14 @@ check(!mediaServer.includes("CONFIG_POLL_MS") && !mediaServer.includes("metadata
   "Android no longer polls draft config every 250ms");
 check(applied.includes("AppliedConfigStore") && androidPlane.includes("AppliedConfigStore.apply(requested)"),
   "Android endpoint identity changes only through AppliedConfig");
-check(count(androidPlane, "DeviceControlPlane.configure(") === 1,
-  "explicit Apply performs one DeviceControlPlane reconfigure");
 const saveBody = activity.slice(activity.indexOf("private fun saveConfigurationAndRefreshNsd"), activity.indexOf("private fun showMediaManager"));
 check(count(saveBody, "AndroidSpatialControlPlane.start(") === 1 && count(saveBody, "refreshNsdMetadata(") === 1,
-  "Save/Apply invokes one reconfigure path and one NSD refresh path");
-check(count(mediaServer.slice(mediaServer.indexOf("fun refreshNsdMetadata"), mediaServer.indexOf("private fun acceptLoop")), "refreshUnifiedAdvertisement()") === 1,
-  "Apply refreshes unified NSD advertisement once");
+  "Save/Apply has one commit path and one media apply path");
+const refreshBody = mediaServer.slice(mediaServer.indexOf("fun refreshNsdMetadata"), mediaServer.indexOf("private fun acceptLoop"));
+check(count(refreshBody, "DeviceControlPlane.configure(") === 1,
+  "Apply performs exactly one DeviceControlPlane reconfigure");
+check(count(refreshBody, "nsdRegistration.refreshUnifiedAdvertisement()") === 1,
+  "Apply refreshes unified NSD advertisement exactly once");
 
 const renderer = read("apps/macos-sender/src/renderer.ts");
 const subscriptions = read("apps/macos-sender/src/subscriptions.ts");

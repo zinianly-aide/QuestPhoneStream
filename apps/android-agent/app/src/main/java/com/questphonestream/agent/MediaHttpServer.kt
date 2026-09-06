@@ -95,14 +95,19 @@ class MediaHttpServer(
     }
 
     /**
-     * Called only from the explicit Save/Apply path. Snapshot the committed endpoint
-     * identity, revoke old play capabilities if the pairing token changed, reset media
-     * authorization, and refresh only the unified advertisement.
+     * Explicit Save/Apply entrypoint. Draft providers are sampled only here, committed
+     * into AppliedConfig, then the live control plane is reconfigured exactly once and
+     * the unified NSD advertisement is refreshed exactly once.
      */
     fun refreshNsdMetadata() {
-        val next = AppliedConfigStore.current() ?: return
+        val next = AppliedConfigStore.apply(
+            signalingUrl = signalingEndpointProvider().trim(),
+            token = pairingTokenProvider(),
+            deviceId = streamIdProvider().trim().ifBlank { MediaDeviceIdentity.getOrCreateDeviceId(context) }
+        )
         val previous = appliedConfig
         appliedConfig = next
+        DeviceControlPlane.configure(next.signalingUrl, next.token, next.deviceId)
         if (previous?.token != null && previous.token != next.token) capabilities.clear()
         mediaLifecycle.resetPairingAuthorization()
         nsdRegistration.refreshUnifiedAdvertisement()
