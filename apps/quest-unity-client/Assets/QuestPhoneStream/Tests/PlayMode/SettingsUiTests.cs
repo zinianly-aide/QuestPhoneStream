@@ -138,6 +138,8 @@ namespace QuestPhoneStream.Tests
         public IEnumerator HomeKeepsNavigationAndAdvancedSettingsInViewport()
         {
             var receiver = _root.AddComponent<QuestWebRtcReceiver>();
+            receiver.signaling = _client;
+            receiver.xrCamera = _camera;
             var home = _root.AddComponent<QuestHomeUI>();
             home.Initialize(_client, _camera, receiver);
             Canvas.ForceUpdateCanvases();
