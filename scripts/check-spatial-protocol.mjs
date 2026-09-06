@@ -51,9 +51,28 @@ assert(questRegistry.includes('"xr.controller.pose", true, true, false, new[] { 
 const nsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
 assert(nsd.includes("_qps-device._tcp."), "Unified NSD service missing");
 assert(nsd.includes("_qps-media._tcp."), "Legacy NSD fallback missing");
-assert(nsd.includes('Advertisement(UNIFIED_SERVICE_TYPE, "media,screen,control")'), "Legacy caps bootstrap changed unexpectedly");
-assert(nsd.includes('setAttribute("capv", "1")') && nsd.includes('setAttribute("spatial", "1")'), "Capability bootstrap version attributes missing");
-assert(nsd.includes("scheduleRetry(type)"), "NSD registrations must fail and retry independently");
+assert(nsd.includes('Advertisement(UNIFIED_SERVICE_TYPE, "media,screen,control")'), "Unified caps bootstrap changed unexpectedly");
+assert(nsd.includes('setAttribute("capv", "1")'), "Capability bootstrap version attribute missing");
+assert(nsd.includes('if (spatialReadyProvider()) setAttribute("spatial", "1")'), "Spatial readiness must not be advertised before control-plane registration");
+assert(nsd.includes("refreshUnifiedAdvertisement()") && nsd.includes("requestRefresh(UNIFIED_SERVICE_TYPE)"), "Unified NSD metadata cannot be refreshed safely");
+assert(nsd.includes("scheduleRetry(type,") && nsd.includes("registeredTypes.contains(type)"), "NSD registrations must fail and retry independently");
+assert(nsd.includes("refreshUnregisterPendingTypes") && nsd.includes("onServiceUnregistered"), "Unified NSD refresh must serialize unregister before re-register");
+
+const controlPlane = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/DeviceControlPlane.kt");
+const mediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
+const screenService = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/ScreenStreamService.kt");
+assert(controlPlane.includes("object DeviceControlPlane : StreamSignaling"), "Android device-level Spatial control plane missing");
+assert(mediaServer.includes("DeviceControlPlane.acquire(DeviceControlPlane.Owner.MEDIA)"), "Spatial control plane is still tied to MediaProjection lifecycle");
+assert(mediaServer.includes("CONFIG_STABLE_MS") && mediaServer.includes("refreshUnifiedAdvertisement"), "NSD signaling metadata changes are not debounced/refreshed");
+assert(!screenService.includes("SignalingClient("), "Screen service must not create a second signaling client");
+assert(screenService.includes("DeviceControlPlane.release(DeviceControlPlane.Owner.STREAM)"), "Screen lifecycle must release only its control-plane ownership");
+
+const controlCommand = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/ControlCommand.kt");
+const streamer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/WebRtcStreamer.kt");
+assert(controlCommand.includes("DeviceControlPlane.setControlAuthorized(true)") && controlCommand.includes("DeviceControlPlane.setControlAuthorized(false)"),
+  "Accessibility authorization is not wired to display.control");
+assert(streamer.includes("DeviceControlPlane.setControlTransportActive(open)") && streamer.includes("DeviceControlPlane.setControlTransportActive(false)"),
+  "Android DataChannel state is not wired to display.control.active");
 
 const serverProtocol = read("apps/signaling-server/src/protocol.ts");
 const serverIndex = read("apps/signaling-server/src/index.ts");
@@ -62,6 +81,7 @@ assert(serverIndex.includes("message.source !== sender.deviceId"), "Spatial sour
 assert(serverIndex.includes("!isSpatialEnvelope(message) && message.token !== token"), "Legacy token must not become a Spatial envelope credential");
 
 const questSignaling = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestSignalingClient.cs");
+const controlChannel = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ControlChannel.cs");
 const bootstrapCall = questSignaling.indexOf('await SendSpatialBootstrapAsync(epoch);');
 const sessionIndex = questSignaling.indexOf('type = "create_session"');
 const helloIndex = questSignaling.indexOf('SpatialWire.Create("device.hello"');
@@ -69,5 +89,11 @@ const getIndex = questSignaling.indexOf('SpatialWire.Create("device.capabilities
 assert(bootstrapCall >= 0 && sessionIndex > bootstrapCall, "Quest must bootstrap Spatial discovery before the legacy session request");
 assert(helloIndex >= 0 && getIndex > helloIndex, "Spatial bootstrap must send hello before capabilities.get");
 assert(questSignaling.includes('case "device.capabilities.changed"'), "Quest does not handle runtime capability changes");
+assert(questSignaling.includes("source != _activeAndroid"), "Quest Spatial messages are not isolated to the selected Android peer");
+assert(questSignaling.includes('message.type == "protocol.error" && source == "signaling"'), "Quest peer isolation must preserve signaling-server protocol errors");
+assert(questSignaling.includes("PeerCapabilitiesChanged?.Invoke(source, capabilities)"), "Quest capability change events must preserve source device identity");
+assert(controlChannel.includes('ReportCapabilityState("display.control", active: true)') &&
+       controlChannel.includes('ReportCapabilityState("display.control", active: false)'),
+  "Quest DataChannel state is not wired to display.control.active");
 
 console.log("Spatial Protocol v1 source checks passed");

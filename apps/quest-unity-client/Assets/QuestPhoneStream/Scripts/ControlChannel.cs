@@ -16,14 +16,35 @@ namespace QuestPhoneStream
         {
             ResetChannel();
             _channel = channel;
+            _channel.OnOpen = HandleOpen;
+            _channel.OnClose = HandleClose;
+            signaling?.ReportCapabilityState("display.control", active: IsOpen);
             Debug.Log("[QuestPhoneStream] Control DataChannel attached");
         }
 
         public void ResetChannel()
         {
-            _channel?.Close();
-            _channel?.Dispose();
-            _channel = null;
+            signaling?.ReportCapabilityState("display.control", active: false);
+            if (_channel != null)
+            {
+                _channel.OnOpen = null;
+                _channel.OnClose = null;
+                _channel.Close();
+                _channel.Dispose();
+                _channel = null;
+            }
+        }
+
+        private void HandleOpen()
+        {
+            signaling?.ReportCapabilityState("display.control", active: true);
+            Debug.Log("[QuestPhoneStream] Control DataChannel open");
+        }
+
+        private void HandleClose()
+        {
+            signaling?.ReportCapabilityState("display.control", active: false);
+            Debug.Log("[QuestPhoneStream] Control DataChannel closed");
         }
 
         private void OnDestroy() { ResetChannel(); }
@@ -87,6 +108,7 @@ namespace QuestPhoneStream
             }
             else
             {
+                signaling?.ReportCapabilityState("display.control", active: false);
                 Debug.LogWarning("[QuestPhoneStream] Control channel is not open");
             }
         }

@@ -1,6 +1,8 @@
 package com.questphonestream.agent
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import org.json.JSONArray
@@ -34,29 +36,106 @@ class MediaHttpServer(
         context,
         { port },
         streamIdProvider,
-        signalingEndpointProvider
+        signalingEndpointProvider,
+        spatialReadyProvider = { DeviceControlPlane.isSpatialReady }
     )
     private val running = AtomicBoolean(false)
     private val workers: ExecutorService = Executors.newCachedThreadPool()
     private val acceptThread = Thread({ acceptLoop() }, "quest-phone-media-accept")
     private val random = SecureRandom()
     private val capabilities = ConcurrentHashMap<String, Capability>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var appliedControlConfig: ControlPlaneConfig? = null
+    private var pendingControlConfig: ControlPlaneConfig? = null
+    private var pendingControlConfigAt = 0L
+    private var controlPlaneListenerAttached = false
+    private var lastSpatialReady = false
+
+    private val controlPlaneListener = object : SignalingClient.Listener {
+        override fun onStateChanged(state: ConnectionState) {
+            val ready = state == ConnectionState.CONNECTED
+            if (ready == lastSpatialReady) return
+            lastSpatialReady = ready
+            nsdRegistration.refreshUnifiedAdvertisement()
+        }
+    }
+
+    private val metadataMonitor = object : Runnable {
+        override fun run() {
+            if (!running.get()) return
+            val current = readControlPlaneConfig()
+            val applied = appliedControlConfig
+            if (current == applied) {
+                pendingControlConfig = null
+            } else if (current != pendingControlConfig) {
+                pendingControlConfig = current
+                pendingControlConfigAt = SystemClock.elapsedRealtime()
+            } else if (SystemClock.elapsedRealtime() - pendingControlConfigAt >= CONFIG_STABLE_MS) {
+                applyControlPlaneConfig(current, applied)
+                pendingControlConfig = null
+            }
+            if (running.get()) mainHandler.postDelayed(this, CONFIG_POLL_MS)
+        }
+    }
 
     val port: Int get() = server.localPort
 
     fun start() {
         if (running.compareAndSet(false, true)) {
+            DeviceControlPlane.acquire(DeviceControlPlane.Owner.MEDIA)
+            if (!controlPlaneListenerAttached) {
+                DeviceControlPlane.addListener(controlPlaneListener, replay = false)
+                controlPlaneListenerAttached = true
+            }
+            val initial = readControlPlaneConfig()
+            applyControlPlaneConfig(initial, previous = null, refreshDiscovery = false)
+            lastSpatialReady = DeviceControlPlane.isSpatialReady
             acceptThread.start()
             nsdRegistration.start()
+            mainHandler.postDelayed(metadataMonitor, CONFIG_POLL_MS)
         }
     }
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        mainHandler.removeCallbacks(metadataMonitor)
+        pendingControlConfig = null
         nsdRegistration.stop()
+        if (controlPlaneListenerAttached) {
+            DeviceControlPlane.removeListener(controlPlaneListener)
+            controlPlaneListenerAttached = false
+        }
+        DeviceControlPlane.release(DeviceControlPlane.Owner.MEDIA)
         runCatching { server.close() }
         workers.shutdownNow()
         capabilities.clear()
+    }
+
+    /** Force a unified-only metadata refresh; the legacy media advertisement is untouched. */
+    fun refreshDiscoveryMetadata() {
+        nsdRegistration.refreshUnifiedAdvertisement()
+    }
+
+    private fun readControlPlaneConfig(): ControlPlaneConfig {
+        val streamId = streamIdProvider().trim().ifBlank { MediaDeviceIdentity.getOrCreateDeviceId(context) }
+        return ControlPlaneConfig(
+            streamId = streamId,
+            signalingUrl = signalingEndpointProvider().trim(),
+            token = pairingTokenProvider()
+        )
+    }
+
+    private fun applyControlPlaneConfig(
+        current: ControlPlaneConfig,
+        previous: ControlPlaneConfig?,
+        refreshDiscovery: Boolean = true
+    ) {
+        appliedControlConfig = current
+        DeviceControlPlane.configure(current.signalingUrl, current.token, current.streamId)
+        if (refreshDiscovery && (previous == null ||
+                previous.streamId != current.streamId || previous.signalingUrl != current.signalingUrl)) {
+            nsdRegistration.refreshUnifiedAdvertisement()
+        }
     }
 
     private fun acceptLoop() {
@@ -267,10 +346,13 @@ class MediaHttpServer(
         .ifBlank { "video/mp4" }
 
     private data class Capability(val mediaId: String, val expiresAt: Long)
+    private data class ControlPlaneConfig(val streamId: String, val signalingUrl: String, val token: String)
 
     companion object {
         const val DEFAULT_PORT = 8788
         private const val TOKEN_TTL_MS = 5 * 60 * 1000L
+        private const val CONFIG_POLL_MS = 250L
+        private const val CONFIG_STABLE_MS = 750L
         private const val TAG = "QuestPhoneMedia"
     }
 }

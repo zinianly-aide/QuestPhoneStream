@@ -14,10 +14,41 @@ import androidx.core.content.ContextCompat
 
 class ScreenStreamService : Service() {
     private var streamer: WebRtcStreamer? = null
-    private var signalingClient: SignalingClient? = null
+    private var activeConfig: StreamConfig? = null
+    private var listenerAttached = false
+
+    private val controlPlaneListener = object : SignalingClient.Listener {
+        override fun onSessionCreated(session: StreamSession) {
+            val config = activeConfig ?: return
+            if (session.androidDeviceId == config.deviceId && session.questDeviceId == config.questDeviceId) {
+                streamer?.startSession(session)
+                DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = true)
+            }
+        }
+
+        override fun onRemoteDescription(session: StreamSession, type: String, sdp: String) {
+            streamer?.setRemoteDescription(session, type, sdp)
+        }
+
+        override fun onIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {
+            streamer?.addIceCandidate(session, candidate)
+        }
+
+        override fun onRegistered() {
+            val config = activeConfig ?: return
+            DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
+            DeviceControlPlane.requestSession(config.sessionId, config.deviceId, config.questDeviceId)
+        }
+
+        override fun onSessionEnded() {
+            DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
+            streamer?.resetPeer()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
+        DeviceControlPlane.acquire(DeviceControlPlane.Owner.STREAM)
         createNotificationChannel()
     }
 
@@ -30,58 +61,39 @@ class ScreenStreamService : Service() {
             ?: return START_NOT_STICKY
         val config = StreamConfig.from(intent)
 
-        signalingClient?.close()
         streamer?.dispose()
-
-        signalingClient = SignalingClient(
-            url = config.signalingUrl,
-            token = config.token,
-            role = "android",
-            deviceId = config.deviceId,
-            listener = object : SignalingClient.Listener {
-                override fun onSessionCreated(session: StreamSession) {
-                    if (session.androidDeviceId == config.deviceId && session.questDeviceId == config.questDeviceId) {
-                        streamer?.startSession(session)
-                        signalingClient?.updateCapabilityState("display.publish", authorized = true, active = true)
-                    }
-                }
-
-                override fun onRemoteDescription(session: StreamSession, type: String, sdp: String) {
-                    streamer?.setRemoteDescription(session, type, sdp)
-                }
-
-                override fun onIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {
-                    streamer?.addIceCandidate(session, candidate)
-                }
-
-                override fun onRegistered() {
-                    signalingClient?.updateCapabilityState("display.publish", authorized = true, active = false)
-                    signalingClient?.createSession(config.sessionId, config.deviceId, config.questDeviceId)
-                }
-
-                override fun onSessionEnded() {
-                    signalingClient?.updateCapabilityState("display.publish", authorized = true, active = false)
-                    streamer?.resetPeer()
-                }
-            }
-        )
+        activeConfig = config
+        DeviceControlPlane.configure(config.signalingUrl, config.token, config.deviceId)
+        DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
 
         streamer = WebRtcStreamer(
             context = applicationContext,
             config = config,
             resultCode = resultCode,
             projectionData = projectionData,
-            signaling = signalingClient!!
+            signaling = DeviceControlPlane
         )
-        signalingClient?.connect()
-        Log.i(TAG, "Screen stream service started for ${config.sessionId}")
+
+        if (!listenerAttached) {
+            DeviceControlPlane.addListener(controlPlaneListener, replay = true)
+            listenerAttached = true
+        }
+        DeviceControlPlane.requestSession(config.sessionId, config.deviceId, config.questDeviceId)
+        Log.i(TAG, "Screen stream service attached to device control plane for ${config.sessionId}")
         return START_STICKY
     }
 
     override fun onDestroy() {
-        signalingClient?.updateCapabilityState("display.publish", authorized = false, active = false)
+        DeviceControlPlane.updateCapabilityState("display.publish", authorized = false, active = false)
+        DeviceControlPlane.setControlTransportActive(false)
+        if (listenerAttached) {
+            DeviceControlPlane.removeListener(controlPlaneListener)
+            listenerAttached = false
+        }
         streamer?.dispose()
-        signalingClient?.close()
+        streamer = null
+        activeConfig = null
+        DeviceControlPlane.release(DeviceControlPlane.Owner.STREAM)
         super.onDestroy()
     }
 

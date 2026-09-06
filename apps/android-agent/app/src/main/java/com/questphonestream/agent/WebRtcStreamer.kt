@@ -12,7 +12,7 @@ class WebRtcStreamer(
     private val config: StreamConfig,
     private val resultCode: Int,
     private val projectionData: Intent,
-    private val signaling: SignalingClient
+    private val signaling: StreamSignaling
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val eglBase = EglBase.create()
@@ -118,21 +118,29 @@ class WebRtcStreamer(
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = Unit
         }) ?: error("Failed to create PeerConnection")
         peerConnection = peer
-        controlChannel = peer.createDataChannel("control", DataChannel.Init()).apply {
-            registerObserver(object : DataChannel.Observer {
-                override fun onBufferedAmountChange(previousAmount: Long) = Unit
-                override fun onStateChange() { Log.i(TAG, "Control channel state: ${controlChannel?.state()}") }
-                override fun onMessage(buffer: DataChannel.Buffer) {
-                    Log.i(TAG, "Control message received: binary=${buffer.binary} size=${buffer.data.remaining()}")
-                    if (buffer.data.remaining() > 65536 || buffer.data.remaining() == 0) return
-                    val bytes = ByteArray(buffer.data.remaining())
-                    buffer.data.get(bytes)
-                    main.post {
-                        if (isCurrent(epoch)) ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
-                    }
+        val channel = peer.createDataChannel("control", DataChannel.Init())
+        controlChannel = channel
+        DeviceControlPlane.setControlTransportActive(false)
+        channel.registerObserver(object : DataChannel.Observer {
+            override fun onBufferedAmountChange(previousAmount: Long) = Unit
+            override fun onStateChange() {
+                main.post {
+                    if (!isCurrent(epoch) || controlChannel !== channel) return@post
+                    val open = channel.state() == DataChannel.State.OPEN
+                    DeviceControlPlane.setControlTransportActive(open)
+                    Log.i(TAG, "Control channel state: ${channel.state()}")
                 }
-            })
-        }
+            }
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                Log.i(TAG, "Control message received: binary=${buffer.binary} size=${buffer.data.remaining()}")
+                if (buffer.data.remaining() > 65536 || buffer.data.remaining() == 0) return
+                val bytes = ByteArray(buffer.data.remaining())
+                buffer.data.get(bytes)
+                main.post {
+                    if (isCurrent(epoch)) ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
+                }
+            }
+        })
         peer.addTrack(videoTrack, listOf("screen"))
         peer.addTrack(audioTrack, listOf("screen"))
         createOffer(peer, session, epoch)
@@ -202,6 +210,7 @@ class WebRtcStreamer(
         activeSession = null
         remoteReady = false
         pendingIce.clear()
+        DeviceControlPlane.setControlTransportActive(false)
         controlChannel?.unregisterObserver()
         val oldChannel = controlChannel
         controlChannel = null
@@ -218,6 +227,7 @@ class WebRtcStreamer(
         disposed = true
         restartDebounce = true
         pendingSession = null
+        DeviceControlPlane.setControlTransportActive(false)
         runCatching { videoCapturer.stopCapture() }
         peerDisposals.defer(detachCurrentPeer())
         peerDisposals.finishWhenDrained()

@@ -80,10 +80,12 @@ class ControlAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         ControlCommandDispatcher.attach(this)
+        DeviceControlPlane.setControlAuthorized(true)
         Log.i(TAG, "Control accessibility service connected")
     }
 
     override fun onDestroy() {
+        DeviceControlPlane.setControlAuthorized(false)
         ControlCommandDispatcher.detach(this)
         super.onDestroy()
     }
@@ -142,4 +144,3 @@ class ControlAccessibilityService : AccessibilityService() {
         )
     }
 }
-

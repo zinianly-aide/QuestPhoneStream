@@ -14,7 +14,8 @@ internal class MediaNsdRegistration(
     context: Context,
     private val portProvider: () -> Int,
     private val streamIdProvider: () -> String,
-    private val signalingEndpointProvider: () -> String
+    private val signalingEndpointProvider: () -> String,
+    private val spatialReadyProvider: () -> Boolean = { false }
 ) {
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -29,6 +30,10 @@ internal class MediaNsdRegistration(
     private val pendingTypes = mutableSetOf<String>()
     private val retryAttempts = mutableMapOf<String, Int>()
     private val retryRunnables = mutableMapOf<String, Runnable>()
+    private val refreshRequestedTypes = mutableSetOf<String>()
+    private val refreshUnregisterPendingTypes = mutableSetOf<String>()
+    private val refreshAttempts = mutableMapOf<String, Int>()
+    private val refreshRunnables = mutableMapOf<String, Runnable>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var multicastLock: WifiManager.MulticastLock? = null
     private var multicastLockHeld = false
@@ -41,6 +46,14 @@ internal class MediaNsdRegistration(
         advertisements.forEach(::registerAdvertisement)
     }
 
+    /**
+     * Refresh only the unified advertisement after signaling/identity metadata changes.
+     * Legacy media discovery is intentionally left untouched and keeps its own failure domain.
+     */
+    fun refreshUnifiedAdvertisement() {
+        mainHandler.post { requestRefresh(UNIFIED_SERVICE_TYPE) }
+    }
+
     fun stop() {
         if (!started && registeredTypes.isEmpty() && multicastLock == null) return
         started = false
@@ -48,6 +61,11 @@ internal class MediaNsdRegistration(
             retryRunnables.values.forEach(mainHandler::removeCallbacks)
             retryRunnables.clear()
             retryAttempts.clear()
+            refreshRunnables.values.forEach(mainHandler::removeCallbacks)
+            refreshRunnables.clear()
+            refreshAttempts.clear()
+            refreshRequestedTypes.clear()
+            refreshUnregisterPendingTypes.clear()
             pendingTypes.clear()
             unregisterRegisteredServices()
         } catch (error: Exception) {
@@ -69,11 +87,13 @@ internal class MediaNsdRegistration(
                 setAttribute("id", deviceId)
                 setAttribute("name", deviceName)
                 setAttribute("caps", advertisement.capabilities)
-                setAttribute("capv", "1")
-                setAttribute("spatial", "1")
                 if (advertisement.type == UNIFIED_SERVICE_TYPE) {
+                    setAttribute("capv", "1")
+                    if (spatialReadyProvider()) setAttribute("spatial", "1")
                     setAttribute("streamId", streamIdProvider().ifBlank { deviceId })
-                    setAttribute("signalingUrl", signalingEndpointProvider())
+                    signalingEndpointProvider().trim().takeIf { it.isNotEmpty() }?.let {
+                        setAttribute("signalingUrl", it)
+                    }
                 }
             }
             val listener = createRegistrationListener(advertisement.type)
@@ -107,6 +127,57 @@ internal class MediaNsdRegistration(
         Log.w(TAG, "Media NSD registration retry scheduled type=$type attempt=$attempt delayMs=$delayMs reason=$reason")
     }
 
+    private fun requestRefresh(type: String) {
+        if (!started || type != UNIFIED_SERVICE_TYPE) return
+        refreshRequestedTypes += type
+        when {
+            refreshUnregisterPendingTypes.contains(type) -> Unit
+            pendingTypes.contains(type) -> Unit
+            registeredTypes.contains(type) -> unregisterForRefresh(type)
+            else -> {
+                refreshRequestedTypes -= type
+                advertisements.firstOrNull { it.type == type }?.let(::registerAdvertisement)
+            }
+        }
+    }
+
+    private fun unregisterForRefresh(type: String) {
+        if (!started || refreshUnregisterPendingTypes.contains(type)) return
+        val listener = registrationListeners[type]
+        if (listener == null) {
+            registeredTypes -= type
+            refreshRequestedTypes -= type
+            advertisements.firstOrNull { it.type == type }?.let(::registerAdvertisement)
+            return
+        }
+        refreshUnregisterPendingTypes += type
+        runCatching { nsdManager.unregisterService(listener) }
+            .onFailure { error ->
+                refreshUnregisterPendingTypes -= type
+                scheduleRefreshRetry(type, "sync exception: ${error.javaClass.simpleName}")
+            }
+    }
+
+    private fun scheduleRefreshRetry(type: String, reason: String) {
+        if (!started || !refreshRequestedTypes.contains(type) || refreshRunnables.containsKey(type)) return
+        val attempt = (refreshAttempts[type] ?: 0) + 1
+        refreshAttempts[type] = attempt
+        if (attempt > MAX_RETRY_ATTEMPTS) {
+            refreshRequestedTypes -= type
+            refreshAttempts.remove(type)
+            Log.e(TAG, "Media NSD metadata refresh exhausted type=$type reason=$reason")
+            return
+        }
+        val delayMs = RETRY_DELAY_MS * attempt
+        val retry = Runnable {
+            refreshRunnables.remove(type)
+            if (started && refreshRequestedTypes.contains(type)) unregisterForRefresh(type)
+        }
+        refreshRunnables[type] = retry
+        mainHandler.postDelayed(retry, delayMs)
+        Log.w(TAG, "Media NSD metadata refresh retry type=$type attempt=$attempt delayMs=$delayMs reason=$reason")
+    }
+
     private fun createRegistrationListener(type: String) = object : NsdManager.RegistrationListener {
         override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
             if (!started) {
@@ -117,24 +188,40 @@ internal class MediaNsdRegistration(
             registeredTypes += type
             retryAttempts.remove(type)
             Log.i(TAG, "Media NSD registered name=${serviceInfo.serviceName} type=${serviceInfo.serviceType} port=${serviceInfo.port}")
+            if (refreshRequestedTypes.contains(type)) mainHandler.post { unregisterForRefresh(type) }
         }
 
         override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
             pendingTypes -= type
             registeredTypes -= type
+            registrationListeners.remove(type)
             Log.e(TAG, "Media NSD registration failed type=$type error=$errorCode")
             scheduleRetry(type, "callback error=$errorCode")
         }
 
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
+            refreshUnregisterPendingTypes -= type
             registeredTypes -= type
-            if (!started && registeredTypes.isEmpty()) releaseMulticastLock()
-            Log.i(TAG, "Media NSD unregistered name=${serviceInfo.serviceName} type=$type")
+            registrationListeners.remove(type)
+            val refresh = refreshRequestedTypes.remove(type)
+            refreshAttempts.remove(type)
+            if (refresh && started) {
+                advertisements.firstOrNull { it.type == type }?.let(::registerAdvertisement)
+            } else if (!started && registeredTypes.isEmpty()) {
+                releaseMulticastLock()
+            }
+            Log.i(TAG, "Media NSD unregistered name=${serviceInfo.serviceName} type=$type refresh=$refresh")
         }
 
         override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            registeredTypes -= type
-            if (!started && registeredTypes.isEmpty()) releaseMulticastLock()
+            refreshUnregisterPendingTypes -= type
+            if (started && refreshRequestedTypes.contains(type)) {
+                scheduleRefreshRetry(type, "callback error=$errorCode")
+            } else {
+                registeredTypes -= type
+                registrationListeners.remove(type)
+                if (!started && registeredTypes.isEmpty()) releaseMulticastLock()
+            }
             Log.w(TAG, "Media NSD unregistration failed type=$type error=$errorCode")
         }
     }

@@ -26,6 +26,8 @@ namespace QuestPhoneStream
         public event Action<SignalMessage> MessageReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesChanged;
+        public event Action<string, SpatialCapabilityDescriptor[]> PeerCapabilitiesReceived;
+        public event Action<string, SpatialCapabilityDescriptor[]> PeerCapabilitiesChanged;
         public event Action NegotiationInvalidated;
 
         private ClientWebSocket _socket;
@@ -236,6 +238,12 @@ namespace QuestPhoneStream
         {
             if (!IsCurrent(epoch) || message.target != _activeQuest) return;
             var source = message.source;
+            var signalingError = message.type == "protocol.error" && source == "signaling";
+            if (!signalingError && source != _activeAndroid)
+            {
+                Debug.LogWarning("[QuestPhoneStream] Ignored Spatial message from non-active peer: " + source);
+                return;
+            }
             switch (message.type)
             {
                 case "device.hello":
@@ -260,13 +268,21 @@ namespace QuestPhoneStream
                         SpatialWire.CapabilitiesPayload(_capabilities.All()), _activeSession, "", message.id), epoch);
                     return;
                 case "device.capabilities.result":
+                {
                     _spatialPeers.Add(source);
-                    CapabilitiesReceived?.Invoke(message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>());
+                    var capabilities = message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>();
+                    PeerCapabilitiesReceived?.Invoke(source, capabilities);
+                    CapabilitiesReceived?.Invoke(capabilities);
                     return;
+                }
                 case "device.capabilities.changed":
+                {
                     _spatialPeers.Add(source);
-                    CapabilitiesChanged?.Invoke(message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>());
+                    var capabilities = message.payload.capabilities ?? Array.Empty<SpatialCapabilityDescriptor>();
+                    PeerCapabilitiesChanged?.Invoke(source, capabilities);
+                    CapabilitiesChanged?.Invoke(capabilities);
                     return;
+                }
                 case "subscription.create":
                 case "subscription.cancel":
                     _ = SendSpatialErrorAsync(source, message.id, "not_implemented", "Subscription data plane is not implemented", epoch);
@@ -370,6 +386,9 @@ namespace QuestPhoneStream
             }
         }
 
+        public bool ReportCapabilityState(string name, bool? authorized = null, bool? active = null) =>
+            _capabilities != null && _capabilities.UpdateState(name, authorized, active);
+
         private void SetState(ConnectionState state)
         {
             if (State == state) return;
@@ -390,6 +409,7 @@ namespace QuestPhoneStream
             ++_epoch;
             _spatialPeers.Clear();
             _capabilities?.UpdateState("display.consume", active: false);
+            _capabilities?.UpdateState("display.control", active: false);
             NegotiationId = null;
             _registered?.TrySetResult(false);
             _sessionReady?.TrySetResult(false);
