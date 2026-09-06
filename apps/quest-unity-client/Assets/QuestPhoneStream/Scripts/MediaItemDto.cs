@@ -85,9 +85,10 @@ namespace QuestPhoneStream
         public static string ResolveManifest(string baseUrl, string manifestUrl, string fallback)
         {
             if (string.IsNullOrWhiteSpace(manifestUrl)) return fallback;
-            if (Uri.TryCreate(manifestUrl.Trim(), UriKind.Absolute, out var absolute)) return absolute.ToString();
-            if (!Uri.TryCreate((baseUrl ?? string.Empty).TrimEnd('/') + "/", UriKind.Absolute, out var root)) return fallback;
-            return Uri.TryCreate(root, manifestUrl.TrimStart('/'), out var resolved) ? resolved.ToString() : fallback;
+            if (!Uri.TryCreate(manifestUrl.Trim(), UriKind.Absolute, out var absolute)) return fallback;
+            return absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps || absolute.Scheme == Uri.UriSchemeFile
+                ? absolute.ToString()
+                : fallback;
         }
         private static string Join(string baseUrl, string path) => (baseUrl ?? string.Empty).TrimEnd('/') + path;
     }
