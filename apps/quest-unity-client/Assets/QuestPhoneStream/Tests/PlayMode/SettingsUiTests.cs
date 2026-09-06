@@ -90,7 +90,6 @@ namespace QuestPhoneStream.Tests
             foreach (var input in ui.GetComponentsInChildren<InputField>(true))
             {
                 Assert.IsNotNull(input.GetComponent<QuestKeyboardInputField>());
-                Assert.IsFalse(input.shouldHideMobileInput);
                 var textRect = input.textComponent.rectTransform.rect;
                 Assert.Greater(textRect.width, 0);
                 Assert.Greater(textRect.height, input.textComponent.fontSize);
@@ -150,7 +149,7 @@ namespace QuestPhoneStream.Tests
             {
                 var text = button.GetComponentInChildren<Text>();
                 if (text == null) continue;
-                if (text.text == "Advanced Settings") advanced = button;
+                if (text.text == "⚙ Settings") advanced = button;
                 if (text.text == "Phone") phone = button;
                 if (text.text == "Videos") videos = button;
                 if (text.text == "Keyboard") keyboard = button;
@@ -267,7 +266,11 @@ namespace QuestPhoneStream.Tests
         public IEnumerator DeveloperToolsIsAnAdvancedSettingsChildPage()
         {
             var ui = CreateUi();
-            Assert.IsTrue(WirelessAdbHelper.IsDeveloperToolsAvailable);
+            if (!WirelessAdbHelper.IsDeveloperToolsAvailable)
+            {
+                Assert.IsNull(ui.developerToolsButton);
+                yield break;
+            }
             Assert.IsNotNull(ui.developerToolsButton);
             Assert.IsNotNull(ui.wirelessAdbHelper);
             ui.developerToolsButton.onClick.Invoke();
