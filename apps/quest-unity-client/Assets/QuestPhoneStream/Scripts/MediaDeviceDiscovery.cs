@@ -114,6 +114,9 @@ namespace QuestPhoneStream
             return $"http://{normalizedHost}:{port}";
         }
 
+        public static bool ShouldAcceptResolvedCallback(bool currentGeneration, bool serviceIsActive) =>
+            currentGeneration && serviceIsActive;
+
 #if UNITY_ANDROID && !UNITY_EDITOR
         private bool IsCurrent(AndroidNsdBridge bridge, int generation) =>
             IsDiscovering && generation == _discoveryGeneration && ReferenceEquals(_bridge, bridge);
@@ -123,14 +126,25 @@ namespace QuestPhoneStream
             if (!IsCurrent(bridge, generation)) return;
             var serviceKey = CallString(serviceInfo, "getServiceName");
             if (string.IsNullOrWhiteSpace(serviceKey)) return;
-            _activeServiceKeys.Add(serviceKey);
+            if (!_activeServiceKeys.Add(serviceKey))
+            {
+                Debug.Log($"[MediaDeviceDiscovery] Duplicate service ignored key={serviceKey}");
+                return;
+            }
+            Debug.Log($"[MediaDeviceDiscovery] Service found key={serviceKey}");
             bridge.Resolve(serviceInfo);
         }
 
         private void OnServiceResolved(AndroidNsdBridge bridge, int generation, string serviceKey, AndroidJavaObject serviceInfo)
         {
             bridge.RemoveResolveListener(serviceKey);
-            if (!IsCurrent(bridge, generation) || !_activeServiceKeys.Contains(serviceKey)) return;
+            var currentGeneration = IsCurrent(bridge, generation);
+            var serviceIsActive = _activeServiceKeys.Contains(serviceKey);
+            if (!ShouldAcceptResolvedCallback(currentGeneration, serviceIsActive))
+            {
+                Debug.Log($"[MediaDeviceDiscovery] {(currentGeneration ? "Late resolve" : "Stale callback")} ignored key={serviceKey}");
+                return;
+            }
             var attributes = ReadAttributes(serviceInfo);
             var version = GetAttribute(attributes, "v");
             var deviceId = GetAttribute(attributes, "id");
@@ -169,19 +183,32 @@ namespace QuestPhoneStream
 
         private void OnServiceLost(AndroidNsdBridge bridge, int generation, AndroidJavaObject serviceInfo)
         {
-            if (!IsCurrent(bridge, generation)) return;
+            if (!IsCurrent(bridge, generation))
+            {
+                Debug.Log("[MediaDeviceDiscovery] Stale callback ignored: service lost");
+                return;
+            }
             var serviceKey = CallString(serviceInfo, "getServiceName");
-            if (string.IsNullOrWhiteSpace(serviceKey) || !_activeServiceKeys.Remove(serviceKey)) return;
-            if (!_serviceToDevice.TryGetValue(serviceKey, out var deviceId)) return;
+            if (string.IsNullOrWhiteSpace(serviceKey)) return;
+            bridge.RemoveResolveListener(serviceKey);
+            if (!_activeServiceKeys.Remove(serviceKey)) return;
+            if (!_serviceToDevice.TryGetValue(serviceKey, out var deviceId))
+            {
+                Debug.Log($"[MediaDeviceDiscovery] Service lost before resolve key={serviceKey}");
+                return;
+            }
             _serviceToDevice.Remove(serviceKey);
             if (_servicesByDevice.TryGetValue(deviceId, out var services))
             {
                 services.Remove(serviceKey);
+                Debug.Log($"[MediaDeviceDiscovery] Service lost key={serviceKey} deviceId={deviceId} remainingServices={services.Count}");
                 if (services.Count != 0) return;
+                _servicesByDevice.Remove(deviceId);
             }
             if (_devices.TryGetValue(deviceId, out var device))
             {
                 device.IsReady = false;
+                Debug.Log($"[MediaDeviceDiscovery] Device LOST id={deviceId} device.IsReady={device.IsReady}");
                 DevicesChanged?.Invoke();
             }
         }
@@ -201,8 +228,14 @@ namespace QuestPhoneStream
         private void OnServiceResolveFailed(AndroidNsdBridge bridge, int generation, string serviceKey, int errorCode)
         {
             bridge.RemoveResolveListener(serviceKey);
-            if (!IsCurrent(bridge, generation)) return;
+            if (!IsCurrent(bridge, generation))
+            {
+                Debug.Log($"[MediaDeviceDiscovery] Stale callback ignored: resolve failed key={serviceKey}");
+                return;
+            }
+            _activeServiceKeys.Remove(serviceKey);
             Debug.LogWarning($"[MediaDeviceDiscovery] NSD resolve failed service={serviceKey} error={errorCode}");
+            DevicesChanged?.Invoke();
         }
 
 #endif
@@ -296,10 +329,18 @@ namespace QuestPhoneStream
                 if (string.IsNullOrWhiteSpace(serviceKey) || _resolveListeners.ContainsKey(serviceKey)) return;
                 var listener = new ResolveListenerProxy(_owner, this, serviceKey);
                 _resolveListeners[serviceKey] = listener;
-                _manager?.Call("resolveService", serviceInfo, listener);
+                try
+                {
+                    _manager?.Call("resolveService", serviceInfo, listener);
+                }
+                catch (Exception error)
+                {
+                    _resolveListeners.Remove(serviceKey);
+                    Debug.LogWarning($"[MediaDeviceDiscovery] NSD resolve dispatch failed service={serviceKey}: {error.Message}");
+                }
             }
 
-            public void RemoveResolveListener(string serviceKey) => _resolveListeners.Remove(serviceKey);
+            private void RemoveResolveListener(string serviceKey) => _resolveListeners.Remove(serviceKey);
 
             public void Dispose()
             {

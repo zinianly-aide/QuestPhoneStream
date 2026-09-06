@@ -29,6 +29,7 @@ const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questpho
 const androidMediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
 const androidNsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
 const androidIdentity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaDeviceIdentity.kt");
+const wirelessAdb = read(scripts + "WirelessAdbHelper.cs");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
@@ -148,7 +149,8 @@ test("Quest normal flow is compact and keeps engineering fields behind Advanced 
   assert.match(home, /sizeDelta = new Vector2\(900, 500\)/);
   assert.match(home, /localScale = Vector3\.one \* 0\.0015f/);
   assert.match(home, /deviceListGo\.AddComponent<RectMask2D>\(\)/);
-  assert.match(home, /Anchor\(deviceListGo\.GetComponent<RectTransform>\(\), 0\.05f, 0\.08f, 0\.95f, 0\.18f\)/);
+  assert.match(home, /deviceListRect\.SetParent\(panelGo\.transform, false\)/);
+  assert.match(home, /Anchor\(deviceListRect, 0\.05f, 0\.08f, 0\.95f, 0\.18f\)/);
   assert.match(home, /OpenSettings\)/);
   assert.match(home, /Screen  ·  /);
   assert.match(home, /Control  ·  /);
@@ -160,8 +162,26 @@ test("Quest normal flow is compact and keeps engineering fields behind Advanced 
     assert.match(settings, new RegExp(`public InputField .*${field}`));
   assert.match(settings, /connectButton\.onClick\.AddListener\(OnConnect\)/);
   assert.doesNotMatch(settings, /state == ConnectionState\.PeerConnected[\s\S]*BackToHome\(\)/);
-  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /HomeKeepsNavigationAndAdvancedSettingsInViewport/);
-  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /PeerConnectedDoesNotHideVisibleAdvancedSettings/);
+  const settingsTests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs");
+  assert.match(settingsTests, /HomeKeepsNavigationAndAdvancedSettingsInViewport/);
+  assert.match(settingsTests, /receiver\.enabled = false/);
+  assert.match(settingsTests, /PeerConnectedDoesNotHideVisibleAdvancedSettings/);
+});
+
+test("Quest wireless ADB helper is developer-only and non-invasive", () => {
+  assert.match(factory, /#if DEVELOPMENT_BUILD \|\| UNITY_EDITOR[\s\S]*Developer Tools/);
+  assert.match(ui, /developerToolsButton/);
+  assert.match(ui, /ShowDeveloperTools\(\)/);
+  assert.match(wirelessAdb, /WIRELESS_DEBUGGING_SETTINGS/);
+  assert.match(wirelessAdb, /APPLICATION_DEVELOPMENT_SETTINGS/);
+  assert.match(wirelessAdb, /TryOpenSettings\(StartSettingsActivity\)/);
+  assert.match(wirelessAdb, /MaxProbeTimeoutMs = 500/);
+  assert.match(wirelessAdb, /BeginConnect/);
+  assert.match(wirelessAdb, /adb connect \{ip\}:\{port\}/);
+  assert.doesNotMatch(wirelessAdb, /Runtime\.exec|Process\.Start|WRITE_SECURE_SETTINGS|settings put global|service\.adb/);
+  assert.doesNotMatch(wirelessAdb, /void Update\(/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /WirelessAdbHelperSelectsIpv4AndBuildsSafeCommand/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /WirelessAdbHelperMapsProbeStatesAndSettingsFallback/);
 });
 
 test("Android normal flow exposes readiness and hides engineering controls", () => {
@@ -367,7 +387,8 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(mediaDiscovery, /device\.IsReady = false/);
   assert.match(mediaDiscovery, /_activeServiceKeys/);
   assert.match(mediaDiscovery, /_discoveryGeneration/);
-  assert.match(mediaDiscovery, /!IsCurrent\(bridge, generation\) \|\| !_activeServiceKeys\.Contains\(serviceKey\)/);
+  assert.match(mediaDiscovery, /!IsCurrent\(bridge, generation\)/);
+  assert.match(mediaDiscovery, /serviceIsActive = _activeServiceKeys\.Contains\(serviceKey\)/);
   assert.match(mediaDiscovery, /previousBridge\?\.Dispose\(\)/);
   assert.match(mediaDiscovery, /bridge\?\.Dispose\(\)/);
   assert.match(mediaDiscovery, /onServiceFound[\s\S]*UnityMainThread\.Enqueue/);
@@ -392,6 +413,38 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(home, /device\.IsReady \? "Ready" : "Lost"/);
   assert.match(home, /button\.interactable = device\.IsReady/);
   assert.match(home, /OnMediaDeviceSelected/);
+});
+
+test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => {
+  assert.match(mediaDiscovery, /_activeServiceKeys\.Add\(serviceKey\)/);
+  assert.match(mediaDiscovery, /currentGeneration \? "Late resolve" : "Stale callback"/);
+  assert.match(mediaDiscovery, /Stale callback ignored/);
+  assert.match(mediaDiscovery, /ReferenceEquals\(_bridge, bridge\)/);
+  assert.match(mediaDiscovery, /generation == _discoveryGeneration/);
+  assert.match(mediaDiscovery, /_resolveListeners\.Remove\(serviceKey\)/);
+  assert.match(mediaDiscovery, /OnServiceLost[\s\S]*bridge\.RemoveResolveListener\(serviceKey\)/);
+  assert.match(mediaDiscovery, /_resolveListeners\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_activeServiceKeys\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_serviceToDevice\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_servicesByDevice\.Clear\(\)/);
+  assert.match(mediaDiscovery, /device\.IsReady = false/);
+  assert.match(mediaDiscovery, /Duplicate service ignored/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceFound/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceLost/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceResolved/);
+  assert.match(mediaDiscovery, /Debug\.Log.*Device LOST/);
+  assert.match(mediaDiscovery, /Debug\.Log.*Device READY/);
+});
+
+test("Android NSD registration can retry and scopes multicast lock to lifecycle", () => {
+  assert.match(androidNsd, /started = false/);
+  assert.match(androidNsd, /registered = false/);
+  assert.match(androidNsd, /onRegistrationFailed[\s\S]*started = false[\s\S]*releaseMulticastLock/);
+  assert.match(androidNsd, /fun stop\(\)[\s\S]*releaseMulticastLock\(\)/);
+  assert.match(androidNsd, /if \(started\) return/);
+  assert.match(androidNsd, /Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S/);
+  assert.match(androidNsd, /lock\.acquire\(\)/);
+  assert.match(androidNsd, /lock\.release\(\)/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {

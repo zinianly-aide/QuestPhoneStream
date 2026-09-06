@@ -10,6 +10,7 @@ namespace QuestPhoneStream
         public Canvas canvas;
         public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput, mediaBaseUrlInput;
         public Button saveButton, connectButton, phoneScreenButton, videoLibraryButton;
+        public Button developerToolsButton;
         public Button backButton;
         public Text statusText;
         public MediaLibraryUI mediaLibrary;
@@ -34,6 +35,7 @@ namespace QuestPhoneStream
             saveButton.onClick.AddListener(OnSave);
             connectButton.onClick.AddListener(OnConnect);
             backButton?.onClick.AddListener(OnBack);
+            developerToolsButton?.onClick.AddListener(ShowDeveloperTools);
             phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
             videoLibraryButton?.onClick.AddListener(() => {
                 SetAdvancedVisible(false);
@@ -69,6 +71,24 @@ namespace QuestPhoneStream
 
         public void ShowAdvanced()
         {
+            wirelessAdbHelper?.Hide();
+            SetAdvancedVisible(true);
+            Show();
+        }
+
+        public WirelessAdbHelper wirelessAdbHelper;
+
+        public void ShowDeveloperTools()
+        {
+            if (!_initialized) throw new InvalidOperationException("Initialize Settings UI before showing developer tools");
+            SetAdvancedVisible(false);
+            Show();
+            wirelessAdbHelper?.Show();
+        }
+
+        public void HideDeveloperTools()
+        {
+            wirelessAdbHelper?.Hide();
             SetAdvancedVisible(true);
             Show();
         }
@@ -82,6 +102,8 @@ namespace QuestPhoneStream
 
         private void OnBack()
         {
+            wirelessAdbHelper?.Hide();
+            SetAdvancedVisible(true);
             Hide();
             onBackToHome?.Invoke();
         }

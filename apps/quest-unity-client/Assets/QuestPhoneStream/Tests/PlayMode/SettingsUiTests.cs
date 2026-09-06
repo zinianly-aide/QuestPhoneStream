@@ -138,6 +138,7 @@ namespace QuestPhoneStream.Tests
         public IEnumerator HomeKeepsNavigationAndAdvancedSettingsInViewport()
         {
             var receiver = _root.AddComponent<QuestWebRtcReceiver>();
+            receiver.enabled = false;
             receiver.signaling = _client;
             receiver.xrCamera = _camera;
             var home = _root.AddComponent<QuestHomeUI>();
@@ -197,6 +198,56 @@ namespace QuestPhoneStream.Tests
             var method = typeof(SettingsUI).GetMethod("OnStateChanged", BindingFlags.NonPublic | BindingFlags.Instance);
             method.Invoke(ui, new object[] { ConnectionState.PeerConnected });
             Assert.IsTrue(ui.IsVisible);
+        }
+
+        [Test]
+        public void WirelessAdbHelperSelectsIpv4AndBuildsSafeCommand()
+        {
+            Assert.AreEqual("192.168.1.20", WirelessAdbHelper.SelectIpv4(new[] {
+                "127.0.0.1", "invalid", "8.8.8.8", "192.168.1.20"
+            }));
+            Assert.AreEqual(string.Empty, WirelessAdbHelper.SelectIpv4(new[] { "127.0.0.1", "not-an-ip" }));
+            Assert.AreEqual("adb connect 192.168.1.20:5555", WirelessAdbHelper.BuildConnectCommand("192.168.1.20"));
+            Assert.AreEqual(string.Empty, WirelessAdbHelper.BuildConnectCommand("not-an-ip"));
+        }
+
+        [Test]
+        public void WirelessAdbHelperMapsProbeStatesAndSettingsFallback()
+        {
+            Assert.AreEqual(WirelessAdbStatus.Unknown, WirelessAdbHelper.ProbePort(string.Empty));
+            Assert.AreEqual("Listening", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.Listening));
+            Assert.AreEqual("Not listening", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.NotListening));
+            Assert.AreEqual("Unknown", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.Unknown));
+
+            var attempts = 0;
+            Assert.IsFalse(WirelessAdbHelper.TryOpenSettings(action => {
+                attempts++;
+                throw new System.InvalidOperationException(action);
+            }));
+            Assert.AreEqual(2, attempts);
+        }
+
+        [Test]
+        public void NsdLateResolveCannotPromoteLostService()
+        {
+            Assert.IsTrue(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(true, true));
+            Assert.IsFalse(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(true, false));
+            Assert.IsFalse(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(false, true));
+        }
+
+        [UnityTest]
+        public IEnumerator DeveloperToolsIsAnAdvancedSettingsChildPage()
+        {
+            var ui = CreateUi();
+            Assert.IsTrue(WirelessAdbHelper.IsDeveloperToolsAvailable);
+            Assert.IsNotNull(ui.developerToolsButton);
+            Assert.IsNotNull(ui.wirelessAdbHelper);
+            ui.developerToolsButton.onClick.Invoke();
+            Assert.IsTrue(ui.IsVisible);
+            Assert.IsTrue(ui.wirelessAdbHelper.IsVisible);
+            ui.wirelessAdbHelper.Hide();
+            ui.HideDeveloperTools();
+            yield return null;
         }
     }
 }

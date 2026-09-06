@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
@@ -227,8 +226,6 @@ namespace QuestPhoneStream
 
         private void RefreshMediaDevices()
         {
-            var deviceCount = _receiver?.mediaDiscovery != null ? _receiver.mediaDiscovery.Devices.Count() : -1;
-            Debug.Log($"[QuestHomeUI] RefreshMediaDevices called, listNull={_mediaDeviceList == null}, receiverNull={_receiver == null}, deviceCount={deviceCount}");
             if (_mediaDeviceList == null || _receiver == null) return;
             var visible = new HashSet<string>();
             if (_receiver.mediaDiscovery != null)

@@ -81,6 +81,16 @@ namespace QuestPhoneStream
             _settingsUI.phoneScreenButton = phoneBtn;
             _settingsUI.videoLibraryButton = videoBtn;
 
+            var statusRight = 0.95f;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            CreateButton(panel, "Developer Tools", 8, 0.52f, out var developerToolsButton);
+            _settingsUI.developerToolsButton = developerToolsButton;
+            var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();
+            _settingsUI.wirelessAdbHelper = wirelessAdbHelper;
+            wirelessAdbHelper.Initialize(_canvas, _settingsUI.HideDeveloperTools);
+            statusRight = 0.48f;
+#endif
+
             var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
             catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
             _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
@@ -93,7 +103,7 @@ namespace QuestPhoneStream
             _settingsUI.mediaLibrary = _mediaLibrary;
             _settingsUI.mediaPlayback = playback;
 
-            CreateStatusText(panel, 8, out var statusText);
+            CreateStatusText(panel, 8, 0.05f, statusRight, out var statusText);
             _settingsUI.statusText = statusText;
 
             _settingsUI.Initialize(signalingClient, xrCamera);
@@ -247,7 +257,7 @@ namespace QuestPhoneStream
             textRt.sizeDelta = Vector2.zero;
         }
 
-        private void CreateStatusText(Transform parent, int index, out Text statusText)
+        private void CreateStatusText(Transform parent, int index, float minX, float maxX, out Text statusText)
         {
             var textGo = new GameObject("StatusText");
             textGo.transform.SetParent(parent, false);
@@ -260,8 +270,8 @@ namespace QuestPhoneStream
             statusText.text = "";
 
             var rt = textGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.1f);
-            rt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.1f + 0.08f);
+            rt.anchorMin = new Vector2(minX, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(maxX, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
         }
     }
