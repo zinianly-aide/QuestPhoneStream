@@ -91,7 +91,7 @@ namespace QuestPhoneStream
                 _ = signaling.SendSpatialProtocolErrorAsync(request, "subscription_conflict", "Subscription id conflict", true);
                 return;
             }
-            PoseStreamHz = _subscriptions.HighestRate();
+            PoseStreamHz = dataPlane.IsOpen ? _subscriptions.HighestRate() : 0f;
             RefreshRuntimeCapabilities();
             _ = signaling.SendSubscriptionCreatedAsync(request, subscription.id, subscription.rateHz,
                 "qps.spatial.json", "webrtc.datachannel", "unreliable_unordered");
@@ -100,9 +100,9 @@ namespace QuestPhoneStream
         private void OnSubscriptionCancel(SpatialEnvelope request)
         {
             var id = request.payload?.subscriptionId;
-            if (!_subscriptions.Remove(id, out var removed)) return;
+            if (!_subscriptions.Remove(id, out _)) return;
             _ = signaling.SendSubscriptionClosedAsync(request, id);
-            PoseStreamHz = _subscriptions.HighestRate();
+            PoseStreamHz = dataPlane != null && dataPlane.IsOpen ? _subscriptions.HighestRate() : 0f;
             RefreshRuntimeCapabilities();
         }
 
@@ -183,8 +183,9 @@ namespace QuestPhoneStream
 
         private void OnTransportOpenChanged(bool open)
         {
-            RefreshRuntimeCapabilities();
+            if (!open) _subscriptions.Clear();
             PoseStreamHz = open ? _subscriptions.HighestRate() : 0f;
+            RefreshRuntimeCapabilities();
         }
 
         private void OnNegotiationInvalidated()
