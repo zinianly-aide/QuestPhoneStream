@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
@@ -106,9 +107,10 @@ namespace QuestPhoneStream
             var devicesTitle = MakeText(panelGo.transform, "Media phones", 17, TextAnchor.MiddleLeft);
             Anchor(devicesTitle.rectTransform, 0.05f, 0.20f, 0.95f, 0.27f);
             var deviceListGo = new GameObject("MediaDeviceList");
-            deviceListGo.transform.SetParent(panelGo.transform, false);
-            _mediaDeviceList = deviceListGo.transform;
-            Anchor(deviceListGo.GetComponent<RectTransform>(), 0.05f, 0.08f, 0.95f, 0.18f);
+            var deviceListRect = deviceListGo.AddComponent<RectTransform>();
+            deviceListRect.SetParent(panelGo.transform, false);
+            _mediaDeviceList = deviceListRect;
+            Anchor(deviceListRect, 0.05f, 0.08f, 0.95f, 0.18f);
             deviceListGo.AddComponent<RectMask2D>();
             var deviceLayout = deviceListGo.AddComponent<VerticalLayoutGroup>();
             deviceLayout.spacing = 3;
@@ -225,6 +227,8 @@ namespace QuestPhoneStream
 
         private void RefreshMediaDevices()
         {
+            var deviceCount = _receiver?.mediaDiscovery != null ? _receiver.mediaDiscovery.Devices.Count() : -1;
+            Debug.Log($"[QuestHomeUI] RefreshMediaDevices called, listNull={_mediaDeviceList == null}, receiverNull={_receiver == null}, deviceCount={deviceCount}");
             if (_mediaDeviceList == null || _receiver == null) return;
             var visible = new HashSet<string>();
             if (_receiver.mediaDiscovery != null)
