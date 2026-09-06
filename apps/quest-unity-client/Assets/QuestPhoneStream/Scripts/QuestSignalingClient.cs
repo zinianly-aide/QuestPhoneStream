@@ -47,8 +47,9 @@ namespace QuestPhoneStream
         private CapabilityRegistry _capabilities;
         private Task _attempt;
         private int _epoch;
+        private int _attemptGeneration;
         private bool _destroyed;
-        private string _activeSession, _activeQuest, _activeAndroid, _activeToken;
+        private string _activeSignalingUrl, _activeSession, _activeQuest, _activeAndroid, _activeToken;
         private TaskCompletionSource<bool> _registered, _sessionReady, _mediaReady;
 
         private void Awake()
@@ -65,17 +66,39 @@ namespace QuestPhoneStream
         public Task ReconnectAsync()
         {
             if (_destroyed) return Task.CompletedTask;
-            if (IsConnecting) return _attempt ?? Task.CompletedTask;
-            _attempt = RunReconnectAsync();
+            if (IsConnecting && !ConnectionTargetChanged()) return _attempt ?? Task.CompletedTask;
+
+            var transportAlreadyStopped = false;
+            if (IsConnecting)
+            {
+                // A discovered peer (or edited settings) changed while the previous
+                // socket/session attempt was still in flight. Invalidate that epoch
+                // before starting the new target so stale callbacks cannot win.
+                StopTransport();
+                transportAlreadyStopped = true;
+            }
+
+            var attemptGeneration = ++_attemptGeneration;
+            _attempt = RunReconnectAsync(attemptGeneration, transportAlreadyStopped);
             return _attempt;
         }
 
-        private async Task RunReconnectAsync()
+        private bool ConnectionTargetChanged()
+        {
+            return !string.Equals((signalingUrl ?? string.Empty).Trim(), _activeSignalingUrl ?? string.Empty, StringComparison.Ordinal) ||
+                   !string.Equals(sessionId ?? string.Empty, _activeSession ?? string.Empty, StringComparison.Ordinal) ||
+                   !string.Equals(questDeviceId ?? string.Empty, _activeQuest ?? string.Empty, StringComparison.Ordinal) ||
+                   !string.Equals(androidDeviceId ?? string.Empty, _activeAndroid ?? string.Empty, StringComparison.Ordinal) ||
+                   !string.Equals(token ?? string.Empty, _activeToken ?? string.Empty, StringComparison.Ordinal);
+        }
+
+        private async Task RunReconnectAsync(int attemptGeneration, bool transportAlreadyStopped)
         {
             IsConnecting = true;
-            StopTransport();
+            if (!transportAlreadyStopped) StopTransport();
             var epoch = _epoch;
             NegotiationId = Guid.NewGuid().ToString("N");
+            _activeSignalingUrl = (signalingUrl ?? string.Empty).Trim();
             _activeSession = sessionId;
             _activeQuest = questDeviceId;
             _activeAndroid = androidDeviceId;
@@ -90,7 +113,7 @@ namespace QuestPhoneStream
             try
             {
                 SetState(ConnectionState.WebSocketConnecting);
-                if (!Uri.TryCreate(signalingUrl, UriKind.Absolute, out var uri) ||
+                if (!Uri.TryCreate(_activeSignalingUrl, UriKind.Absolute, out var uri) ||
                     (uri.Scheme != "ws" && uri.Scheme != "wss") || !string.IsNullOrEmpty(uri.UserInfo) ||
                     string.IsNullOrWhiteSpace(_activeSession) || string.IsNullOrWhiteSpace(_activeQuest) ||
                     string.IsNullOrWhiteSpace(_activeAndroid) || string.IsNullOrWhiteSpace(_activeToken))
@@ -128,8 +151,12 @@ namespace QuestPhoneStream
             }
             finally
             {
-                IsConnecting = false;
-                if (!_destroyed) StateChanged?.Invoke(State);
+                // A superseded attempt must never clear the busy state of the new one.
+                if (attemptGeneration == _attemptGeneration)
+                {
+                    IsConnecting = false;
+                    if (!_destroyed) StateChanged?.Invoke(State);
+                }
             }
         }
 
