@@ -16,6 +16,8 @@ namespace QuestPhoneStream
         public MediaLibraryUI mediaLibrary;
         public MediaPlaybackController mediaPlayback;
         public MediaCatalogClient mediaCatalogClient;
+        public WirelessAdbHelper wirelessAdbHelper;
+        public DeveloperHud developerHud;
         public Action onBackToHome;
         public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
@@ -71,23 +73,24 @@ namespace QuestPhoneStream
 
         public void ShowAdvanced()
         {
+            developerHud?.Hide();
             wirelessAdbHelper?.Hide();
             SetAdvancedVisible(true);
             Show();
         }
-
-        public WirelessAdbHelper wirelessAdbHelper;
 
         public void ShowDeveloperTools()
         {
             if (!_initialized) throw new InvalidOperationException("Initialize Settings UI before showing developer tools");
             SetAdvancedVisible(false);
             Show();
-            wirelessAdbHelper?.Show();
+            wirelessAdbHelper?.Hide();
+            developerHud?.Show();
         }
 
         public void HideDeveloperTools()
         {
+            developerHud?.Hide();
             wirelessAdbHelper?.Hide();
             SetAdvancedVisible(true);
             Show();
@@ -102,6 +105,7 @@ namespace QuestPhoneStream
 
         private void OnBack()
         {
+            developerHud?.Hide();
             wirelessAdbHelper?.Hide();
             SetAdvancedVisible(true);
             Hide();

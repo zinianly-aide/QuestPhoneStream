@@ -85,9 +85,18 @@ namespace QuestPhoneStream
 #if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
             CreateButton(panel, "Developer Tools", 8, 0.52f, out var developerToolsButton);
             _settingsUI.developerToolsButton = developerToolsButton;
+
             var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();
             _settingsUI.wirelessAdbHelper = wirelessAdbHelper;
             wirelessAdbHelper.Initialize(_canvas, _settingsUI.HideDeveloperTools);
+
+            var diagnostics = gameObject.GetComponent<QuestDiagnostics>() ?? gameObject.AddComponent<QuestDiagnostics>();
+            diagnostics.Initialize(receiver);
+            var p2Diagnostics = gameObject.GetComponent<QuestDeveloperHud>() ?? gameObject.AddComponent<QuestDeveloperHud>();
+            p2Diagnostics.Initialize(receiver, signalingClient);
+            var developerHud = gameObject.GetComponent<DeveloperHud>() ?? gameObject.AddComponent<DeveloperHud>();
+            developerHud.Initialize(_canvas, diagnostics, p2Diagnostics, wirelessAdbHelper, _settingsUI.HideDeveloperTools);
+            _settingsUI.developerHud = developerHud;
             statusRight = 0.48f;
 #endif
 

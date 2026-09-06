@@ -5,14 +5,16 @@ using UnityEngine.UI;
 namespace QuestPhoneStream
 {
     /// <summary>
-    /// Read-only developer diagnostics page. It samples at most once per second
-    /// when auto-refresh is enabled and never changes transport state.
+    /// Read-only developer diagnostics page. It is created only from Developer Tools,
+    /// samples at most once per second when auto-refresh is enabled, and never changes
+    /// transport state.
     /// </summary>
     public sealed class DeveloperHud : MonoBehaviour
     {
         private Canvas _canvas;
         private GameObject _page;
         private QuestDiagnostics _diagnostics;
+        private QuestDeveloperHud _p2Diagnostics;
         private WirelessAdbHelper _wirelessAdb;
         private Action _onBack;
         private Text _body;
@@ -22,12 +24,17 @@ namespace QuestPhoneStream
 
         public bool IsVisible => _page != null && _page.activeInHierarchy;
 
-        public void Initialize(Canvas canvas, QuestDiagnostics diagnostics, WirelessAdbHelper wirelessAdb, Action onBack)
+        public void Initialize(Canvas canvas, QuestDiagnostics diagnostics, WirelessAdbHelper wirelessAdb, Action onBack) =>
+            Initialize(canvas, diagnostics, null, wirelessAdb, onBack);
+
+        public void Initialize(Canvas canvas, QuestDiagnostics diagnostics, QuestDeveloperHud p2Diagnostics,
+            WirelessAdbHelper wirelessAdb, Action onBack)
         {
             if (_initialized) return;
             if (canvas == null) throw new ArgumentException("Developer HUD requires a canvas");
             _canvas = canvas;
             _diagnostics = diagnostics;
+            _p2Diagnostics = p2Diagnostics;
             _wirelessAdb = wirelessAdb;
             _onBack = onBack;
             Build();
@@ -49,8 +56,10 @@ namespace QuestPhoneStream
 
         public void Refresh()
         {
-            if (!IsVisible || _diagnostics == null) return;
-            _body.text = _diagnostics.CaptureSnapshot().ToDisplayText();
+            if (!IsVisible) return;
+            var core = _diagnostics != null ? _diagnostics.CaptureSnapshot().ToDisplayText() : "Diagnostics unavailable";
+            var p2 = _p2Diagnostics != null ? _p2Diagnostics.CaptureText() : string.Empty;
+            _body.text = core + p2;
             _nextRefresh = Time.unscaledTime + 1f;
         }
 
