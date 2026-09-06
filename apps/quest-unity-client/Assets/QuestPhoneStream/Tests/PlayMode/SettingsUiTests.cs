@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -131,6 +132,69 @@ namespace QuestPhoneStream.Tests
             ui.Hide(); ui.Show();
             Assert.AreNotEqual(initial, ui.canvas.transform.position);
             Assert.Less(Vector3.Angle(ui.canvas.transform.up, Vector3.up), 0.01f);
+        }
+
+        [UnityTest]
+        public IEnumerator HomeKeepsNavigationAndAdvancedSettingsInViewport()
+        {
+            var receiver = _root.AddComponent<QuestWebRtcReceiver>();
+            var home = _root.AddComponent<QuestHomeUI>();
+            home.Initialize(_client, _camera, receiver);
+            Canvas.ForceUpdateCanvases();
+
+            Button advanced = null, phone = null, videos = null, keyboard = null;
+            foreach (var button in home.GetComponentsInChildren<Button>(true))
+            {
+                var text = button.GetComponentInChildren<Text>();
+                if (text == null) continue;
+                if (text.text == "Advanced Settings") advanced = button;
+                if (text.text == "Phone") phone = button;
+                if (text.text == "Videos") videos = button;
+                if (text.text == "Keyboard") keyboard = button;
+            }
+
+            Assert.IsNotNull(advanced);
+            Assert.IsNotNull(phone);
+            Assert.IsNotNull(videos);
+            Assert.IsNotNull(keyboard);
+            var viewport = _camera.WorldToViewportPoint(advanced.transform.position);
+            Assert.Greater(viewport.z, 0f);
+            Assert.That(viewport.x, Is.InRange(0.1f, 0.9f));
+            Assert.That(viewport.y, Is.InRange(0.15f, 0.85f));
+
+            var canvas = home.GetComponentInChildren<Canvas>(true);
+            Assert.AreEqual(new Vector2(900f, 500f), ((RectTransform)canvas.transform).sizeDelta);
+            Assert.That(((RectTransform)canvas.transform).lossyScale.x, Is.EqualTo(0.0015f).Within(0.00001f));
+            var panel = canvas.transform.Find("HomePanel");
+            var list = panel.Find("MediaDeviceList") as RectTransform;
+            Assert.IsNotNull(list);
+            Assert.Less(list.anchorMax.y, advanced.GetComponent<RectTransform>().anchorMin.y);
+            Assert.Less(advanced.GetComponent<RectTransform>().anchorMax.y, phone.GetComponent<RectTransform>().anchorMin.y);
+
+            advanced.onClick.Invoke();
+            var settingsObject = GameObject.Find("SettingsUI");
+            var settings = settingsObject == null ? null : settingsObject.GetComponent<SettingsUI>();
+            Assert.IsNotNull(settings);
+            Assert.IsTrue(settings.IsVisible);
+            Assert.IsNotNull(settings.signalingUrlInput);
+            Assert.IsNotNull(settings.tokenInput);
+            Assert.IsNotNull(settings.questDeviceIdInput);
+            Assert.IsNotNull(settings.androidDeviceIdInput);
+            Assert.IsNotNull(settings.sessionIdInput);
+            Assert.IsNotNull(settings.mediaBaseUrlInput);
+            Assert.IsNotNull(settings.connectButton);
+            yield return null;
+        }
+
+        [Test]
+        public void PeerConnectedDoesNotHideVisibleAdvancedSettings()
+        {
+            var ui = CreateUi();
+            ui.ShowAdvanced();
+            Assert.IsTrue(ui.IsVisible);
+            var method = typeof(SettingsUI).GetMethod("OnStateChanged", BindingFlags.NonPublic | BindingFlags.Instance);
+            method.Invoke(ui, new object[] { ConnectionState.PeerConnected });
+            Assert.IsTrue(ui.IsVisible);
         }
     }
 }

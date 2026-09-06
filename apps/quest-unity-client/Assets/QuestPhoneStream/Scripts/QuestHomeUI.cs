@@ -17,7 +17,7 @@ namespace QuestPhoneStream
         private QuestWebRtcReceiver _receiver;
         private Camera _camera;
         private Text _phoneStatus, _screenStatus, _controlStatus, _mediaStatus;
-        private Button _phoneTab, _videosTab, _keyboardButton;
+        private Button _phoneTab, _videosTab, _keyboardButton, _advancedSettingsButton;
         private Text _hint;
         private Transform _mediaDeviceList;
         private Text _mediaDeviceEmptyText;
@@ -27,6 +27,13 @@ namespace QuestPhoneStream
         private Coroutine _keyboardRoutine;
 
         public bool IsVisible => _canvas != null && _canvas.gameObject.activeInHierarchy;
+
+        public static Vector3 HomeWorldPosition(Vector3 cameraPosition, Vector3 cameraForward)
+        {
+            var forward = Vector3.ProjectOnPlane(cameraForward, Vector3.up);
+            if (forward.sqrMagnitude < 0.001f) forward = Vector3.forward;
+            return cameraPosition + forward.normalized * 1.5f + Vector3.down * 0.15f;
+        }
 
         public void Initialize(QuestSignalingClient signaling, Camera xrCamera, QuestWebRtcReceiver receiver)
         {
@@ -52,7 +59,7 @@ namespace QuestPhoneStream
             var forward = Vector3.ProjectOnPlane(_camera.transform.forward, Vector3.up);
             if (forward.sqrMagnitude < 0.001f) forward = Vector3.forward;
             forward.Normalize();
-            _canvas.transform.position = _camera.transform.position + forward * 1.35f + Vector3.down * 0.62f;
+            _canvas.transform.position = HomeWorldPosition(_camera.transform.position, _camera.transform.forward);
             _canvas.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             _canvas.gameObject.SetActive(true);
             _receiver?.ProbeMedia();
@@ -74,8 +81,8 @@ namespace QuestPhoneStream
             scaler.dynamicPixelsPerUnit = 1;
             canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
             var canvasRect = canvasGo.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(1000, 420);
-            canvasRect.localScale = Vector3.one * 0.002f;
+            canvasRect.sizeDelta = new Vector2(900, 500);
+            canvasRect.localScale = Vector3.one * 0.0015f;
 
             var panelGo = new GameObject("HomePanel");
             panelGo.transform.SetParent(canvasGo.transform, false);
@@ -97,25 +104,26 @@ namespace QuestPhoneStream
             _mediaStatus = AddStatus(panelGo.transform, "Media", 0.55f, 0.62f);
 
             var devicesTitle = MakeText(panelGo.transform, "Media phones", 17, TextAnchor.MiddleLeft);
-            Anchor(devicesTitle.rectTransform, 0.05f, 0.45f, 0.95f, 0.54f);
+            Anchor(devicesTitle.rectTransform, 0.05f, 0.20f, 0.95f, 0.27f);
             var deviceListGo = new GameObject("MediaDeviceList");
             deviceListGo.transform.SetParent(panelGo.transform, false);
             _mediaDeviceList = deviceListGo.transform;
-            Anchor(deviceListGo.GetComponent<RectTransform>(), 0.05f, 0.27f, 0.95f, 0.43f);
+            Anchor(deviceListGo.GetComponent<RectTransform>(), 0.05f, 0.08f, 0.95f, 0.18f);
+            deviceListGo.AddComponent<RectMask2D>();
             var deviceLayout = deviceListGo.AddComponent<VerticalLayoutGroup>();
             deviceLayout.spacing = 3;
             deviceLayout.childForceExpandWidth = true;
             deviceLayout.childForceExpandHeight = false;
             _mediaDeviceEmptyText = MakeText(deviceListGo.transform, "Searching for phones…", 15, TextAnchor.MiddleLeft).textComponent;
 
-            _phoneTab = MakeButton(panelGo.transform, "Phone", 0.05f, 0.10f, 0.27f, 0.24f, OnPhone);
-            _videosTab = MakeButton(panelGo.transform, "Videos", 0.29f, 0.10f, 0.51f, 0.24f, OnVideos);
-            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.55f, 0.10f, 0.76f, 0.24f, OpenKeyboard);
-            MakeButton(panelGo.transform, "Settings", 0.78f, 0.10f, 0.95f, 0.24f, OpenSettings);
+            _phoneTab = MakeButton(panelGo.transform, "Phone", 0.05f, 0.40f, 0.28f, 0.54f, OnPhone);
+            _videosTab = MakeButton(panelGo.transform, "Videos", 0.30f, 0.40f, 0.53f, 0.54f, OnVideos);
+            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.55f, 0.40f, 0.78f, 0.54f, OpenKeyboard);
+            _advancedSettingsButton = MakeButton(panelGo.transform, "Advanced Settings", 0.05f, 0.29f, 0.95f, 0.37f, OpenSettings);
 
             var hint = MakeText(panelGo.transform, "Use the controller ray to select Phone or Videos", 16, TextAnchor.MiddleLeft);
             hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
-            Anchor(hint.rectTransform, 0.05f, 0.02f, 0.95f, 0.08f);
+            Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.06f);
             _hint = hint.textComponent;
         }
 

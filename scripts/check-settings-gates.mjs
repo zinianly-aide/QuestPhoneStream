@@ -142,13 +142,26 @@ test("Quest normal flow is compact and keeps engineering fields behind Advanced 
   assert.match(home, /MakeButton\(panelGo\.transform, "Phone"/);
   assert.match(home, /MakeButton\(panelGo\.transform, "Videos"/);
   assert.match(home, /MakeButton\(panelGo\.transform, "Keyboard"/);
-  assert.match(home, /MakeButton\(panelGo\.transform, "Settings"/);
+  assert.match(home, /_advancedSettingsButton = MakeButton\(panelGo\.transform, "Advanced Settings"/);
+  assert.match(home, /HomeWorldPosition\(/);
+  assert.match(home, /cameraPosition \+ forward\.normalized \* 1\.5f \+ Vector3\.down \* 0\.15f/);
+  assert.match(home, /sizeDelta = new Vector2\(900, 500\)/);
+  assert.match(home, /localScale = Vector3\.one \* 0\.0015f/);
+  assert.match(home, /deviceListGo\.AddComponent<RectMask2D>\(\)/);
+  assert.match(home, /Anchor\(deviceListGo\.GetComponent<RectTransform>\(\), 0\.05f, 0\.08f, 0\.95f, 0\.18f\)/);
+  assert.match(home, /OpenSettings\)/);
   assert.match(home, /Screen  ·  /);
   assert.match(home, /Control  ·  /);
   assert.match(home, /Media  ·  /);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /EnsureHomeUI\(\)/);
   assert.match(read(scripts + "QuestXrUiRig.cs"), /_receiver\.ToggleHome\(\)/);
   assert.match(read(scripts + "SettingsUIFactory.cs"), /Advanced Settings/);
+  for (const field of ["signalingUrlInput", "tokenInput", "questDeviceIdInput", "androidDeviceIdInput", "sessionIdInput", "mediaBaseUrlInput"])
+    assert.match(settings, new RegExp(`public InputField .*${field}`));
+  assert.match(settings, /connectButton\.onClick\.AddListener\(OnConnect\)/);
+  assert.doesNotMatch(settings, /state == ConnectionState\.PeerConnected[\s\S]*BackToHome\(\)/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /HomeKeepsNavigationAndAdvancedSettingsInViewport/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /PeerConnectedDoesNotHideVisibleAdvancedSettings/);
 });
 
 test("Android normal flow exposes readiness and hides engineering controls", () => {
@@ -385,7 +398,7 @@ test("UX navigation and readiness states have explicit recovery paths", () => {
   assert.match(receiver, /public void ShowHome\(\)/);
   assert.match(factory, /CreateBackButton\(panel/);
   assert.match(factory, /_settingsUI\.BackToHome\(\)/);
-  assert.match(ui, /if \(\(state == ConnectionState\.PeerConnected \|\| state == ConnectionState\.MediaConnected\) && IsVisible\)[\s\S]*BackToHome\(\)/);
+  assert.doesNotMatch(ui, /if \(\(state == ConnectionState\.PeerConnected \|\| state == ConnectionState\.MediaConnected\) && IsVisible\)[\s\S]*BackToHome\(\)/);
   assert.match(home, /_receiver\.IsPeerConnected \? "Connected"/);
   assert.match(home, /_receiver\.IsMediaReady/);
   assert.match(home, /_receiver\.IsMediaStale/);
