@@ -149,7 +149,7 @@ namespace QuestPhoneStream
                     ownedCrop = Crop(source, normalizedCrop.Value);
                     if (ownedCrop != null) source = ownedCrop;
                 }
-                var jpeg = ImageConversion.EncodeToJPG(source, 85);
+                var jpeg = source.GetRawTextureData();
                 if (jpeg == null || jpeg.Length == 0) { LastError = "Unable to encode vision frame"; yield break; }
 
                 var requestPayload = BuildRequest(Convert.ToBase64String(jpeg));

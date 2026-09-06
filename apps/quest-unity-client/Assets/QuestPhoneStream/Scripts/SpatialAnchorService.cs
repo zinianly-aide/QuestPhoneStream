@@ -56,6 +56,7 @@ namespace QuestPhoneStream
 
         public bool Update(string id, Vector3 position, Quaternion rotation, out SpatialAnchorRecord anchor)
         {
+            anchor = default;
             if (string.IsNullOrWhiteSpace(id) || !_items.TryGetValue(id, out anchor)) return false;
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var pose = SpatialCoordinateConverter.ToCanonicalPose(position, rotation, now);
