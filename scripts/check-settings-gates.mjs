@@ -374,7 +374,7 @@ test("Android media server advertises a persistent UUID through NSD for its curr
   assert.match(androidIdentity, /UUID\.randomUUID\(\)/);
   assert.match(androidIdentity, /getSharedPreferences/);
   assert.doesNotMatch(androidIdentity, /MAC|macAddress|NetworkInterface/);
-  assert.match(androidMediaServer, /MediaNsdRegistration\(context\) \{ port \}/);
+  assert.match(androidMediaServer, /MediaNsdRegistration\([\s\S]*streamIdProvider[\s\S]*signalingEndpointProvider/);
   assert.match(androidMediaServer, /nsdRegistration\.start\(\)/);
   assert.match(androidMediaServer, /nsdRegistration\.stop\(\)/);
   assert.match(androidNsd, /WifiManager/);
@@ -383,7 +383,8 @@ test("Android media server advertises a persistent UUID through NSD for its curr
   assert.match(androidNsd, /setReferenceCounted\(false\)/);
   assert.match(androidNsd, /lock\.acquire\(\)/);
   assert.match(androidNsd, /lock\.release\(\)/);
-  assert.match(androidNsd, /onRegistrationFailed[\s\S]*started = false[\s\S]*releaseMulticastLock\(\)/);
+  const registrationFailure = androidNsd.slice(androidNsd.indexOf("override fun onRegistrationFailed"), androidNsd.indexOf("override fun onServiceUnregistered"));
+  assert.doesNotMatch(registrationFailure, /started = false/);
   assert.match(read("apps/android-agent/app/src/main/AndroidManifest.xml"), /CHANGE_WIFI_MULTICAST_STATE/);
 });
 
@@ -420,6 +421,8 @@ test("Quest NSD discovery deduplicates by device id, resolves services, handles 
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /MediaDeviceDiscovery mediaDiscovery/);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /SelectMediaDevice\(string deviceId\)/);
   assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.SetMediaBaseUrl\(device\.BaseUrl\)/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.ApplyDiscoveredSignaling\(device\.signalingUrl, device\.streamId\)/);
+  assert.match(settings, /ApplyDiscoveredSignaling\(string endpoint, string streamId\)/);
   assert.match(settings, /public MediaCatalogClient mediaCatalogClient/);
   assert.match(settings, /mediaCatalogClient\.baseUrl = normalized/);
   assert.match(home, /Media phones/);
@@ -433,14 +436,28 @@ test("Unified NSD advertises and discovers capabilities without secrets", () => 
   assert.match(androidNsd, /Advertisement\(UNIFIED_SERVICE_TYPE, "media,screen,control"\)/);
   assert.match(androidNsd, /Advertisement\(LEGACY_SERVICE_TYPE, "media"\)/);
   assert.match(androidNsd, /advertisements\.forEach/);
-  assert.match(androidNsd, /registrationListeners\.getValue\(advertisement\.type\)/);
+  assert.match(androidNsd, /streamIdProvider\(\)/);
+  assert.match(androidNsd, /signalingEndpointProvider\(\)/);
+  assert.match(androidNsd, /setAttribute\("streamId"/);
+  assert.match(androidNsd, /setAttribute\("signalingUrl"/);
+  assert.match(androidNsd, /advertisement\.type == UNIFIED_SERVICE_TYPE/);
+  const unifiedAttributes = androidNsd.slice(androidNsd.indexOf('if (advertisement.type == UNIFIED_SERVICE_TYPE)'), androidNsd.indexOf('if (advertisement.type == UNIFIED_SERVICE_TYPE)') + 260);
+  assert.match(unifiedAttributes, /setAttribute\("streamId"/);
+  assert.match(unifiedAttributes, /setAttribute\("signalingUrl"/);
+  assert.doesNotMatch(androidNsd.slice(androidNsd.indexOf('Advertisement(LEGACY_SERVICE_TYPE'), androidNsd.indexOf('Advertisement(LEGACY_SERVICE_TYPE') + 80), /streamId|signalingUrl/);
   assert.doesNotMatch(androidNsd, /token|sessionId|session_id|secret/i);
   assert.match(mediaDiscovery, /public string capabilities/);
+  assert.match(mediaDiscovery, /public string streamId/);
+  assert.match(mediaDiscovery, /public string signalingUrl/);
+  assert.match(mediaDiscovery, /GetAttribute\(attributes, "streamId"\)/);
+  assert.match(mediaDiscovery, /GetAttribute\(attributes, "signalingUrl"\)/);
   assert.match(mediaDiscovery, /HasCapability\(string capability\)/);
   assert.match(mediaDiscovery, /GetServiceKey\(serviceInfo\)/);
   assert.match(mediaDiscovery, /device\.capabilities = MergeCapabilitiesForDevice\(deviceId\)/);
   assert.match(mediaDiscovery, /DiscoveryServiceTypes\.Length/);
   assert.match(mediaDiscovery, /_manager == null[\s\S]*return false/);
+  assert.match(receiver, /signaling\.androidDeviceId =|ApplyDiscoveredSignaling/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /SelectedDeviceMetadataAppliesToExistingSignalingClient/);
 });
 
 test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => {
@@ -467,12 +484,33 @@ test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => 
 test("Android NSD registration can retry and scopes multicast lock to lifecycle", () => {
   assert.match(androidNsd, /started = false/);
   assert.match(androidNsd, /registeredTypes\.clear\(\)/);
-  assert.match(androidNsd, /onRegistrationFailed[\s\S]*started = false[\s\S]*releaseMulticastLock/);
+  assert.match(androidNsd, /pendingTypes/);
+  assert.match(androidNsd, /scheduleRetry\(/);
+  assert.match(androidNsd, /MAX_RETRY_ATTEMPTS = 3/);
+  assert.match(androidNsd, /registerAdvertisement\(advertisement\)/);
+  assert.match(androidNsd, /private fun registerAdvertisement\(advertisement: Advertisement\) \{[\s\S]*try \{[\s\S]*NsdServiceInfo\(\)[\s\S]*registerService/);
+  assert.match(androidNsd, /catch \(error: Exception\)[\s\S]*pendingTypes -= advertisement\.type[\s\S]*scheduleRetry\(advertisement\.type/);
+  const registrationFailure = androidNsd.slice(androidNsd.indexOf("override fun onRegistrationFailed"), androidNsd.indexOf("override fun onServiceUnregistered"));
+  assert.doesNotMatch(registrationFailure, /started = false/);
+  assert.doesNotMatch(registrationFailure, /unregisterRegisteredServices/);
   assert.match(androidNsd, /fun stop\(\)[\s\S]*releaseMulticastLock\(\)/);
   assert.match(androidNsd, /if \(started\) return/);
   assert.match(androidNsd, /Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S/);
   assert.match(androidNsd, /lock\.acquire\(\)/);
   assert.match(androidNsd, /lock\.release\(\)/);
+});
+
+test("NSD loss updates remaining service metadata while preserving existing transports", () => {
+  assert.match(mediaDiscovery, /remainingDevice\.capabilities = MergeCapabilitiesForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /remainingDevice\.serviceType = PreferredServiceTypeForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /remainingDevice\.streamId = GetPreferredServiceValue/);
+  assert.match(mediaDiscovery, /remainingDevice\.signalingUrl = GetPreferredServiceValue/);
+  assert.match(mediaDiscovery, /remainingDevice\.signalingUrl[\s\S]*DevicesChanged\?\.Invoke\(\)/);
+  assert.match(receiver, /ApplyDiscoveredSignaling\(device\.signalingUrl, device\.streamId\)/);
+  assert.match(signaling, /type = "register"/);
+  assert.match(signaling, /type = "create_session"/);
+  assert.match(read(scripts + "ControlChannel.cs"), /Send/);
+  assert.match(read(scripts + "MediaCatalogClient.cs"), /baseUrl/);
 });
 
 test("UX navigation and readiness states have explicit recovery paths", () => {

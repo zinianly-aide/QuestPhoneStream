@@ -238,11 +238,30 @@ namespace QuestPhoneStream.Tests
         [Test]
         public void UnifiedDeviceCapabilitiesRemainDiscoverableWithoutSecrets()
         {
-            var device = new MediaDeviceInfo { capabilities = "media,screen,control" };
+            var device = new MediaDeviceInfo {
+                capabilities = "media,screen,control",
+                streamId = "android-stream-001",
+                signalingUrl = "ws://192.168.1.9:8787"
+            };
             Assert.IsTrue(device.HasCapability("media"));
             Assert.IsTrue(device.HasCapability("screen"));
             Assert.IsTrue(device.HasCapability("control"));
             Assert.IsFalse(device.HasCapability("token"));
+            Assert.AreEqual("android-stream-001", device.streamId);
+            Assert.AreEqual("ws://192.168.1.9:8787", device.signalingUrl);
+        }
+
+        [Test]
+        public void SelectedDeviceMetadataAppliesToExistingSignalingClient()
+        {
+            var ui = CreateUi();
+            ui.ApplyDiscoveredSignaling(" ws://192.168.1.9:8787 ", " android-stream-001 ");
+
+            Assert.AreEqual("ws://192.168.1.9:8787", _client.signalingUrl);
+            Assert.AreEqual("android-stream-001", _client.androidDeviceId);
+            Assert.AreEqual(_client.signalingUrl, ui.signalingUrlInput.text);
+            Assert.AreEqual(_client.androidDeviceId, ui.androidDeviceIdInput.text);
+            Assert.AreNotEqual("dev-token", _client.token);
         }
 
         [UnityTest]

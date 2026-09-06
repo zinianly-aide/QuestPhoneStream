@@ -122,11 +122,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mediaCatalog = MediaCatalog(applicationContext)
-        mediaServer = runCatching {
-            MediaHttpServer(applicationContext, mediaCatalog, pairingTokenProvider = { mediaPairingToken })
-                .also { it.start() }
-        }
-            .getOrNull()
         maybeRequestNotificationPermission()
 
         val root = ScrollView(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT) }
@@ -200,6 +195,16 @@ class MainActivity : AppCompatActivity() {
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
         advancedContainer.addView(configCard)
+
+        mediaServer = runCatching {
+            MediaHttpServer(
+                applicationContext,
+                mediaCatalog,
+                pairingTokenProvider = { mediaPairingToken },
+                streamIdProvider = { deviceIdField.text.toString().trim() },
+                signalingEndpointProvider = { signalingUrlField.text.toString().trim() }
+            ).also { it.start() }
+        }.getOrNull()
 
         // ── Separate media manager ──
         mediaManagerContainer.addView(sectionLabel("MEDIA MANAGER"))

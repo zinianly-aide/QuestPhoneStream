@@ -131,6 +131,7 @@ namespace QuestPhoneStream
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
             EnsureSettingsUI();
             _settingsUI.SetMediaBaseUrl(device.BaseUrl);
+            _settingsUI.ApplyDiscoveredSignaling(device.signalingUrl, device.streamId);
             _mediaProbeReady = false;
             _mediaProbeChecking = false;
             _mediaProbeFailed = false;

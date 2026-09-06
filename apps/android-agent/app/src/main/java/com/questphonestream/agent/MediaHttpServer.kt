@@ -25,10 +25,17 @@ class MediaHttpServer(
     private val context: Context,
     private val catalog: MediaCatalog,
     requestedPort: Int = DEFAULT_PORT,
-    private val pairingTokenProvider: () -> String = { "dev-token" }
+    private val pairingTokenProvider: () -> String = { "dev-token" },
+    private val streamIdProvider: () -> String = { "" },
+    private val signalingEndpointProvider: () -> String = { "" }
 ) {
     private val server = ServerSocket(requestedPort)
-    private val nsdRegistration = MediaNsdRegistration(context) { port }
+    private val nsdRegistration = MediaNsdRegistration(
+        context,
+        { port },
+        streamIdProvider,
+        signalingEndpointProvider
+    )
     private val running = AtomicBoolean(false)
     private val workers: ExecutorService = Executors.newCachedThreadPool()
     private val acceptThread = Thread({ acceptLoop() }, "quest-phone-media-accept")

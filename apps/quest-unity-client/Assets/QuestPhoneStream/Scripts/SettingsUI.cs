@@ -119,6 +119,20 @@ namespace QuestPhoneStream
             PlayerPrefs.Save();
         }
 
+        public void ApplyDiscoveredSignaling(string endpoint, string streamId)
+        {
+            if (!string.IsNullOrWhiteSpace(endpoint))
+            {
+                signalingClient.signalingUrl = endpoint.Trim();
+                if (signalingUrlInput != null) signalingUrlInput.text = signalingClient.signalingUrl;
+            }
+            if (!string.IsNullOrWhiteSpace(streamId))
+            {
+                signalingClient.androidDeviceId = streamId.Trim();
+                if (androidDeviceIdInput != null) androidDeviceIdInput.text = signalingClient.androidDeviceId;
+            }
+        }
+
         private void LoadSettings()
         {
             signalingUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", signalingClient.signalingUrl);
