@@ -86,7 +86,7 @@ namespace QuestPhoneStream
             MakeButton(_panel.transform, "Analyze", 0.715f, 0.635f, 0.84f, 0.70f, Analyze);
             MakeButton(_panel.transform, "Stop", 0.855f, 0.635f, 0.96f, 0.70f, StopCamera);
 
-            _statusText = MakeText(_panel.transform, "", 17, FontStyle.Normal, TextAnchor.MiddleLeft).textComponent;
+            _statusText = MakeText(_panel.transform, "", 17, FontStyle.Normal, TextAnchor.MiddleLeft);
             _statusText.color = new Color(0.82f, 0.88f, 1f, 1f);
             Anchor(_statusText.rectTransform, 0.04f, 0.55f, 0.96f, 0.62f);
 
@@ -108,7 +108,7 @@ namespace QuestPhoneStream
             resultBackground.color = new Color(0.08f, 0.09f, 0.13f, 1f);
             Anchor(resultBackgroundGo.GetComponent<RectTransform>(), 0.51f, 0.08f, 0.96f, 0.53f);
 
-            _resultText = MakeText(resultBackgroundGo.transform, "No AI result yet.", 17, FontStyle.Normal, TextAnchor.UpperLeft).textComponent;
+            _resultText = MakeText(resultBackgroundGo.transform, "No AI result yet.", 17, FontStyle.Normal, TextAnchor.UpperLeft);
             _resultText.horizontalOverflow = HorizontalWrapMode.Wrap;
             _resultText.verticalOverflow = VerticalWrapMode.Truncate;
             Anchor(_resultText.rectTransform, 0.04f, 0.05f, 0.96f, 0.95f);
@@ -156,6 +156,11 @@ namespace QuestPhoneStream
 
         private void Analyze()
         {
+            if (_ai.IsRequestActive)
+            {
+                RefreshStatus("AI request already in progress.");
+                return;
+            }
             SaveConfiguration();
             if (!_ai.CanRequest)
             {
@@ -170,7 +175,7 @@ namespace QuestPhoneStream
             RefreshPreview();
             if (_ai.AnalyzeLastFrame() == null)
             {
-                RefreshStatus(_ai.IsRequestActive ? "AI request already in progress." : "Unable to start AI analysis.");
+                RefreshStatus("Unable to start AI analysis.");
                 return;
             }
             RefreshStatus("Analyzing captured frame…");
@@ -255,7 +260,7 @@ namespace QuestPhoneStream
 
         private static Text MakeLabel(Transform parent, string value, float minX, float minY, float maxX, float maxY)
         {
-            var label = MakeText(parent, value, 18, FontStyle.Normal, TextAnchor.MiddleLeft).textComponent;
+            var label = MakeText(parent, value, 18, FontStyle.Normal, TextAnchor.MiddleLeft);
             Anchor(label.rectTransform, minX, minY, maxX, maxY);
             return label;
         }
@@ -298,12 +303,12 @@ namespace QuestPhoneStream
             if (action != null) button.onClick.AddListener(() => action());
             Anchor(go.GetComponent<RectTransform>(), minX, minY, maxX, maxY);
 
-            var text = MakeText(go.transform, label, 17, FontStyle.Normal, TextAnchor.MiddleCenter).textComponent;
+            var text = MakeText(go.transform, label, 17, FontStyle.Normal, TextAnchor.MiddleCenter);
             Anchor(text.rectTransform, 0f, 0f, 1f, 1f);
             return button;
         }
 
-        private static (Text textComponent, RectTransform rectTransform) MakeText(Transform parent, string value, int size, FontStyle style, TextAnchor anchor)
+        private static Text MakeText(Transform parent, string value, int size, FontStyle style, TextAnchor anchor)
         {
             var go = new GameObject("Text");
             go.transform.SetParent(parent, false);
@@ -315,7 +320,7 @@ namespace QuestPhoneStream
             text.color = Color.white;
             text.alignment = anchor;
             text.raycastTarget = false;
-            return (text, go.GetComponent<RectTransform>());
+            return text;
         }
 
         private static void Anchor(RectTransform rect, float minX, float minY, float maxX, float maxY)
