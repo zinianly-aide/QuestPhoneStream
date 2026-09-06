@@ -1,5 +1,5 @@
 {
   "name": "QuestPhoneStream.Runtime",
-  "references": ["Unity.WebRTC", "Unity.InputSystem", "Unity.XR.Interaction.Toolkit", "Unity.XR.CoreUtils", "Unity.ugui"],
+  "references": ["Unity.WebRTC", "Unity.InputSystem", "Unity.XR.Interaction.Toolkit", "Unity.XR.CoreUtils", "Unity.XR.Hands", "Unity.ugui"],
   "autoReferenced": true
 }
