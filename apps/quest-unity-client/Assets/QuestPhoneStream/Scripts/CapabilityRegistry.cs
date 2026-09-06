@@ -77,7 +77,9 @@ namespace QuestPhoneStream
                 Descriptor("media.consume", true, false, false, new[] { "http.range" }, new[] { "catalog", "range" }, new[] { "qps.media.pairing" }),
                 Descriptor("media.render", true, false, false, new[] { "http.range", "local" }, new[] { "flat", "panorama", "stereo-vr" }, new[] { "qps.media.pairing" }),
                 Descriptor("xr.head.pose", true, true, false, new[] { "local", "webrtc.datachannel" }, new[] { "openxr.pose", "60hz", "72hz" }),
-                Descriptor("xr.controller.pose", true, true, false, new[] { "local", "webrtc.datachannel" }, new[] { "openxr.pose", "left", "right", "60hz", "72hz" })
+                Descriptor("xr.controller.pose", true, true, false, new[] { "local", "webrtc.datachannel" }, new[] { "openxr.pose", "left", "right", "60hz", "72hz" }),
+                Descriptor("camera.rgb", false, false, false, new[] { "local", "webrtc.track" },
+                    new[] { "single-frame", "sampled-preview", "passthrough-rgb" }, new[] { "horizonos.permission.HEADSET_CAMERA" })
             });
         }
 

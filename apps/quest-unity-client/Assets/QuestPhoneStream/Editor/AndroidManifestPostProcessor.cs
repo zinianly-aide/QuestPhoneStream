@@ -5,23 +5,13 @@ using UnityEngine;
 
 namespace QuestPhoneStream.Editor
 {
-    /// <summary>
-    /// Injects required attributes into the generated AndroidManifest.xml after Unity creates
-    /// the Gradle project:
-    ///   1. oculus.software.overlay_keyboard feature — without this, TouchScreenKeyboard.Open()
-    ///      logs "Oculus overlay keyboard is disabled" and no system keyboard appears on Quest.
-    ///   2. android:usesCleartextTraffic="true" on &lt;application&gt; — without this, VideoPlayer
-    ///      (which uses Android's native MediaExtractor) fails with error -10000 on HTTP URLs,
-    ///      even though UnityWebRequest works via insecureHttpOption.
-    ///
-    /// We use IPostGenerateGradleAndroidProject instead of a static Assets/Plugins/Android/AndroidManifest.xml
-    /// because a partial custom manifest breaks Unity's manifest merger (missing android:name on activity).
-    /// </summary>
+    /// <summary>Applies Quest-specific generated Android manifest requirements.</summary>
     public class AndroidManifestPostProcessor : IPostGenerateGradleAndroidProject
     {
         public int callbackOrder => 0;
 
         private const string OverlayKeyboardFeature = "oculus.software.overlay_keyboard";
+        private const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
         private const string AndroidNs = "http://schemas.android.com/apk/res/android";
 
         public void OnPostGenerateGradleAndroidProject(string path)
@@ -35,7 +25,6 @@ namespace QuestPhoneStream.Editor
 
             var doc = new XmlDocument();
             doc.Load(manifestPath);
-
             var manifest = doc.DocumentElement;
             if (manifest == null)
             {
@@ -43,9 +32,7 @@ namespace QuestPhoneStream.Editor
                 return;
             }
 
-            bool changed = false;
-
-            // 1. Ensure <application android:usesCleartextTraffic="true">
+            var changed = false;
             var applicationElements = manifest.GetElementsByTagName("application");
             if (applicationElements.Count > 0)
             {
@@ -58,20 +45,13 @@ namespace QuestPhoneStream.Editor
                     attr.Value = "true";
                     app.Attributes.Append(attr);
                     changed = true;
-                    Debug.Log("[AndroidManifestPostProcessor] Added android:usesCleartextTraffic=\"true\" to <application>");
+                    Debug.Log("[AndroidManifestPostProcessor] Added android:usesCleartextTraffic=\"true\"");
                 }
-                else
+                else if (!string.Equals(cleartextAttr.Value, "true", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!string.Equals(cleartextAttr.Value, "true", System.StringComparison.OrdinalIgnoreCase))
-                    {
-                        cleartextAttr.Value = "true";
-                        changed = true;
-                        Debug.Log("[AndroidManifestPostProcessor] Changed android:usesCleartextTraffic to true for LAN media playback");
-                    }
-                    else
-                    {
-                        Debug.Log("[AndroidManifestPostProcessor] usesCleartextTraffic already true, skipping");
-                    }
+                    cleartextAttr.Value = "true";
+                    changed = true;
+                    Debug.Log("[AndroidManifestPostProcessor] Changed android:usesCleartextTraffic to true");
                 }
             }
             else
@@ -79,39 +59,26 @@ namespace QuestPhoneStream.Editor
                 Debug.LogWarning("[AndroidManifestPostProcessor] No <application> element found in manifest");
             }
 
-            // 2. Ensure <uses-feature android:name="oculus.software.overlay_keyboard" />
-            bool featureExists = false;
-            var features = manifest.GetElementsByTagName("uses-feature");
-            foreach (XmlNode feature in features)
-            {
-                var nameAttr = feature.Attributes?["name", AndroidNs]
-                                ?? feature.Attributes?["android:name"];
-                if (nameAttr?.Value == OverlayKeyboardFeature)
-                {
-                    featureExists = true;
-                    break;
-                }
-            }
-
-            if (!featureExists)
+            if (!HasNamedElement(manifest, "uses-feature", OverlayKeyboardFeature))
             {
                 var featureElement = doc.CreateElement("uses-feature");
-
-                var nameAttribute = doc.CreateAttribute("android", "name", AndroidNs);
-                nameAttribute.Value = OverlayKeyboardFeature;
-                featureElement.Attributes.Append(nameAttribute);
-
-                var requiredAttribute = doc.CreateAttribute("android", "required", AndroidNs);
-                requiredAttribute.Value = "false";
-                featureElement.Attributes.Append(requiredAttribute);
-
+                AppendAndroidAttribute(doc, featureElement, "name", OverlayKeyboardFeature);
+                AppendAndroidAttribute(doc, featureElement, "required", "false");
                 manifest.AppendChild(featureElement);
                 changed = true;
-                Debug.Log("[AndroidManifestPostProcessor] Added oculus.software.overlay_keyboard to AndroidManifest.xml");
+                Debug.Log("[AndroidManifestPostProcessor] Added oculus.software.overlay_keyboard");
             }
-            else
+
+            // Passthrough Camera Access requires this explicit Horizon OS permission.
+            // Declaring it does not authorize access; QuestVisionService still requests
+            // user permission at runtime before camera.rgb can become authorized/active.
+            if (!HasNamedElement(manifest, "uses-permission", HeadsetCameraPermission))
             {
-                Debug.Log("[AndroidManifestPostProcessor] overlay_keyboard feature already present, skipping");
+                var permissionElement = doc.CreateElement("uses-permission");
+                AppendAndroidAttribute(doc, permissionElement, "name", HeadsetCameraPermission);
+                manifest.AppendChild(permissionElement);
+                changed = true;
+                Debug.Log("[AndroidManifestPostProcessor] Added HEADSET_CAMERA permission declaration");
             }
 
             if (changed)
@@ -119,6 +86,24 @@ namespace QuestPhoneStream.Editor
                 doc.Save(manifestPath);
                 Debug.Log("[AndroidManifestPostProcessor] Manifest updated and saved");
             }
+        }
+
+        private static bool HasNamedElement(XmlElement manifest, string tagName, string expectedName)
+        {
+            var nodes = manifest.GetElementsByTagName(tagName);
+            foreach (XmlNode node in nodes)
+            {
+                var nameAttr = node.Attributes?["name", AndroidNs] ?? node.Attributes?["android:name"];
+                if (nameAttr?.Value == expectedName) return true;
+            }
+            return false;
+        }
+
+        private static void AppendAndroidAttribute(XmlDocument doc, XmlElement element, string name, string value)
+        {
+            var attribute = doc.CreateAttribute("android", name, AndroidNs);
+            attribute.Value = value;
+            element.Attributes.Append(attribute);
         }
     }
 }
