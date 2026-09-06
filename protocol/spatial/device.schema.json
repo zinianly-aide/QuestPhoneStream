@@ -7,6 +7,8 @@
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
+    "platform": { "type": "string", "minLength": 1 },
+    "sourceType": { "type": "string", "minLength": 1 },
     "protocolVersions": {
       "type": "array",
       "items": { "type": "string" },
