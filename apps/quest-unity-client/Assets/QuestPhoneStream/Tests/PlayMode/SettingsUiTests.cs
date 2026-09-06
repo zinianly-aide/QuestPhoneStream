@@ -168,9 +168,9 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(new Vector2(900f, 520f), ((RectTransform)canvas.transform).sizeDelta);
             Assert.That(((RectTransform)canvas.transform).lossyScale.x, Is.EqualTo(0.0015f).Within(0.00001f));
             var panel = canvas.transform.Find("HomePanel");
-            var list = panel.Find("MediaDeviceList") as RectTransform;
-            Assert.IsNotNull(list);
-            Assert.Less(list.anchorMax.y, advanced.GetComponent<RectTransform>().anchorMin.y);
+            var deviceScroll = panel.Find("DeviceScroll") as RectTransform;
+            Assert.IsNotNull(deviceScroll);
+            Assert.Less(deviceScroll.anchorMax.y, advanced.GetComponent<RectTransform>().anchorMin.y);
             Assert.Less(advanced.GetComponent<RectTransform>().anchorMax.y, phone.GetComponent<RectTransform>().anchorMin.y);
 
             advanced.onClick.Invoke();
