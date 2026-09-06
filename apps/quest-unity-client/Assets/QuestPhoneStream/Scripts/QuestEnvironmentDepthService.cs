@@ -36,11 +36,14 @@ namespace QuestPhoneStream
         public static bool CanActivate(bool available, bool authorized, bool requested) => available && authorized && requested;
     }
 
-    /// <summary>Optional Quest/Meta depth adapter backed by bounded provider discovery.</summary>
+    /// <summary>
+    /// Optional Quest/Meta depth adapter backed by bounded provider discovery.
+    /// Discovery is lazy and binds only to an already-instantiated external provider.
+    /// QuestPhoneStream runtime types are never eligible reflection providers.
+    /// </summary>
     public sealed class MetaEnvironmentDepthProvider : IEnvironmentDepthProvider
     {
         private const string DiscoveryKey = "spatial.environment.depth.provider";
-        private readonly GameObject _owner;
         private Component _component;
         private Type _componentType;
         private PropertyInfo _textureProperty;
@@ -49,11 +52,7 @@ namespace QuestPhoneStream
         private PropertyInfo _activeProperty;
         private bool _requested;
 
-        public MetaEnvironmentDepthProvider(GameObject owner)
-        {
-            _owner = owner;
-            Discover(force: false);
-        }
+        public MetaEnvironmentDepthProvider() { }
 
         public bool IsAvailable
         {
@@ -123,17 +122,15 @@ namespace QuestPhoneStream
         private void Discover(bool force)
         {
             if (_component != null && _textureProperty != null) return;
-            _componentType = OptionalProviderDiscovery.ResolveType(DiscoveryKey, IsProviderType, force);
+            _componentType = OptionalProviderDiscovery.ResolveType(DiscoveryKey, IsProviderTypeForDiscovery, force);
             if (_componentType == null) { ClearBinding(); return; }
 
             var texture = FindTextureProperty(_componentType);
             if (texture == null) { ClearBinding(); return; }
+
+            // External SDK/provider components must be created by their own integration or scene.
+            // Reflection discovery must never AddComponent an unknown type.
             var component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
-            if (component == null && _owner != null)
-            {
-                try { component = _owner.GetComponent(_componentType) ?? _owner.AddComponent(_componentType); }
-                catch { component = null; }
-            }
             if (component == null) { ClearBinding(keepType: true); return; }
 
             _component = component;
@@ -143,8 +140,14 @@ namespace QuestPhoneStream
             _activeProperty = FindBoolProperty(_componentType, "IsActive", "IsRunning", "IsPlaying");
         }
 
-        private static bool IsProviderType(Type type) => typeof(Component).IsAssignableFrom(type) &&
-            type.Name.IndexOf("EnvironmentDepth", StringComparison.OrdinalIgnoreCase) >= 0 && FindTextureProperty(type) != null;
+        public static bool IsProviderTypeForDiscovery(Type type)
+        {
+            if (type == null || type == typeof(QuestEnvironmentDepthService)) return false;
+            if (type.Assembly == typeof(QuestEnvironmentDepthService).Assembly) return false;
+            return typeof(Component).IsAssignableFrom(type) &&
+                   type.Name.IndexOf("EnvironmentDepth", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   FindTextureProperty(type) != null;
+        }
 
         private void ClearBinding(bool keepType = false)
         {
@@ -199,7 +202,8 @@ namespace QuestPhoneStream
         {
             if (signaling == null) signaling = GetComponent<QuestSignalingClient>();
             if (receiver == null) receiver = GetComponent<QuestWebRtcReceiver>();
-            _provider = new MetaEnvironmentDepthProvider(gameObject);
+            // Do not reflect/probe optional providers during startup. First automatic
+            // probe occurs after the bounded refresh interval, or on explicit demand.
             _nextProbe = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
         }
 
@@ -221,7 +225,7 @@ namespace QuestPhoneStream
             if (now >= _nextProbe)
             {
                 _nextProbe = now + Mathf.Max(1f, providerRefreshSeconds);
-                _provider?.Refresh();
+                EnsureProvider().Refresh();
                 RefreshCapability();
             }
             if (!IsActive || dataPlane == null || !dataPlane.IsFastOpen || _subscriptions.Count == 0 || now < _nextSample) return;
@@ -245,7 +249,7 @@ namespace QuestPhoneStream
 
         public bool StartDepth()
         {
-            var started = _provider != null && _provider.StartDepth();
+            var started = EnsureProvider().StartDepth();
             RefreshCapability();
             return started;
         }
@@ -258,14 +262,22 @@ namespace QuestPhoneStream
 
         public void RefreshProvider()
         {
-            if (_provider is MetaEnvironmentDepthProvider meta) meta.RefreshExplicit();
-            else _provider?.Refresh();
+            var provider = EnsureProvider();
+            if (provider is MetaEnvironmentDepthProvider meta) meta.RefreshExplicit();
+            else provider.Refresh();
             RefreshCapability();
+        }
+
+        private IEnvironmentDepthProvider EnsureProvider()
+        {
+            if (_provider == null) _provider = new MetaEnvironmentDepthProvider();
+            return _provider;
         }
 
         private void OnSubscriptionCreate(SpatialEnvelope request)
         {
             if (request.payload?.capability != "spatial.environment.depth") return;
+            EnsureProvider().Refresh();
             if (!IsAvailable || !IsAuthorized)
             {
                 _ = signaling.SendSpatialProtocolErrorAsync(request, "capability_unavailable", "Environment depth provider is unavailable or unauthorized", true);

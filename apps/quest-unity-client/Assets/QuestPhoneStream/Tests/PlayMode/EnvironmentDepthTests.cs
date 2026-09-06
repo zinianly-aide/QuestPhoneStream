@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 namespace QuestPhoneStream.Tests
 {
@@ -24,6 +25,31 @@ namespace QuestPhoneStream.Tests
             Assert.IsFalse(capability.state.active);
             CollectionAssert.Contains(capability.features, "local-texture");
             CollectionAssert.Contains(capability.features, "metadata-sample");
+        }
+
+        [Test]
+        public void DepthServiceCannotBeDiscoveredAsItsOwnProvider()
+        {
+            Assert.IsFalse(MetaEnvironmentDepthProvider.IsProviderTypeForDiscovery(typeof(QuestEnvironmentDepthService)));
+        }
+
+        [Test]
+        public void AddingDepthServiceDoesNotProbeProviderDuringAwake()
+        {
+            OptionalProviderDiscovery.ResetAll();
+            var go = new GameObject("EnvironmentDepthLazyDiscoveryTest");
+            try
+            {
+                var service = go.AddComponent<QuestEnvironmentDepthService>();
+                Assert.IsFalse(service.IsAvailable);
+                Assert.AreEqual(0, OptionalProviderDiscovery.AssemblyScanCount,
+                    "Quest startup/Awake must not scan optional provider assemblies");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+                OptionalProviderDiscovery.ResetAll();
+            }
         }
     }
 }

@@ -55,22 +55,17 @@ namespace QuestPhoneStream
 
     /// <summary>
     /// Optional external volumetric decoder adapter. No decoder is bundled; provider
-    /// discovery is bounded/cached by OptionalProviderDiscovery.
+    /// discovery is bounded/cached and only binds an existing external component.
     /// </summary>
     public sealed class ReflectionSixDofMediaProvider : ISixDofMediaProvider
     {
         private const string DiscoveryKey = "media.6dof.provider";
-        private readonly GameObject _owner;
         private Component _component;
         private Type _componentType;
         private MethodInfo _open, _play, _stop;
         private PropertyInfo _supported, _playing;
 
-        public ReflectionSixDofMediaProvider(GameObject owner)
-        {
-            _owner = owner;
-            Discover(force: false);
-        }
+        public ReflectionSixDofMediaProvider() { }
 
         public bool IsAvailable
         {
@@ -127,17 +122,15 @@ namespace QuestPhoneStream
         private void Discover(bool force)
         {
             if (_component != null && _open != null) return;
-            _componentType = OptionalProviderDiscovery.ResolveType(DiscoveryKey, IsProviderType, force);
+            _componentType = OptionalProviderDiscovery.ResolveType(DiscoveryKey, IsProviderTypeForDiscovery, force);
             if (_componentType == null) { ClearBinding(); return; }
 
             var open = FindStringMethod(_componentType, "Open", "Load", "OpenUrl", "LoadUrl");
             if (open == null) { ClearBinding(); return; }
+
+            // External decoder providers must be instantiated by their SDK/scene.
+            // Never AddComponent a type discovered only through reflection.
             var component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
-            if (component == null && _owner != null)
-            {
-                try { component = _owner.GetComponent(_componentType) ?? _owner.AddComponent(_componentType); }
-                catch { component = null; }
-            }
             if (component == null) { ClearBinding(keepType: true); return; }
 
             _component = component;
@@ -148,8 +141,9 @@ namespace QuestPhoneStream
             _playing = FindBoolProperty(_componentType, "IsPlaying", "Playing");
         }
 
-        private static bool IsProviderType(Type type)
+        public static bool IsProviderTypeForDiscovery(Type type)
         {
+            if (type == null || type.Assembly == typeof(SixDofMediaService).Assembly) return false;
             if (!typeof(Component).IsAssignableFrom(type)) return false;
             var name = type.Name;
             if (name != "SixDofVideoRenderer" && name != "VolumetricVideoRenderer" && name != "VolumetricMediaRenderer") return false;
@@ -199,7 +193,6 @@ namespace QuestPhoneStream
         private void Awake()
         {
             if (signaling == null) signaling = GetComponentInParent<QuestSignalingClient>();
-            _provider = new ReflectionSixDofMediaProvider(gameObject);
             _nextProviderRefresh = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
         }
 
@@ -209,21 +202,22 @@ namespace QuestPhoneStream
         {
             if (Time.unscaledTime < _nextProviderRefresh) return;
             _nextProviderRefresh = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
-            _provider?.Refresh();
+            EnsureProvider().Refresh();
             RefreshCapability();
         }
 
         public void RefreshProvider()
         {
-            if (_provider is ReflectionSixDofMediaProvider reflection) reflection.RefreshExplicit();
-            else _provider?.Refresh();
+            var provider = EnsureProvider();
+            if (provider is ReflectionSixDofMediaProvider reflection) reflection.RefreshExplicit();
+            else provider.Refresh();
             RefreshCapability();
         }
 
         public bool TryPlay(MediaItemDto item, string url)
         {
             var descriptor = SixDofMediaDescriptor.From(item);
-            var started = descriptor.IsSixDof && _provider != null && _provider.Open(url, descriptor);
+            var started = descriptor.IsSixDof && EnsureProvider().Open(url, descriptor);
             RefreshCapability();
             return started;
         }
@@ -232,6 +226,12 @@ namespace QuestPhoneStream
         {
             _provider?.Stop();
             RefreshCapability();
+        }
+
+        private ISixDofMediaProvider EnsureProvider()
+        {
+            if (_provider == null) _provider = new ReflectionSixDofMediaProvider();
+            return _provider;
         }
 
         private void RefreshCapability() => signaling?.ReportCapabilityState("media.6dof.render",
