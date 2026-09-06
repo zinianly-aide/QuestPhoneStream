@@ -165,7 +165,7 @@ namespace QuestPhoneStream.Tests
             Assert.That(viewport.y, Is.InRange(0.15f, 0.85f));
 
             var canvas = home.GetComponentInChildren<Canvas>(true);
-            Assert.AreEqual(new Vector2(900f, 500f), ((RectTransform)canvas.transform).sizeDelta);
+            Assert.AreEqual(new Vector2(900f, 520f), ((RectTransform)canvas.transform).sizeDelta);
             Assert.That(((RectTransform)canvas.transform).lossyScale.x, Is.EqualTo(0.0015f).Within(0.00001f));
             var panel = canvas.transform.Find("HomePanel");
             var list = panel.Find("MediaDeviceList") as RectTransform;
