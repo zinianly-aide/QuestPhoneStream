@@ -24,7 +24,7 @@ class MediaCatalog(context: Context?) {
                 size = runCatching { ctx.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length.takeIf { length -> length >= 0 } } }.getOrNull()
             }
         }
-        return repository.add(uri, mimeType, name, size)
+        return repository.add(uri.toString(), mimeType, name, size)
     }
 
     fun remove(id: String): Boolean = repository.remove(id)
