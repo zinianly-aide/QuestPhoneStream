@@ -109,6 +109,7 @@ namespace QuestPhoneStream.Tests
         public void ConcurrentReconnectReturnsTheExistingAttempt()
         {
             var pending = new TaskCompletionSource<bool>();
+            _client.signalingUrl = "ws://localhost:8787";
             _client.questDeviceId = "q";
             _client.androidDeviceId = "a";
             _client.sessionId = "s";
