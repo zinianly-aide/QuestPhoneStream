@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 namespace QuestPhoneStream.Tests
 {
@@ -34,6 +35,28 @@ namespace QuestPhoneStream.Tests
             Assert.IsTrue(camera.state.available);
             Assert.IsFalse(camera.state.authorized);
             Assert.IsFalse(camera.state.active);
+        }
+
+        [Test]
+        public void EncodeJpgProducesJpegFileBytes()
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGB24, false);
+            try
+            {
+                texture.SetPixels(new[] { Color.red, Color.green, Color.blue, Color.white });
+                texture.Apply(false, false);
+                var frame = new QuestVisionFrame { texture = texture, width = 2, height = 2 };
+                var bytes = frame.EncodeJpg(85);
+
+                Assert.That(bytes, Is.Not.Null.And.Length.GreaterThan(3));
+                Assert.AreEqual(0xFF, bytes[0]);
+                Assert.AreEqual(0xD8, bytes[1]);
+                Assert.AreEqual(0xFF, bytes[2]);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
         }
     }
 }
