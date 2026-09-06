@@ -150,8 +150,8 @@ namespace QuestPhoneStream.Tests
                 var text = button.GetComponentInChildren<Text>();
                 if (text == null) continue;
                 if (text.text == "⚙ Settings") advanced = button;
-                if (text.text == "Phone") phone = button;
-                if (text.text == "Videos") videos = button;
+                if (text.text == "Screen") phone = button;
+                if (text.text == "Media") videos = button;
                 if (text.text == "Keyboard") keyboard = button;
             }
 
@@ -275,8 +275,8 @@ namespace QuestPhoneStream.Tests
             Assert.IsNotNull(ui.wirelessAdbHelper);
             ui.developerToolsButton.onClick.Invoke();
             Assert.IsTrue(ui.IsVisible);
-            Assert.IsTrue(ui.wirelessAdbHelper.IsVisible);
-            ui.wirelessAdbHelper.Hide();
+            Assert.IsTrue(ui.developerHud.IsVisible);
+            Assert.IsFalse(ui.wirelessAdbHelper.IsVisible);
             ui.HideDeveloperTools();
             yield return null;
         }
