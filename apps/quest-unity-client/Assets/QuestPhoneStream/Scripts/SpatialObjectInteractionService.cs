@@ -122,6 +122,7 @@ namespace QuestPhoneStream
             signaling.SubscriptionCreateRequested += OnSubscriptionCreate;
             signaling.SubscriptionCancelRequested += OnSubscriptionCancel;
             signaling.NegotiationInvalidated += OnNegotiationInvalidated;
+            dataPlane.OpenStateChanged += OnFastOpenChanged;
             SpatialInteractable.RemoteTargetRemoved += OnRemoteTargetRemoved;
             RefreshCapability();
         }
@@ -245,7 +246,7 @@ namespace QuestPhoneStream
                 nextAt = 0f, nextSequence = 0
             };
             if (!_subscriptions.Add(subscription)) return;
-            updateHz = subscription.rateHz;
+            updateHz = _subscriptions.HighestRate();
             _ = signaling.SendSubscriptionCreatedAsync(request, subscription.id, subscription.rateHz,
                 "qps.spatial.interaction+json", "webrtc.datachannel", "unreliable_unordered");
             RefreshCapability();
@@ -256,7 +257,18 @@ namespace QuestPhoneStream
             if (request.payload?.capability != "spatial.object.interaction") return;
             if (_subscriptions.Remove(request.payload.subscriptionId, out _))
                 _ = signaling.SendSubscriptionClosedAsync(request, request.payload.subscriptionId);
+            updateHz = Mathf.Max(10f, _subscriptions.HighestRate());
             if (_subscriptions.Count == 0) _tracker.Reset();
+            RefreshCapability();
+        }
+
+        private void OnFastOpenChanged(bool open)
+        {
+            if (!open)
+            {
+                _subscriptions.Clear();
+                _tracker.Reset();
+            }
             RefreshCapability();
         }
 
@@ -267,12 +279,14 @@ namespace QuestPhoneStream
         {
             _subscriptions.Clear();
             _tracker.Reset();
+            _sequence = 0;
             RefreshCapability();
         }
 
         private void OnDestroy()
         {
             SpatialInteractable.RemoteTargetRemoved -= OnRemoteTargetRemoved;
+            if (dataPlane != null) dataPlane.OpenStateChanged -= OnFastOpenChanged;
             _subscriptions.Clear();
             _tracker.Reset();
             if (signaling != null)
