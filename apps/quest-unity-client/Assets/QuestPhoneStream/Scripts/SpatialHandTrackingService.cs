@@ -128,7 +128,11 @@ namespace QuestPhoneStream
                 active: available && tracked && transportActive && _subscriptions.ContainsCapability("xr.hand.pose"));
         }
 
-        private void OnTransportOpenChanged(bool _) => RefreshCapabilityState();
+        private void OnTransportOpenChanged(bool open)
+        {
+            if (!open) _subscriptions.Clear();
+            RefreshCapabilityState();
+        }
 
         private void OnNegotiationInvalidated()
         {
