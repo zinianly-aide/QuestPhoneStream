@@ -14,8 +14,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
@@ -30,10 +30,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
+import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
@@ -44,24 +44,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var questDeviceIdField: EditText
     private lateinit var sessionIdField: EditText
 
-    // --- Status views ---
+    // --- Detailed status views ---
     private lateinit var signalingStatusView: TextView
     private lateinit var webrtcStatusView: TextView
     private lateinit var screenCaptureStatusView: TextView
     private lateinit var currentSessionIdView: TextView
     private lateinit var urlModeIndicator: TextView
+
+    // --- Media ---
     private lateinit var mediaListContainer: LinearLayout
     private lateinit var mediaServerStatusView: TextView
     private lateinit var mediaCatalog: MediaCatalog
     private var mediaServer: MediaHttpServer? = null
     @Volatile private var mediaPairingToken = "dev-token"
 
-    // --- User-facing readiness summary ---
+    // --- User-facing home ---
+    private lateinit var homeContainer: LinearLayout
     private lateinit var homeQuestStatusView: TextView
     private lateinit var homeScreenStatusView: TextView
     private lateinit var homeControlStatusView: TextView
     private lateinit var homeMediaStatusView: TextView
     private lateinit var homeScreenActionButton: Button
+    private lateinit var homeControlActionButton: Button
     private lateinit var advancedToggleButton: Button
     private lateinit var advancedContainer: LinearLayout
     private lateinit var mediaManagerContainer: LinearLayout
@@ -107,7 +111,9 @@ class MainActivity : AppCompatActivity() {
     private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val uri = result.data?.data ?: return@registerForActivityResult
         try {
-            val flags = result.data?.flags?.and(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ?: 0
+            val flags = result.data?.flags?.and(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            ) ?: 0
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && flags != 0) {
                 contentResolver.takePersistableUriPermission(uri, flags)
             }
@@ -124,65 +130,101 @@ class MainActivity : AppCompatActivity() {
         mediaCatalog = MediaCatalog(applicationContext)
         maybeRequestNotificationPermission()
 
-        val root = ScrollView(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT) }
+        val root = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16))
         }
 
-        // ── 1. Title ──
-        container.addView(sectionTitle("Quest Phone Stream Agent"))
+        container.addView(sectionTitle("QuestPhoneStream"))
+        container.addView(subtitle("Android companion · local network"))
 
-        // ── 2. User-facing readiness summary ──
-        container.addView(sectionLabel("READY"))
+        homeContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        container.addView(homeContainer)
+
+        buildHome()
+        buildAdvanced()
+        buildMediaManager()
+
+        root.addView(container)
+        setContentView(root)
+
+        updateUrlModeIndicator()
+        updateMediaList()
+        updateHomeStatus()
+        addLog("App started")
+    }
+
+    private fun buildHome() {
+        homeContainer.addView(sectionLabel("READY"))
         val homeCard = cardLayout()
-        homeQuestStatusView = statusRow(homeCard, "Signaling", "Not ready")
-        homeScreenStatusView = statusRow(homeCard, "Screen Sharing", "Off")
-        homeControlStatusView = statusRow(homeCard, "Remote Control", "Permission required")
-        homeMediaStatusView = statusRow(homeCard, "Media", "Starting…")
-        homeCard.addView(actionButton("Enable remote control", R.color.status_idle) {
-            openAccessibilitySettings()
-        })
-        container.addView(homeCard)
+        homeQuestStatusView = statusRow(homeCard, "Quest connection", "Not connected")
+        homeScreenStatusView = statusRow(homeCard, "Screen sharing", "Off")
+        homeControlStatusView = statusRow(homeCard, "Remote control", "Permission required")
+        homeMediaStatusView = statusRow(homeCard, "Shared media", "Starting…")
 
-        advancedContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
+        homeControlActionButton = actionButton("Enable remote control", R.color.status_idle) {
+            openAccessibilitySettings()
         }
-        mediaManagerContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-        }
+        homeCard.addView(homeControlActionButton)
+
         homeScreenActionButton = actionButton("Start screen sharing", R.color.status_ok) {
             if (isStreaming) stopStream() else startStream()
         }
         homeCard.addView(homeScreenActionButton)
-        homeCard.addView(actionButton("Manage videos", R.color.colorPrimary) {
+
+        homeCard.addView(actionButton("Manage shared media", R.color.colorPrimary) {
             showMediaManager()
         })
+        homeContainer.addView(homeCard)
 
-        // ── Advanced: detailed status ──
-        advancedContainer.addView(sectionLabel("STATUS"))
+        homeContainer.addView(helperText(
+            "Quest discovers this phone on the LAN. Manual connection details and diagnostics stay under Advanced settings."
+        ))
+
+        advancedToggleButton = actionButton("Advanced settings", R.color.status_idle) {
+            val show = advancedContainer.visibility != View.VISIBLE
+            advancedContainer.visibility = if (show) View.VISIBLE else View.GONE
+            advancedToggleButton.text = if (show) "Hide advanced settings" else "Advanced settings"
+        }
+        homeContainer.addView(advancedToggleButton)
+    }
+
+    private fun buildAdvanced() {
+        advancedContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        advancedContainer.addView(sectionLabel("CONNECTION DETAILS"))
         val statusCard = cardLayout()
         signalingStatusView = statusRow(statusCard, "Signaling", "Idle")
         webrtcStatusView = statusRow(statusCard, "WebRTC", "Idle")
-        screenCaptureStatusView = statusRow(statusCard, "Screen Capture", "Idle")
+        screenCaptureStatusView = statusRow(statusCard, "Screen capture", "Idle")
         currentSessionIdView = statusRow(statusCard, "Session ID", "—")
         advancedContainer.addView(statusCard)
 
-        // ── URL mode indicator ──
         urlModeIndicator = TextView(this).apply {
-            setPadding(dp(12), dp(4), dp(12), dp(4))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(null, Typeface.BOLD)
         }
         advancedContainer.addView(urlModeIndicator)
 
-        // ── Advanced: config ──
-        advancedContainer.addView(sectionLabel("CONFIGURATION"))
+        advancedContainer.addView(sectionLabel("MANUAL CONNECTION"))
+        advancedContainer.addView(helperText(
+            "Normally no changes are needed here. Use these fields only when automatic discovery or pairing needs manual configuration."
+        ))
         val configCard = cardLayout()
         signalingUrlField = configRow(configCard, "Signaling URL", "ws://192.168.1.9:8787")
-        tokenField = configRow(configCard, "Token", "dev-token")
+        tokenField = configRow(configCard, "Pairing token", "dev-token")
         mediaPairingToken = tokenField.text.toString().trim()
         tokenField.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -191,11 +233,110 @@ class MainActivity : AppCompatActivity() {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        deviceIdField = configRow(configCard, "Android Device ID", "android-phone-001")
-        questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
+        deviceIdField = configRow(configCard, "Android device ID", "android-phone-001")
+        questDeviceIdField = configRow(configCard, "Quest device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
-        configCard.addView(actionButton("Save settings", R.color.status_idle) { saveConfigurationAndRefreshNsd() })
+        configCard.addView(actionButton("Save & apply", R.color.colorPrimary) {
+            saveConfigurationAndRefreshNsd()
+        })
         advancedContainer.addView(configCard)
+
+        signalingUrlField.setOnFocusChangeListener { _, _ -> updateUrlModeIndicator() }
+
+        advancedContainer.addView(sectionLabel("DIAGNOSTICS"))
+        val actionsCard = cardLayout()
+        actionsCard.addView(actionButton("Test signaling connection", R.color.colorPrimary) {
+            testConnection()
+        })
+        actionsCard.addView(actionButton("Certificate / TLS help", R.color.btn_cert) {
+            showCertDialog()
+        })
+        actionsCard.addView(actionButton("Open Android app settings", R.color.status_idle) {
+            val settingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            settingsIntent.data = Uri.parse("package:$packageName")
+            startActivity(settingsIntent)
+        })
+        advancedContainer.addView(actionsCard)
+
+        advancedContainer.addView(sectionLabel("LOG"))
+        val logCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10))
+            setBackgroundColor(color(R.color.log_bg))
+        }
+        val logScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(180)
+            )
+        }
+        logContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        logScroll.addView(logContainer)
+        logCard.addView(logScroll)
+
+        val clearLogBtn = Button(this).apply {
+            text = "Clear log"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(0, dp(6), 0, dp(6))
+            setOnClickListener {
+                logEntries.clear()
+                logContainer.removeAllViews()
+            }
+        }
+        logCard.addView(clearLogBtn)
+        advancedContainer.addView(logCard)
+        advancedContainer.addView(
+            View(this),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32))
+        )
+
+        homeContainer.addView(advancedContainer)
+    }
+
+    private fun buildMediaManager() {
+        mediaManagerContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        mediaManagerContainer.addView(sectionLabel("SHARED MEDIA"))
+        mediaManagerContainer.addView(helperText(
+            "Only items marked Shared are visible in the Quest Media Library."
+        ))
+
+        val mediaCard = cardLayout()
+        mediaServerStatusView = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(color(R.color.status_idle))
+            setPadding(0, 0, 0, dp(8))
+        }
+        mediaCard.addView(mediaServerStatusView)
+        mediaCard.addView(actionButton("Add video", R.color.colorPrimary) {
+            videoPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "video/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+            })
+        })
+
+        mediaListContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        mediaCard.addView(mediaListContainer)
+        mediaManagerContainer.addView(mediaCard)
+        mediaManagerContainer.addView(actionButton("← Back to home", R.color.status_idle) {
+            hideMediaManager()
+        })
+
+        (homeContainer.parent as? LinearLayout)?.addView(mediaManagerContainer)
 
         mediaServer = runCatching {
             MediaHttpServer(
@@ -206,109 +347,6 @@ class MainActivity : AppCompatActivity() {
                 signalingEndpointProvider = { signalingUrlField.text.toString().trim() }
             ).also { it.start() }
         }.getOrNull()
-
-        // ── Separate media manager ──
-        mediaManagerContainer.addView(sectionLabel("MEDIA MANAGER"))
-        val mediaCard = cardLayout()
-        mediaServerStatusView = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(color(R.color.status_idle))
-        }
-        mediaCard.addView(mediaServerStatusView)
-        mediaCard.addView(actionButton("Add Video", R.color.colorPrimary) {
-            videoPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "video/*"
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            })
-        })
-        mediaListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        mediaCard.addView(mediaListContainer)
-        mediaManagerContainer.addView(mediaCard)
-        mediaManagerContainer.addView(actionButton("← Back", R.color.status_idle) {
-            hideMediaManager()
-        })
-
-        signalingUrlField.setOnFocusChangeListener { _, _ -> updateUrlModeIndicator() }
-
-        // ── Advanced: actions ──
-        advancedContainer.addView(sectionLabel("ACTIONS"))
-        val actionsCard = cardLayout()
-
-        val testBtn = actionButton("🔌 Test Connection", R.color.colorPrimary) { testConnection() }
-        actionsCard.addView(testBtn)
-
-        val startBtn = actionButton("▶ Start Screen Stream", R.color.status_ok) { startStream() }
-        actionsCard.addView(startBtn)
-
-        val stopBtn = actionButton("⏹ Stop", R.color.status_error) { stopStream() }
-        actionsCard.addView(stopBtn)
-
-        val certBtn = actionButton("🔐 Install / Trust Certificate", R.color.btn_cert) { showCertDialog() }
-        actionsCard.addView(certBtn)
-
-        val a11yBtn = actionButton("♿ Open Accessibility Settings", R.color.status_idle) {
-            openAccessibilitySettings()
-        }
-        actionsCard.addView(a11yBtn)
-
-        val appSettingsBtn = actionButton("⚙ Open App Settings", R.color.status_idle) {
-            val settingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            settingsIntent.data = Uri.parse("package:$packageName")
-            startActivity(settingsIntent)
-        }
-        actionsCard.addView(appSettingsBtn)
-
-        advancedContainer.addView(actionsCard)
-
-        // ── Advanced: log ──
-        advancedContainer.addView(sectionLabel("LOG"))
-        val logCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8))
-            setBackgroundColor(color(R.color.log_bg))
-        }
-        val logScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
-        }
-        logContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        logScroll.addView(logContainer)
-        logCard.addView(logScroll)
-        advancedContainer.addView(logCard)
-
-        val clearLogBtn = Button(this).apply {
-            text = "Clear Log"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(0, dp(4), 0, dp(4))
-            setOnClickListener {
-                logEntries.clear()
-                logContainer.removeAllViews()
-            }
-        }
-        logCard.addView(clearLogBtn)
-
-        // ── Bottom spacing ──
-        advancedContainer.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
-
-        advancedToggleButton = actionButton("Advanced settings", R.color.status_idle) {
-            advancedContainer.visibility = if (advancedContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        container.addView(advancedToggleButton)
-        container.addView(mediaManagerContainer)
-        container.addView(advancedContainer)
-
-        root.addView(container)
-        setContentView(root)
-
-        updateUrlModeIndicator()
-        updateMediaList()
-        updateHomeStatus()
-        addLog("App started")
     }
 
     // ─── Actions ───
@@ -338,9 +376,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onStateChanged(state: ConnectionState) {
-                    runOnUiThread {
-                        updateSignalingStatus(state)
-                    }
+                    runOnUiThread { updateSignalingStatus(state) }
                 }
 
                 override fun onError(message: String) {
@@ -353,7 +389,6 @@ class MainActivity : AppCompatActivity() {
             }
         )
         testClient.connect()
-        // Auto-close after 5s
         android.os.Handler(mainLooper).postDelayed({
             testClient.close()
             if (currentSignalingState != ConnectionState.CONNECTED) {
@@ -407,42 +442,68 @@ class MainActivity : AppCompatActivity() {
         if (!isStreaming) AndroidSpatialControlPlane.start(currentStreamConfig())
         mediaServer?.refreshNsdMetadata()
         addLog("Settings saved; NSD metadata refresh requested")
+        updateUrlModeIndicator()
         updateHomeStatus()
     }
 
     private fun showMediaManager() {
         advancedContainer.visibility = View.GONE
-        advancedToggleButton.visibility = View.GONE
+        advancedToggleButton.text = "Advanced settings"
+        homeContainer.visibility = View.GONE
         mediaManagerContainer.visibility = View.VISIBLE
+        updateMediaList()
     }
 
     private fun hideMediaManager() {
         mediaManagerContainer.visibility = View.GONE
-        advancedToggleButton.visibility = View.VISIBLE
+        homeContainer.visibility = View.VISIBLE
+        updateHomeStatus()
     }
 
     private fun updateMediaList() {
-        if (!::mediaListContainer.isInitialized) return
+        if (!::mediaListContainer.isInitialized || !::mediaServerStatusView.isInitialized) return
         mediaListContainer.removeAllViews()
+        val items = mediaCatalog.all()
+        val sharedCount = items.count { it.shared }
         val server = mediaServer
+
         mediaServerStatusView.text = if (server == null) {
-            "Media HTTP server unavailable"
+            "Media server unavailable"
         } else {
-            "Media HTTP: http://${localLanAddress()}:${server.port}"
+            "Media server ready · $sharedCount shared · http://${localLanAddress()}:${server.port}"
         }
-        mediaCatalog.all().forEach { item ->
-            val row = LinearLayout(this).apply {
+        mediaServerStatusView.setTextColor(
+            color(if (server == null) R.color.status_error else R.color.status_ok)
+        )
+
+        items.forEach { item ->
+            val itemCard = mediaItemCard()
+            itemCard.addView(TextView(this).apply {
+                text = item.displayName
+                setTypeface(null, Typeface.BOLD)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(Color.WHITE)
+            })
+            itemCard.addView(TextView(this).apply {
+                text = if (item.shared) "Visible on Quest" else "Not shared"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(color(if (item.shared) R.color.status_ok else R.color.status_idle))
+                setPadding(0, dp(2), 0, dp(4))
+            })
+
+            val controls = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            val label = TextView(this).apply {
-                text = "${item.displayName}  (${if (item.shared) "Shared" else "Unshared"})"
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
             val share = Switch(this).apply {
                 isChecked = item.shared
-                text = "Share"
+                text = "Shared"
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
                 setOnCheckedChangeListener { _, checked ->
                     mediaCatalog.setShared(item.id, checked)
                     updateMediaList()
@@ -450,13 +511,28 @@ class MainActivity : AppCompatActivity() {
             }
             val remove = Button(this).apply {
                 text = "Remove"
-                setOnClickListener { mediaCatalog.remove(item.id); updateMediaList() }
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setBackgroundColor(color(R.color.status_error))
+                setPadding(dp(12), dp(4), dp(12), dp(4))
+                setOnClickListener {
+                    mediaCatalog.remove(item.id)
+                    updateMediaList()
+                }
             }
-            row.addView(label); row.addView(share); row.addView(remove)
-            mediaListContainer.addView(row)
+            controls.addView(share)
+            controls.addView(remove)
+            itemCard.addView(controls)
+            mediaListContainer.addView(itemCard)
         }
-        if (mediaCatalog.all().isEmpty()) {
-            mediaListContainer.addView(TextView(this).apply { text = "No videos selected" })
+
+        if (items.isEmpty()) {
+            mediaListContainer.addView(TextView(this).apply {
+                text = "No videos selected yet. Add a video to share it with Quest."
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(color(R.color.status_idle))
+                setPadding(0, dp(12), 0, dp(12))
+            })
         }
         updateHomeStatus()
     }
@@ -478,11 +554,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Accessibility settings are changed outside the app; refresh readiness when returning.
         updateHomeStatus()
     }
 
-    // ─── Cert Dialog ───
+    // ─── Certificate help ───
 
     private fun showCertDialog() {
         val url = signalingUrlField.text.toString().trim()
@@ -507,7 +582,6 @@ class MainActivity : AppCompatActivity() {
             .setTitle("🔐 安装/信任证书")
             .setMessage(message)
             .setPositiveButton("打开安全设置") { _, _ ->
-                // Try to open the security settings directly
                 try {
                     startActivity(Intent("android.settings.SECURITY_SETTINGS"))
                 } catch (_: Exception) {
@@ -519,13 +593,11 @@ class MainActivity : AppCompatActivity() {
                 clipboard.setPrimaryClip(ClipData.newPlainText("Signaling URL", url))
                 addLog("URL copied: $url")
             }
-            .setNegativeButton("我已安装，测试连接") { _, _ ->
-                testConnection()
-            }
+            .setNegativeButton("我已安装，测试连接") { _, _ -> testConnection() }
             .show()
     }
 
-    // ─── UI Helpers ───
+    // ─── UI state ───
 
     private fun updateUrlModeIndicator() {
         val url = signalingUrlField.text.toString().trim()
@@ -582,7 +654,6 @@ class MainActivity : AppCompatActivity() {
         updateHomeStatus()
     }
 
-    /** Refresh the small, action-oriented summary shown on the normal home screen. */
     private fun updateHomeStatus() {
         if (!::homeQuestStatusView.isInitialized) return
 
@@ -591,7 +662,7 @@ class MainActivity : AppCompatActivity() {
             ConnectionState.CONNECTING -> "Connecting…"
             ConnectionState.FAILED -> "Connection failed"
             ConnectionState.CLOSED -> "Disconnected"
-            ConnectionState.IDLE -> "Not connected"
+            ConnectionState.IDLE -> "Waiting for Quest"
         }
         homeQuestStatusView.text = questText
         homeQuestStatusView.setTextColor(color(
@@ -607,26 +678,43 @@ class MainActivity : AppCompatActivity() {
         val publish = runtime["display.publish"]
         val control = runtime["display.control"]
         val media = runtime["media.catalog"]
+
         val screenActive = publish?.active == true
         homeScreenStatusView.text = if (screenActive) "Active" else "Off"
-        homeScreenStatusView.setTextColor(color(if (screenActive) R.color.status_ok else R.color.status_idle))
-        homeScreenActionButton.text = if (screenActive) "Stop screen sharing" else "Start screen sharing"
+        homeScreenStatusView.setTextColor(
+            color(if (screenActive) R.color.status_ok else R.color.status_idle)
+        )
+        homeScreenActionButton.text = if (screenActive) {
+            "Stop screen sharing"
+        } else {
+            "Start screen sharing"
+        }
 
         val controlReady = isAccessibilityEnabled()
         homeControlStatusView.text = when {
             !controlReady -> "Permission required"
             control?.active == true -> "Ready"
-            else -> "Waiting for connection"
+            else -> "Ready · waiting for Quest"
         }
-        homeControlStatusView.setTextColor(color(if (controlReady) R.color.status_ok else R.color.status_warn))
+        homeControlStatusView.setTextColor(
+            color(if (controlReady) R.color.status_ok else R.color.status_warn)
+        )
+        homeControlActionButton.visibility = if (controlReady) View.GONE else View.VISIBLE
 
-        val sharedCount = if (::mediaCatalog.isInitialized) mediaCatalog.all().count { it.shared } else 0
+        val sharedCount = if (::mediaCatalog.isInitialized) {
+            mediaCatalog.all().count { it.shared }
+        } else {
+            0
+        }
+        val mediaReady = mediaServer != null && media?.available == true
         homeMediaStatusView.text = when {
-            mediaServer == null || media?.available != true -> "Unavailable"
+            !mediaReady -> "Unavailable"
             sharedCount > 0 -> "Ready · $sharedCount shared"
             else -> "Ready · no videos shared"
         }
-        homeMediaStatusView.setTextColor(color(if (mediaServer == null) R.color.status_error else R.color.status_ok))
+        homeMediaStatusView.setTextColor(
+            color(if (mediaReady) R.color.status_ok else R.color.status_error)
+        )
     }
 
     private fun isAccessibilityEnabled(): Boolean {
@@ -650,6 +738,7 @@ class MainActivity : AppCompatActivity() {
 
     @Synchronized
     private fun addLog(message: String) {
+        if (!::logContainer.isInitialized) return
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val entry = "[${timeFmt.format(Date())}] $message"
         logEntries.add(entry)
@@ -663,26 +752,31 @@ class MainActivity : AppCompatActivity() {
         }
         logContainer.addView(tv)
 
-        // Remove excess views
         while (logContainer.childCount > 20) {
             logContainer.removeViewAt(0)
         }
-
-        // Auto-scroll
         (logContainer.parent as? ScrollView)?.post {
             (logContainer.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN)
         }
     }
 
-    // ─── Layout Builders ───
+    // ─── Layout builders ───
 
     private fun sectionTitle(text: String): TextView = TextView(this).apply {
         this.text = text
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         setTypeface(null, Typeface.BOLD)
         setTextColor(color(R.color.colorPrimaryDark))
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(0, dp(8), 0, dp(16))
+        setPadding(0, dp(8), 0, dp(2))
+    }
+
+    private fun subtitle(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setTextColor(color(R.color.status_idle))
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, 0, 0, dp(10))
     }
 
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
@@ -690,34 +784,69 @@ class MainActivity : AppCompatActivity() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         setTypeface(null, Typeface.BOLD)
         setTextColor(color(R.color.colorPrimary))
-        setPadding(0, dp(16), 0, dp(4))
+        setPadding(0, dp(14), 0, dp(5))
+    }
+
+    private fun helperText(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setTextColor(color(R.color.status_idle))
+        setPadding(dp(4), 0, dp(4), dp(8))
     }
 
     private fun cardLayout(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(12))
+        setPadding(dp(14))
         setBackgroundColor(color(R.color.card_bg))
-        val margin = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        val margin = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
         margin.setMargins(0, 0, 0, dp(8))
         layoutParams = margin
+    }
+
+    private fun mediaItemCard(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(10))
+        setBackgroundColor(color(R.color.log_bg))
+        val params = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        params.setMargins(0, dp(6), 0, 0)
+        layoutParams = params
     }
 
     private fun statusRow(parent: LinearLayout, label: String, initialValue: String): TextView {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(3), 0, dp(3))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         val labelView = TextView(this).apply {
-            text = "$label:"
+            text = label
             setTypeface(null, Typeface.BOLD)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         }
         val valueView = TextView(this).apply {
             text = initialValue
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(color(R.color.status_idle))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            gravity = Gravity.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         row.addView(labelView)
         row.addView(valueView)
@@ -737,10 +866,13 @@ class MainActivity : AppCompatActivity() {
             setSingleLine(true)
             setText(defaultValue)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            if (label.contains("Token", ignoreCase = true)) {
+            if (label.contains("token", ignoreCase = true)) {
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         parent.addView(field)
         return field
@@ -752,8 +884,12 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setBackgroundColor(color(colorRes))
-            setPadding(dp(16), dp(8), dp(16), dp(8))
-            val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            setPadding(dp(16), dp(9), dp(16), dp(9))
+            minHeight = dp(48)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
             params.setMargins(0, dp(4), 0, dp(4))
             layoutParams = params
             setOnClickListener { onClick() }
@@ -763,7 +899,9 @@ class MainActivity : AppCompatActivity() {
     // ─── Util ───
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics
+        TypedValue.COMPLEX_UNIT_DIP,
+        value.toFloat(),
+        resources.displayMetrics
     ).toInt()
 
     private fun color(resId: Int): Int = ContextCompat.getColor(this, resId)
