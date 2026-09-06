@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.Rendering;
@@ -103,17 +104,22 @@ namespace QuestPhoneStream
 
     /// <summary>
     /// Deliberately limited P3 renderer: ASCII PLY, <=50k isotropic billboard splats.
+    /// Input bytes are bounded before parsing to avoid unbounded Quest memory spikes.
     /// This is not a complete anisotropic/sorted GPU 3DGS implementation.
     /// </summary>
     public sealed class GaussianSplatPocRenderer : MonoBehaviour
     {
+        public const int DefaultMaxDownloadBytes = 32 * 1024 * 1024;
+
         public QuestSignalingClient signaling;
         public int maxSplats = GaussianSplatPlyParser.DefaultMaxSplats;
+        public int maxDownloadBytes = DefaultMaxDownloadBytes;
         public float globalSize = 1f;
 
         private GameObject _renderObject;
         private Mesh _mesh;
         private Material _material;
+        private Shader _shader;
         private Coroutine _loadRoutine;
         private UnityWebRequest _activeRequest;
         private int _loadGeneration;
@@ -124,7 +130,7 @@ namespace QuestPhoneStream
         public string LastSource { get; private set; }
         public GaussianSplatLoadState LoadState { get; private set; } = GaussianSplatLoadState.Idle;
         public bool IsLoaded => LoadState == GaussianSplatLoadState.Loaded && _mesh != null && SplatCount > 0;
-        public bool IsAvailable => Shader.Find("QuestPhoneStream/GaussianSplatPoc") != null;
+        public bool IsAvailable => ResolveShader() != null;
         public string StateText => !IsAvailable ? "Shader unavailable" :
             LoadState == GaussianSplatLoadState.Loading ? "Loading" :
             LoadState == GaussianSplatLoadState.Error ? "Error: " + (LastError ?? "unknown") :
@@ -178,12 +184,32 @@ namespace QuestPhoneStream
             using (var request = UnityWebRequest.Get(url))
             {
                 _activeRequest = request;
-                yield return request.SendWebRequest();
+                var operation = request.SendWebRequest();
+                var byteLimit = (ulong)Mathf.Max(1, maxDownloadBytes);
+                while (!operation.isDone)
+                {
+                    if (request.downloadedBytes > byteLimit)
+                    {
+                        request.Abort();
+                        LastError = $"Gaussian splat exceeds {byteLimit} byte POC limit";
+                        LoadState = GaussianSplatLoadState.Error;
+                        watch.Stop(); LastLoadMs = watch.ElapsedMilliseconds; _loadRoutine = null; _activeRequest = null; RefreshCapability();
+                        yield break;
+                    }
+                    yield return null;
+                }
                 if (generation != _loadGeneration) yield break;
                 _activeRequest = null;
                 if (request.result != UnityWebRequest.Result.Success)
                 {
                     LastError = "Gaussian splat request failed: " + request.responseCode;
+                    LoadState = GaussianSplatLoadState.Error;
+                    watch.Stop(); LastLoadMs = watch.ElapsedMilliseconds; _loadRoutine = null; RefreshCapability();
+                    yield break;
+                }
+                if (request.downloadedBytes > byteLimit)
+                {
+                    LastError = $"Gaussian splat exceeds {byteLimit} byte POC limit";
                     LoadState = GaussianSplatLoadState.Error;
                     watch.Stop(); LastLoadMs = watch.ElapsedMilliseconds; _loadRoutine = null; RefreshCapability();
                     yield break;
@@ -225,6 +251,12 @@ namespace QuestPhoneStream
                 LoadState = GaussianSplatLoadState.Error;
                 return false;
             }
+            if (string.IsNullOrEmpty(text) || Encoding.UTF8.GetByteCount(text) > Mathf.Max(1, maxDownloadBytes))
+            {
+                LastError = $"Gaussian splat exceeds {Mathf.Max(1, maxDownloadBytes)} byte POC limit";
+                LoadState = GaussianSplatLoadState.Error;
+                return false;
+            }
             List<GaussianSplatPoint> points;
             try { points = GaussianSplatPlyParser.Parse(text, Mathf.Clamp(maxSplats, 1, GaussianSplatPlyParser.DefaultMaxSplats)); }
             catch (Exception error)
@@ -258,9 +290,22 @@ namespace QuestPhoneStream
             return true;
         }
 
+        private Shader ResolveShader()
+        {
+            if (_shader == null) _shader = Shader.Find("QuestPhoneStream/GaussianSplatPoc");
+            return _shader;
+        }
+
         private void BuildMesh(List<GaussianSplatPoint> points)
         {
             ClearAsset();
+            var shader = ResolveShader();
+            if (shader == null)
+            {
+                LastError = "Gaussian splat shader unavailable";
+                LoadState = GaussianSplatLoadState.Error;
+                return;
+            }
             _renderObject = new GameObject("GaussianSplatPOC");
             _renderObject.transform.SetParent(transform, false);
             var filter = _renderObject.AddComponent<MeshFilter>();
@@ -292,7 +337,7 @@ namespace QuestPhoneStream
             _mesh.RecalculateBounds();
             var bounds = _mesh.bounds; bounds.Expand(0.5f); _mesh.bounds = bounds;
             filter.sharedMesh = _mesh;
-            _material = new Material(Shader.Find("QuestPhoneStream/GaussianSplatPoc"));
+            _material = new Material(shader);
             _material.SetFloat("_GlobalSize", Mathf.Max(0.01f, globalSize));
             renderer.sharedMaterial = _material;
             SplatCount = points.Count;
