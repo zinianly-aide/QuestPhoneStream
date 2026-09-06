@@ -35,11 +35,17 @@ namespace QuestPhoneStream.Tests
         }
 
         [Test]
-        public void ManifestResolutionSupportsRelativeSpatialMetadata()
+        public void RelativeManifestFallsBackToAuthorizedContent()
         {
             Assert.AreEqual(
-                "http://phone:8788/assets/manifest.json",
+                "fallback",
                 MediaUrlBuilder.ResolveManifest("http://phone:8788", "assets/manifest.json", "fallback"));
+            Assert.AreEqual(
+                "https://cdn.example.test/scene/manifest.json",
+                MediaUrlBuilder.ResolveManifest("http://phone:8788", "https://cdn.example.test/scene/manifest.json", "fallback"));
+            Assert.AreEqual(
+                "fallback",
+                MediaUrlBuilder.ResolveManifest("http://phone:8788", "javascript:alert(1)", "fallback"));
         }
 
         [Test]
