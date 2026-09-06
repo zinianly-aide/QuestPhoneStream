@@ -44,7 +44,7 @@ namespace QuestPhoneStream
             rt.localRotation = Quaternion.identity;
 
             var panel = CreatePanel(canvasGo.transform);
-            CreatePanelTitle(panel, "Advanced Settings");
+            CreatePanelTitle(panel, "Connection Settings");
 
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
@@ -70,20 +70,20 @@ namespace QuestPhoneStream
             CreateInputField(panel, "Media HTTP URL:", "QuestPhoneStream_MediaBaseUrl", "", 5, out var mediaUrlInput);
             _settingsUI.mediaBaseUrlInput = mediaUrlInput;
 
-            CreateButton(panel, "Save", 6, 0.05f, out var saveBtn);
+            CreateButton(panel, "Save locally", 6, 0.05f, out var saveBtn, false);
             _settingsUI.saveButton = saveBtn;
 
-            CreateButton(panel, "Connect / Reconnect", 6, 0.52f, out var connectBtn);
+            CreateButton(panel, "Apply & Reconnect", 6, 0.52f, out var connectBtn, true);
             _settingsUI.connectButton = connectBtn;
 
-            CreateButton(panel, "Phone Screen", 7, 0.05f, out var phoneBtn);
-            CreateButton(panel, "Video Library", 7, 0.52f, out var videoBtn);
+            CreateButton(panel, "Screen", 7, 0.05f, out var phoneBtn, false);
+            CreateButton(panel, "Media Library", 7, 0.52f, out var videoBtn, true);
             _settingsUI.phoneScreenButton = phoneBtn;
             _settingsUI.videoLibraryButton = videoBtn;
 
             var statusRight = 0.95f;
 #if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
-            CreateButton(panel, "Developer Tools", 8, 0.52f, out var developerToolsButton);
+            CreateButton(panel, "Diagnostics", 8, 0.52f, out var developerToolsButton, false);
             _settingsUI.developerToolsButton = developerToolsButton;
 
             var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();
@@ -122,7 +122,7 @@ namespace QuestPhoneStream
             panelGo.transform.SetParent(parent, false);
 
             var image = panelGo.AddComponent<Image>();
-            image.color = new Color(0.1f, 0.1f, 0.15f, 0.95f);
+            image.color = new Color(0.08f, 0.09f, 0.14f, 0.97f);
 
             var rt = panelGo.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.1f, 0.1f);
@@ -143,6 +143,7 @@ namespace QuestPhoneStream
             title.alignment = TextAnchor.MiddleCenter;
             title.color = Color.white;
             title.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            title.raycastTarget = false;
             var rt = titleGo.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.28f, 0.91f);
             rt.anchorMax = new Vector2(0.95f, 0.99f);
@@ -170,6 +171,7 @@ namespace QuestPhoneStream
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
             var textRt = textGo.GetComponent<RectTransform>();
             textRt.anchorMin = Vector2.zero;
             textRt.anchorMax = Vector2.one;
@@ -202,7 +204,7 @@ namespace QuestPhoneStream
             var inputGo = new GameObject("Input");
             inputGo.transform.SetParent(row.transform, false);
             var inputImage = inputGo.AddComponent<Image>();
-            inputImage.color = new Color(0.2f, 0.2f, 0.25f, 1f);
+            inputImage.color = new Color(0.17f, 0.18f, 0.24f, 1f);
             var inputRt = inputGo.GetComponent<RectTransform>();
             inputRt.anchorMin = new Vector2(0.37f, 0.1f);
             inputRt.anchorMax = new Vector2(1f, 0.9f);
@@ -231,15 +233,13 @@ namespace QuestPhoneStream
             inputField.text = PlayerPrefs.GetString(prefKey, defaultValue);
         }
 
-        private void CreateButton(Transform parent, string label, int index, out Button button) => CreateButton(parent, label, index, label == "Save" ? 0.05f : 0.52f, out button);
-
-        private void CreateButton(Transform parent, string label, int index, float xPos, out Button button)
+        private void CreateButton(Transform parent, string label, int index, float xPos, out Button button, bool primary)
         {
             var btnGo = new GameObject($"Button_{label}");
             btnGo.transform.SetParent(parent, false);
 
             var btnImage = btnGo.AddComponent<Image>();
-            btnImage.color = label == "Save" ? new Color(0.3f, 0.3f, 0.4f, 1f) : new Color(0.2f, 0.6f, 0.2f, 1f);
+            btnImage.color = primary ? new Color(0.16f, 0.52f, 0.34f, 1f) : new Color(0.16f, 0.20f, 0.28f, 1f);
 
             button = btnGo.AddComponent<Button>();
             button.targetGraphic = btnImage;
@@ -272,7 +272,7 @@ namespace QuestPhoneStream
             statusText = textGo.AddComponent<Text>();
             statusText.fontSize = 22;
             statusText.raycastTarget = false;
-            statusText.color = Color.yellow;
+            statusText.color = new Color(0.95f, 0.82f, 0.35f, 1f);
             statusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             statusText.text = "";
 

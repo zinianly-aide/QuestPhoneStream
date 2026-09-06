@@ -7,8 +7,8 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace QuestPhoneStream
 {
     /// <summary>
-    /// Compact end-user control bar. Engineering fields remain behind Advanced Settings;
-    /// this bar is the normal Phone/Videos entry point.
+    /// Compact end-user home surface. Engineering fields stay behind Settings;
+    /// the normal path is device readiness -> Screen / Media / Keyboard.
     /// </summary>
     public sealed class QuestHomeUI : MonoBehaviour
     {
@@ -25,6 +25,8 @@ namespace QuestPhoneStream
         private bool _initialized;
         private bool _videosSelected;
         private Coroutine _keyboardRoutine;
+        private string _noticeText;
+        private float _noticeUntil;
 
         public bool IsVisible => _canvas != null && _canvas.gameObject.activeInHierarchy;
 
@@ -81,57 +83,93 @@ namespace QuestPhoneStream
             scaler.dynamicPixelsPerUnit = 1;
             canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
             var canvasRect = canvasGo.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(900, 500);
+            canvasRect.sizeDelta = new Vector2(900, 520);
             canvasRect.localScale = Vector3.one * 0.0015f;
 
             var panelGo = new GameObject("HomePanel");
             panelGo.transform.SetParent(canvasGo.transform, false);
             var panel = panelGo.AddComponent<Image>();
-            panel.color = new Color(0.04f, 0.05f, 0.08f, 0.94f);
+            panel.color = new Color(0.04f, 0.05f, 0.08f, 0.96f);
             var panelRect = panelGo.GetComponent<RectTransform>();
             panelRect.anchorMin = Vector2.zero;
             panelRect.anchorMax = Vector2.one;
             panelRect.sizeDelta = Vector2.zero;
 
             var title = MakeText(panelGo.transform, "QuestPhoneStream", 28, TextAnchor.MiddleLeft);
-            Anchor(title.rectTransform, 0.05f, 0.83f, 0.5f, 0.97f);
-            var phone = MakeText(panelGo.transform, "Phone  ·  Disconnected", 20, TextAnchor.MiddleLeft);
-            Anchor(phone.rectTransform, 0.52f, 0.83f, 0.95f, 0.97f);
+            Anchor(title.rectTransform, 0.05f, 0.85f, 0.58f, 0.97f);
+            var phone = MakeText(panelGo.transform, "Device  ·  Disconnected", 20, TextAnchor.MiddleRight);
+            Anchor(phone.rectTransform, 0.58f, 0.85f, 0.95f, 0.97f);
             _phoneStatus = phone.textComponent;
 
-            _screenStatus = AddStatus(panelGo.transform, "Screen", 0.05f, 0.62f);
-            _controlStatus = AddStatus(panelGo.transform, "Control", 0.30f, 0.62f);
-            _mediaStatus = AddStatus(panelGo.transform, "Media", 0.55f, 0.62f);
+            _screenStatus = AddStatus(panelGo.transform, "Screen", 0.05f, 0.68f);
+            _controlStatus = AddStatus(panelGo.transform, "Control", 0.30f, 0.68f);
+            _mediaStatus = AddStatus(panelGo.transform, "Media", 0.55f, 0.68f);
 
-            var devicesTitle = MakeText(panelGo.transform, "Media phones", 17, TextAnchor.MiddleLeft);
-            Anchor(devicesTitle.rectTransform, 0.05f, 0.20f, 0.95f, 0.27f);
-            var deviceListGo = new GameObject("MediaDeviceList");
-            var deviceListRect = deviceListGo.AddComponent<RectTransform>();
-            deviceListRect.SetParent(panelGo.transform, false);
-            _mediaDeviceList = deviceListRect;
-            Anchor(deviceListRect, 0.05f, 0.08f, 0.95f, 0.18f);
-            deviceListGo.AddComponent<RectMask2D>();
-            var deviceLayout = deviceListGo.AddComponent<VerticalLayoutGroup>();
-            deviceLayout.spacing = 3;
+            _phoneTab = MakeButton(panelGo.transform, "Screen", 0.05f, 0.49f, 0.27f, 0.61f, OnPhone);
+            _videosTab = MakeButton(panelGo.transform, "Media", 0.29f, 0.49f, 0.51f, 0.61f, OnVideos);
+            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.53f, 0.49f, 0.75f, 0.61f, OpenKeyboard);
+            _advancedSettingsButton = MakeButton(panelGo.transform, "⚙ Settings", 0.77f, 0.49f, 0.95f, 0.61f, OpenSettings);
+
+            var devicesTitle = MakeText(panelGo.transform, "Devices", 17, TextAnchor.MiddleLeft);
+            Anchor(devicesTitle.rectTransform, 0.05f, 0.37f, 0.95f, 0.44f);
+            BuildDeviceScroll(panelGo.transform);
+
+            var hint = MakeText(panelGo.transform, "Select Screen, Media, or a discovered device", 16, TextAnchor.MiddleLeft);
+            hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
+            Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.07f);
+            _hint = hint.textComponent;
+        }
+
+        private void BuildDeviceScroll(Transform parent)
+        {
+            var scrollGo = new GameObject("DeviceScroll");
+            scrollGo.transform.SetParent(parent, false);
+            var scrollRectTransform = scrollGo.AddComponent<RectTransform>();
+            Anchor(scrollRectTransform, 0.05f, 0.09f, 0.95f, 0.36f);
+            var scroll = scrollGo.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 18f;
+
+            var viewportGo = new GameObject("Viewport");
+            viewportGo.transform.SetParent(scrollGo.transform, false);
+            var viewportRect = viewportGo.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewportGo.AddComponent<RectMask2D>();
+            var viewportImage = viewportGo.AddComponent<Image>();
+            viewportImage.color = new Color(0.08f, 0.10f, 0.15f, 0.55f);
+            scroll.viewport = viewportRect;
+
+            var contentGo = new GameObject("Content");
+            contentGo.transform.SetParent(viewportGo.transform, false);
+            var contentRect = contentGo.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = Vector2.zero;
+            var deviceLayout = contentGo.AddComponent<VerticalLayoutGroup>();
+            deviceLayout.spacing = 5;
+            deviceLayout.padding = new RectOffset(6, 6, 6, 6);
             deviceLayout.childForceExpandWidth = true;
             deviceLayout.childForceExpandHeight = false;
-            _mediaDeviceEmptyText = MakeText(deviceListGo.transform, "Searching for phones…", 15, TextAnchor.MiddleLeft).textComponent;
+            var fitter = contentGo.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scroll.content = contentRect;
+            _mediaDeviceList = contentRect;
 
-            _phoneTab = MakeButton(panelGo.transform, "Phone", 0.05f, 0.40f, 0.28f, 0.54f, OnPhone);
-            _videosTab = MakeButton(panelGo.transform, "Videos", 0.30f, 0.40f, 0.53f, 0.54f, OnVideos);
-            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.55f, 0.40f, 0.78f, 0.54f, OpenKeyboard);
-            _advancedSettingsButton = MakeButton(panelGo.transform, "Advanced Settings", 0.05f, 0.29f, 0.95f, 0.37f, OpenSettings);
-
-            var hint = MakeText(panelGo.transform, "Use the controller ray to select Phone or Videos", 16, TextAnchor.MiddleLeft);
-            hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
-            Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.06f);
-            _hint = hint.textComponent;
+            var empty = MakeText(contentGo.transform, "Searching for devices…", 15, TextAnchor.MiddleLeft);
+            var emptyLayout = empty.textComponent.gameObject.AddComponent<LayoutElement>();
+            emptyLayout.preferredHeight = 36;
+            _mediaDeviceEmptyText = empty.textComponent;
         }
 
         private Text AddStatus(Transform parent, string label, float x, float y)
         {
             var text = MakeText(parent, label + "  ·  —", 17, TextAnchor.MiddleLeft);
-            Anchor(text.rectTransform, x, y, x + 0.25f, y + 0.16f);
+            Anchor(text.rectTransform, x, y, x + 0.25f, y + 0.12f);
             return text.textComponent;
         }
 
@@ -141,6 +179,7 @@ namespace QuestPhoneStream
             _receiver?.SetPhoneScreenMode();
             SetTab(_phoneTab, true);
             SetTab(_videosTab, false);
+            SetNotice("Phone screen selected", 2f);
         }
 
         private void OnVideos()
@@ -149,14 +188,13 @@ namespace QuestPhoneStream
             _videosSelected = true;
             if (!_receiver.HasMediaUrl)
             {
+                _videosSelected = false;
                 if (_receiver.HasReadyMediaDevice)
                 {
-                    _videosSelected = false;
-                    if (_hint != null) _hint.text = "Select a Ready phone above";
+                    SetNotice("Select a Ready device below", 4f);
                     return;
                 }
-                _videosSelected = false;
-                if (_hint != null) _hint.text = "Media isn't configured. Open Settings to set it up.";
+                SetNotice("Media isn't configured. Open Settings to add a manual source.", 4f);
                 _receiver.ToggleSettings();
                 Hide();
                 return;
@@ -164,10 +202,9 @@ namespace QuestPhoneStream
             if (!_receiver.IsMediaReady)
             {
                 _videosSelected = false;
-                if (_hint != null)
-                    _hint.text = _receiver.IsMediaFailed || _receiver.IsMediaStale
-                        ? "Media is unreachable. Retrying..."
-                        : "Checking media. Try Videos again shortly.";
+                SetNotice(_receiver.IsMediaFailed || _receiver.IsMediaStale
+                    ? "Media is unreachable. Retrying…"
+                    : "Checking media. Try again shortly.", 4f);
                 _receiver.ProbeMedia();
                 return;
             }
@@ -178,7 +215,7 @@ namespace QuestPhoneStream
         private void OnMediaDeviceSelected(string deviceId)
         {
             if (_receiver == null || !_receiver.SelectMediaDevice(deviceId)) return;
-            if (_hint != null) _hint.text = "Phone selected. Loading shared videos…";
+            SetNotice("Device selected. Loading shared media…", 3f);
             _receiver.OpenVideoLibrary();
         }
 
@@ -192,7 +229,7 @@ namespace QuestPhoneStream
         {
             if (_receiver == null || !_receiver.IsControlConnected)
             {
-                if (_hint != null) _hint.text = "Connect phone to use Keyboard";
+                SetNotice("Connect a control channel to use Keyboard", 3f);
                 return;
             }
             if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
@@ -203,6 +240,7 @@ namespace QuestPhoneStream
         {
             if (!TouchScreenKeyboard.isSupported)
             {
+                SetNotice("Native keyboard is unavailable on this build", 4f);
                 Debug.LogWarning("[QuestPhoneStream] Native keyboard is unavailable on this platform");
                 yield break;
             }
@@ -214,11 +252,21 @@ namespace QuestPhoneStream
             _keyboardRoutine = null;
         }
 
+        private void SetNotice(string message, float seconds)
+        {
+            _noticeText = message ?? string.Empty;
+            _noticeUntil = Time.unscaledTime + Mathf.Max(0.5f, seconds);
+            if (_hint != null) _hint.text = _noticeText;
+        }
+
+        private bool HasActiveNotice => !string.IsNullOrEmpty(_noticeText) && Time.unscaledTime < _noticeUntil;
+
         private void OnStateChanged(ConnectionState state) => UpdateStatus(state);
 
         private void Update()
         {
             if (!_initialized || !IsVisible) return;
+            if (!HasActiveNotice && !string.IsNullOrEmpty(_noticeText)) _noticeText = null;
             UpdateStatus(_signaling.State);
         }
 
@@ -239,12 +287,14 @@ namespace QuestPhoneStream
                         var selectedDeviceId = device.deviceId;
                         button = MakeButton(_mediaDeviceList, device.name, 0, 0, 1, 1, () => OnMediaDeviceSelected(selectedDeviceId));
                         var layout = button.gameObject.AddComponent<LayoutElement>();
-                        layout.preferredHeight = 34;
+                        layout.preferredHeight = 42;
+                        layout.minHeight = 42;
                         _mediaDeviceButtons[device.deviceId] = button;
                     }
                     var label = button.GetComponentInChildren<Text>();
-                    if (label != null) label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
-                        "  ·  " + (device.IsReady ? "Ready" : "Lost");
+                    if (label != null)
+                        label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
+                            "    " + (device.IsReady ? "● Ready" : "○ Lost");
                     button.interactable = device.IsReady;
                     button.gameObject.SetActive(true);
                 }
@@ -255,7 +305,7 @@ namespace QuestPhoneStream
             {
                 _mediaDeviceEmptyText.gameObject.SetActive(visible.Count == 0);
                 _mediaDeviceEmptyText.text = _receiver.mediaDiscovery != null && _receiver.mediaDiscovery.IsDiscovering
-                    ? "Searching for phones…" : "No discovered phones. Use Settings for a manual URL.";
+                    ? "Searching for devices…" : "No devices found. Settings supports a manual URL.";
             }
         }
 
@@ -265,17 +315,19 @@ namespace QuestPhoneStream
             var failed = ConnectionStatus.IsFailure(state);
             var phone = failed ? "Offline" : _receiver.IsPeerConnected ? "Connected" :
                 state == ConnectionState.Registered ? "Found" :
-                (int)state >= (int)ConnectionState.SessionRequesting ? "Connecting..." : "Searching...";
-            _phoneStatus.text = "Phone  ·  " + phone;
+                (int)state >= (int)ConnectionState.SessionRequesting ? "Connecting…" : "Searching…";
+            _phoneStatus.text = "Device  ·  " + phone;
             _screenStatus.text = "Screen  ·  " + (_receiver.HasVideoFrame ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
             _controlStatus.text = "Control  ·  " + (_receiver.IsControlConnected ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
             _mediaStatus.text = "Media  ·  " + (!_receiver.HasMediaUrl ? "Not configured" :
                 _receiver.IsMediaReady ? "Ready" : _receiver.IsMediaStale ? "Stale" :
-                _receiver.IsMediaChecking ? "Checking..." : "Unreachable");
+                _receiver.IsMediaChecking ? "Checking…" : "Unreachable");
             var controlReady = _receiver.IsControlConnected;
             if (_keyboardButton != null) _keyboardButton.interactable = controlReady;
-            if (_hint != null)
-                _hint.text = controlReady ? "Use the controller ray to select Phone or Videos" : "Connect phone to use Keyboard";
+            if (_hint != null && !HasActiveNotice)
+                _hint.text = controlReady
+                    ? "Select Screen, Media, or a discovered device"
+                    : "Screen and Media are available; Keyboard needs control permission";
             SetTab(_phoneTab, !_videosSelected);
             SetTab(_videosTab, _videosSelected);
         }

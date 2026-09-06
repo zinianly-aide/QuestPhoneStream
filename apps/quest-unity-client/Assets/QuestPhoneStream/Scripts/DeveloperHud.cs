@@ -51,6 +51,7 @@ namespace QuestPhoneStream
         {
             if (!IsVisible) return;
             _body.text = _diagnostics != null ? _diagnostics.CaptureSnapshot().ToDisplayText() : "Diagnostics unavailable";
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_body.rectTransform);
             _nextRefresh = Time.unscaledTime + 1f;
         }
 
@@ -77,17 +78,20 @@ namespace QuestPhoneStream
             pageRect.anchorMax = new Vector2(0.95f, 0.96f);
             pageRect.sizeDelta = Vector2.zero;
 
-            CreateText(_page.transform, "Developer HUD", 28, TextAnchor.MiddleCenter, 0.25f, 0.94f, 0.75f, 0.99f, out _);
-            CreateText(_page.transform, "", 14, TextAnchor.UpperLeft, 0.04f, 0.17f, 0.96f, 0.92f, out _body);
-            CreateButton(_page.transform, "Refresh", 0.04f, 0.06f, 0.18f, 0.13f, Refresh);
-            CreateButton(_page.transform, "Wireless ADB", 0.20f, 0.06f, 0.40f, 0.13f, OpenWirelessAdb);
-            CreateButton(_page.transform, "Back", 0.82f, 0.06f, 0.96f, 0.13f, () => { Hide(); _onBack?.Invoke(); });
+            CreateText(_page.transform, "Developer Diagnostics", 28, TextAnchor.MiddleLeft, 0.04f, 0.93f, 0.76f, 0.99f, out _);
+            CreateText(_page.transform, "read-only · 1 Hz max", 14, TextAnchor.MiddleRight, 0.70f, 0.93f, 0.96f, 0.99f, out var subtitle);
+            subtitle.color = new Color(0.65f, 0.72f, 0.82f, 1f);
+            BuildScrollableBody();
+
+            CreateButton(_page.transform, "Refresh", 0.04f, 0.05f, 0.18f, 0.12f, Refresh);
+            CreateButton(_page.transform, "Wireless ADB", 0.20f, 0.05f, 0.40f, 0.12f, OpenWirelessAdb);
+            CreateButton(_page.transform, "Back", 0.82f, 0.05f, 0.96f, 0.12f, () => { Hide(); _onBack?.Invoke(); });
 
             var toggleGo = new GameObject("AutoRefresh");
             toggleGo.transform.SetParent(_page.transform, false);
             var toggleRect = toggleGo.AddComponent<RectTransform>();
-            toggleRect.anchorMin = new Vector2(0.44f, 0.06f);
-            toggleRect.anchorMax = new Vector2(0.76f, 0.13f);
+            toggleRect.anchorMin = new Vector2(0.44f, 0.05f);
+            toggleRect.anchorMax = new Vector2(0.76f, 0.12f);
             toggleRect.sizeDelta = Vector2.zero;
             _autoRefresh = toggleGo.AddComponent<Toggle>();
             var background = toggleGo.AddComponent<Image>();
@@ -96,6 +100,51 @@ namespace QuestPhoneStream
             _autoRefresh.isOn = true;
             CreateText(toggleGo.transform, "Auto Refresh (1 Hz)", 15, TextAnchor.MiddleCenter, 0, 0, 1, 1, out _);
             _page.SetActive(false);
+        }
+
+        private void BuildScrollableBody()
+        {
+            var scrollGo = new GameObject("DiagnosticsScroll");
+            scrollGo.transform.SetParent(_page.transform, false);
+            var scrollRectTransform = scrollGo.AddComponent<RectTransform>();
+            scrollRectTransform.anchorMin = new Vector2(0.04f, 0.15f);
+            scrollRectTransform.anchorMax = new Vector2(0.96f, 0.91f);
+            scrollRectTransform.sizeDelta = Vector2.zero;
+            var scroll = scrollGo.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 20f;
+
+            var viewportGo = new GameObject("Viewport");
+            viewportGo.transform.SetParent(scrollGo.transform, false);
+            var viewportRect = viewportGo.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewportGo.AddComponent<RectMask2D>();
+            var viewportImage = viewportGo.AddComponent<Image>();
+            viewportImage.color = new Color(0.08f, 0.10f, 0.15f, 0.7f);
+            scroll.viewport = viewportRect;
+
+            var bodyGo = new GameObject("DiagnosticsBody");
+            bodyGo.transform.SetParent(viewportGo.transform, false);
+            var bodyRect = bodyGo.AddComponent<RectTransform>();
+            bodyRect.anchorMin = new Vector2(0, 1);
+            bodyRect.anchorMax = new Vector2(1, 1);
+            bodyRect.pivot = new Vector2(0.5f, 1);
+            bodyRect.sizeDelta = Vector2.zero;
+            _body = bodyGo.AddComponent<Text>();
+            _body.fontSize = 15;
+            _body.alignment = TextAnchor.UpperLeft;
+            _body.color = Color.white;
+            _body.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            _body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _body.verticalOverflow = VerticalWrapMode.Overflow;
+            _body.raycastTarget = false;
+            var fitter = bodyGo.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scroll.content = bodyRect;
         }
 
         private static void CreateText(Transform parent, string value, int size, TextAnchor alignment,
@@ -109,6 +158,7 @@ namespace QuestPhoneStream
             text.alignment = alignment;
             text.color = Color.white;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
             var rect = go.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(minX, minY);
             rect.anchorMax = new Vector2(maxX, maxY);
