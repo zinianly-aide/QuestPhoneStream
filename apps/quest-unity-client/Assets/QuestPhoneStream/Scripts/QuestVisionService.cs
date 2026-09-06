@@ -17,7 +17,7 @@ namespace QuestPhoneStream
         public string source = "camera.rgb";
 
         public byte[] EncodeJpg(int quality = 85) => texture != null
-            ? texture.GetRawTextureData()
+            ? ImageConversion.EncodeToJPG(texture, Mathf.Clamp(quality, 1, 100))
             : Array.Empty<byte>();
     }
 
