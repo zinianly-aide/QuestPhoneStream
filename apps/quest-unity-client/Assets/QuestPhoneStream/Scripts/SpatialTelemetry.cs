@@ -138,20 +138,33 @@ namespace QuestPhoneStream
     public sealed class SpatialDataChannelTransport : IDisposable
     {
         private RTCDataChannel _channel;
+        private bool _terminal;
         public long LastSequence { get; private set; } = -1;
         public int FramesSent { get; private set; }
         public int DroppedFrames { get; private set; }
-        public bool HasChannel => _channel != null;
-        public bool IsOpen => _channel != null && _channel.ReadyState == RTCDataChannelState.Open;
+        public bool HasChannel => _channel != null && !_terminal;
+        public bool IsOpen => HasChannel && _channel.ReadyState == RTCDataChannelState.Open;
         public event Action<bool> OpenStateChanged;
 
         public void Attach(RTCDataChannel channel)
         {
             Reset();
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-            _channel.OnOpen = () => OpenStateChanged?.Invoke(true);
-            _channel.OnClose = () => OpenStateChanged?.Invoke(false);
-            _channel.OnError = _ => OpenStateChanged?.Invoke(false);
+            _terminal = false;
+            var attached = _channel;
+            _channel.OnOpen = () =>
+            {
+                if (_channel == attached && !_terminal) OpenStateChanged?.Invoke(true);
+            };
+            _channel.OnClose = () => MarkTerminal(attached);
+            _channel.OnError = _ => MarkTerminal(attached);
+        }
+
+        private void MarkTerminal(RTCDataChannel channel)
+        {
+            if (_channel != channel || _terminal) return;
+            _terminal = true;
+            OpenStateChanged?.Invoke(false);
         }
 
         public bool TrySend(SpatialTelemetryPacket packet) =>
@@ -189,6 +202,7 @@ namespace QuestPhoneStream
                 _channel.Dispose();
                 _channel = null;
             }
+            _terminal = false;
             LastSequence = -1;
             FramesSent = 0;
             DroppedFrames = 0;
