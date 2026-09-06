@@ -11,6 +11,7 @@ namespace QuestPhoneStream.Editor
         public int callbackOrder => 0;
 
         private const string OverlayKeyboardFeature = "oculus.software.overlay_keyboard";
+        private const string PassthroughFeature = "com.oculus.feature.PASSTHROUGH";
         private const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
         private const string AndroidNs = "http://schemas.android.com/apk/res/android";
 
@@ -67,6 +68,19 @@ namespace QuestPhoneStream.Editor
                 manifest.AppendChild(featureElement);
                 changed = true;
                 Debug.Log("[AndroidManifestPostProcessor] Added oculus.software.overlay_keyboard");
+            }
+
+            // AI Vision is optional for the rest of QuestPhoneStream, so advertise
+            // passthrough support without making the whole app uninstallable on a
+            // device/runtime that does not expose it.
+            if (!HasNamedElement(manifest, "uses-feature", PassthroughFeature))
+            {
+                var passthroughElement = doc.CreateElement("uses-feature");
+                AppendAndroidAttribute(doc, passthroughElement, "name", PassthroughFeature);
+                AppendAndroidAttribute(doc, passthroughElement, "required", "false");
+                manifest.AppendChild(passthroughElement);
+                changed = true;
+                Debug.Log("[AndroidManifestPostProcessor] Added com.oculus.feature.PASSTHROUGH");
             }
 
             // Passthrough Camera Access requires this explicit Horizon OS permission.
