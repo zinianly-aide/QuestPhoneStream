@@ -37,6 +37,33 @@ namespace QuestPhoneStream
         public bool hmdPoseAvailable;
         public CapabilityRuntimeState[] capabilitiesState;
 
+        // P2 data-plane + vision diagnostics.
+        public float poseStreamHz;
+        public bool spatialFastOpen;
+        public bool spatialReliableOpen;
+        public int spatialDroppedFrames;
+        public long spatialLastSequence;
+        public int reliableDroppedFrames;
+        public long reliableLastSequence;
+        public string cameraState;
+        public string aiState;
+        public long aiLatencyMs;
+        public string handState;
+
+        // P3 diagnostics. These are observations only; HUD never activates providers.
+        public int anchorCount;
+        public int anchorSubscribers;
+        public string anchorState;
+        public string depthState;
+        public int depthSubscribers;
+        public string interactionState;
+        public int interactionSubscribers;
+        public string sixDofState;
+        public string gaussianState;
+        public int gaussianSplatCount;
+        public long gaussianLoadMs;
+        public string gaussianError;
+
         public static QuestDiagnosticsSnapshot Capture(QuestWebRtcReceiver receiver)
         {
             var signaling = receiver == null ? null : receiver.signaling;
@@ -52,6 +79,18 @@ namespace QuestPhoneStream
             var peerConnected = receiver != null && receiver.IsPeerConnected;
             var frameReceived = receiver != null && receiver.HasVideoFrame;
             var controlOpen = receiver != null && receiver.IsControlConnected;
+
+            var telemetry = receiver == null ? null : receiver.GetComponent<SpatialTelemetryService>();
+            var dataPlane = receiver == null ? null : receiver.GetComponent<SpatialDataPlaneHub>();
+            var vision = receiver == null ? null : receiver.GetComponent<QuestVisionService>();
+            var ai = receiver == null ? null : receiver.GetComponent<QuestAiClient>();
+            var hands = receiver == null ? null : receiver.GetComponent<SpatialHandTrackingService>();
+            var anchors = receiver == null ? null : receiver.GetComponent<SpatialAnchorService>();
+            var depth = receiver == null ? null : receiver.GetComponent<QuestEnvironmentDepthService>();
+            var interaction = receiver == null ? null : receiver.GetComponent<SpatialObjectInteractionService>();
+            var sixDof = receiver == null ? null : receiver.GetComponent<SixDofMediaService>();
+            var gaussian = receiver == null ? null : receiver.GetComponent<GaussianSplatPocRenderer>();
+
             var snapshot = new QuestDiagnosticsSnapshot {
                 questDeviceId = signaling == null ? string.Empty : signaling.questDeviceId,
                 selectedAndroidDeviceId = receiver == null ? string.Empty : receiver.SelectedAndroidDeviceId,
@@ -83,7 +122,32 @@ namespace QuestPhoneStream
                 hmdPoseAvailable = false,
                 capabilitiesState = CapabilityRuntimeStateFactory.ForQuest(
                     screenAdvertised, controlAdvertised, mediaAvailable, mediaAuthorized, mediaActive,
-                    peerConnected, frameReceived, controlOpen)
+                    peerConnected, frameReceived, controlOpen),
+
+                poseStreamHz = telemetry == null ? 0f : telemetry.PoseStreamHz,
+                spatialFastOpen = dataPlane != null && dataPlane.IsFastOpen,
+                spatialReliableOpen = dataPlane != null && dataPlane.IsReliableOpen,
+                spatialDroppedFrames = dataPlane == null ? 0 : dataPlane.DroppedFrames,
+                spatialLastSequence = dataPlane == null ? -1 : dataPlane.LastSequence,
+                reliableDroppedFrames = dataPlane == null ? 0 : dataPlane.ReliableDroppedFrames,
+                reliableLastSequence = dataPlane == null ? -1 : dataPlane.ReliableLastSequence,
+                cameraState = vision == null ? "Unavailable" : vision.CameraState,
+                aiState = ai == null ? "Unavailable" : ai.IsRequestActive ? "Requesting" : ai.CanRequest ? "Ready" : "Not configured",
+                aiLatencyMs = ai == null ? 0 : ai.LastLatencyMs,
+                handState = hands == null ? "Unavailable" : hands.HandTrackingState,
+
+                anchorCount = anchors == null ? 0 : anchors.AnchorCount,
+                anchorSubscribers = anchors == null ? 0 : anchors.SubscriberCount,
+                anchorState = anchors == null ? "Unavailable" : anchors.StateText,
+                depthState = depth == null ? "Unavailable" : depth.DepthState,
+                depthSubscribers = depth == null ? 0 : depth.SubscriberCount,
+                interactionState = interaction == null ? "Unavailable" : interaction.InteractionState,
+                interactionSubscribers = interaction == null ? 0 : interaction.SubscriberCount,
+                sixDofState = sixDof == null ? "Unavailable · external provider required" : sixDof.StateText,
+                gaussianState = gaussian == null ? "Unavailable" : gaussian.StateText,
+                gaussianSplatCount = gaussian == null ? 0 : gaussian.SplatCount,
+                gaussianLoadMs = gaussian == null ? 0 : gaussian.LastLoadMs,
+                gaussianError = gaussian == null ? null : gaussian.LastError
             };
 
             var head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
@@ -100,12 +164,23 @@ namespace QuestPhoneStream
 
         public string ToDisplayText()
         {
-            var text = new StringBuilder(1800);
+            var text = new StringBuilder(2600);
             AddSection(text, "Device", $"Quest deviceId: {questDeviceId}\nSelected Android: {selectedAndroidDeviceId}\nSpatial: v{spatialVersion}");
             AddSection(text, "Discovery", $"NSD: {nsdState}\nSelected: {selectedDevice}\nService: {serviceType}\nCaps: {capabilities}\nStream: {streamId}\nSignaling: {signalingEndpoint}");
             AddSection(text, "Network", $"Signaling: {signalingState}\nSession: {sessionId}\nNegotiation: {negotiationId}\nWebRTC peer: {peerState}\nControl DataChannel: {controlState}\nMedia HTTP: {mediaHttpState}");
             AddSection(text, "Video", $"Frame received: {videoFrameReceived}\nResolution: {videoWidth}x{videoHeight}\nSource: {videoSource}\nProfile: {projection} / {fov} / {stereo} / {eyeOrder}\nRenderer: {rendererBackend}");
-            AddSection(text, "XR", $"OpenXR active: {xrActive}\nHMD tracking: {hmdTracking}\nHMD pose: {hmdPoseAvailable}");
+            AddSection(text, "XR", $"OpenXR active: {xrActive}\nHMD tracking: {hmdTracking}\nHMD pose: {hmdPoseAvailable}\nHands: {handState}");
+            AddSection(text, "Spatial Data Plane",
+                $"Pose: {poseStreamHz:0} Hz\nFast channel: {(spatialFastOpen ? "open" : "closed")} · dropped={spatialDroppedFrames} · lastSeq={spatialLastSequence}\n" +
+                $"Reliable channel: {(spatialReliableOpen ? "open" : "closed")} · dropped={reliableDroppedFrames} · lastSeq={reliableLastSequence}");
+            AddSection(text, "Vision / AI", $"Camera: {cameraState}\nAI: {aiState}\nAI latency: {aiLatencyMs} ms");
+            AddSection(text, "P3",
+                $"Anchors: {anchorState} (count={anchorCount}, subscribers={anchorSubscribers})\n" +
+                $"Depth: {depthState} (subscribers={depthSubscribers})\n" +
+                $"Interaction: {interactionState} (subscribers={interactionSubscribers})\n" +
+                $"6DoF: {sixDofState}\n" +
+                $"3DGS: {gaussianState} · splats={gaussianSplatCount} · load={gaussianLoadMs} ms" +
+                (string.IsNullOrEmpty(gaussianError) ? string.Empty : $"\n3DGS error: {gaussianError}"));
             text.AppendLine("Capabilities");
             if (capabilitiesState != null)
                 foreach (var capability in capabilitiesState)
@@ -124,9 +199,7 @@ namespace QuestPhoneStream
     public sealed class QuestDiagnostics : MonoBehaviour
     {
         public QuestWebRtcReceiver receiver;
-
         public void Initialize(QuestWebRtcReceiver value) { receiver = value; }
-
         public QuestDiagnosticsSnapshot CaptureSnapshot() => QuestDiagnosticsSnapshot.Capture(receiver);
     }
 }

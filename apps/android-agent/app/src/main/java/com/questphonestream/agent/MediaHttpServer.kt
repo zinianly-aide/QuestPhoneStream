@@ -94,11 +94,7 @@ class MediaHttpServer(
         workers.shutdownNow()
     }
 
-    /**
-     * Explicit Save/Apply entrypoint. Draft providers are sampled only here, committed
-     * into AppliedConfig, then the live control plane is reconfigured exactly once and
-     * the unified NSD advertisement is refreshed exactly once.
-     */
+    /** Save/Apply is the only place draft config reconfigures control plane + NSD. */
     fun refreshNsdMetadata() {
         val next = AppliedConfigStore.apply(
             signalingUrl = signalingEndpointProvider().trim(),
@@ -114,17 +110,12 @@ class MediaHttpServer(
     }
 
     fun refreshUnifiedAdvertisement() = refreshNsdMetadata()
-
-    /** Compatibility alias retained for callers using the older method name. */
     fun refreshDiscoveryMetadata() = refreshNsdMetadata()
 
     private fun acceptLoop() {
         while (running.get()) {
-            runCatching { server.accept() }.onSuccess { socket ->
-                workers.execute { handle(socket) }
-            }.onFailure {
-                if (running.get()) Log.w(TAG, "Media HTTP accept failed")
-            }
+            runCatching { server.accept() }.onSuccess { socket -> workers.execute { handle(socket) } }
+                .onFailure { if (running.get()) Log.w(TAG, "Media HTTP accept failed") }
         }
     }
 
@@ -162,10 +153,7 @@ class MediaHttpServer(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "HTTP handler crashed: ${e.javaClass.simpleName}: ${e.message}", e)
-                try {
-                    val output = BufferedOutputStream(client.getOutputStream())
-                    sendError(output, 500, "Internal Server Error")
-                } catch (_: Exception) {}
+                try { sendError(BufferedOutputStream(client.getOutputStream()), 500, "Internal Server Error") } catch (_: Exception) {}
             }
         }
     }
@@ -178,16 +166,9 @@ class MediaHttpServer(
     ) {
         val token = appliedConfig?.token.orEmpty()
         val authorized = token.isNotEmpty() && MediaPairingAuth.isAuthorized(headers, token)
-        Log.d(TAG, "ifAuthorized: capability=$capabilityName headersKeys=${headers.keys.joinToString(",")} result=$authorized")
-        if (!authorized) {
-            sendError(output, 401, "Unauthorized")
-            return
-        }
+        if (!authorized) { sendError(output, 401, "Unauthorized"); return }
         mediaLifecycle.markPairingAuthorized()
-        if (!mediaLifecycle.beginRequest(capabilityName)) {
-            sendError(output, 503, "Service Unavailable")
-            return
-        }
+        if (!mediaLifecycle.beginRequest(capabilityName)) { sendError(output, 503, "Service Unavailable"); return }
         try { action() } finally { mediaLifecycle.endRequest(capabilityName) }
     }
 
@@ -219,30 +200,21 @@ class MediaHttpServer(
             sendError(output, 401, "Unauthorized")
             return
         }
-
-        // A valid short-lived play capability proves the request passed pairing when it
-        // was minted, so media.publish is authorized for this request lifecycle.
         mediaLifecycle.markPairingAuthorized()
         if (!mediaLifecycle.beginRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH)) {
             sendError(output, 503, "Service Unavailable")
             return
         }
-        try {
-            sendAuthorizedContent(output, head, item, rangeHeader)
-        } finally {
-            mediaLifecycle.endRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH)
-        }
+        try { sendAuthorizedContent(output, head, item, rangeHeader) }
+        finally { mediaLifecycle.endRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH) }
     }
 
     private fun sendAuthorizedContent(output: BufferedOutputStream, head: Boolean, item: MediaItem, rangeHeader: String?) {
-        Log.d(TAG, "sendContent: id=${item.id} name=${item.displayName} size=${item.size} range=$rangeHeader")
         val total = item.size
         if (total < 0) { sendError(output, 416, "Range Not Satisfiable", "bytes */*"); return }
         val range = if (rangeHeader == null) null else RangeParser.parse(rangeHeader, total)
         if (rangeHeader != null && range == null) { sendError(output, 416, "Range Not Satisfiable", "bytes */$total"); return }
-        if (!item.seekable && range != null && range.start > 0) {
-            sendError(output, 416, "Range Not Satisfiable", "bytes */$total"); return
-        }
+        if (!item.seekable && range != null && range.start > 0) { sendError(output, 416, "Range Not Satisfiable", "bytes */$total"); return }
         val start = range?.start ?: 0L
         val end = range?.end ?: (total - 1)
         val length = (end - start + 1).coerceAtLeast(0)
@@ -253,10 +225,7 @@ class MediaHttpServer(
         if (range != null) headers["Content-Range"] = "bytes $start-$end/$total"
         val stream = try {
             openStream(item).also { opened ->
-                if (!skipFully(opened, start)) {
-                    opened.close()
-                    throw IllegalStateException("Unable to seek media stream")
-                }
+                if (!skipFully(opened, start)) { opened.close(); throw IllegalStateException("Unable to seek media stream") }
             }
         } catch (e: Exception) {
             Log.e(TAG, "sendContent: stream unavailable: ${e.javaClass.simpleName}: ${e.message}")
@@ -264,24 +233,18 @@ class MediaHttpServer(
             return
         }
 
-        // Do not advertise a successful response until the source is open and positioned.
+        // Success headers are written only after the source was opened and positioned.
         writeHeaders(output, if (range == null) 200 else 206, if (range == null) "OK" else "Partial Content", headers)
         try {
-            if (head || length == 0L) {
-                stream.close()
-            } else {
-                stream.use { positioned ->
-                    val buffer = ByteArray(32 * 1024)
-                    var remaining = length
-                    var totalSent = 0L
-                    while (remaining > 0) {
-                        val read = positioned.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                        remaining -= read
-                        totalSent += read
-                    }
-                    Log.d(TAG, "sendContent: sent $totalSent / $length bytes")
+            if (head || length == 0L) stream.close()
+            else stream.use { positioned ->
+                val buffer = ByteArray(32 * 1024)
+                var remaining = length
+                while (remaining > 0) {
+                    val read = positioned.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                    remaining -= read
                 }
             }
         } catch (e: Exception) {
@@ -291,14 +254,23 @@ class MediaHttpServer(
         output.flush()
     }
 
-    private fun openStream(item: MediaItem): InputStream =
-        context.contentResolver.openInputStream(item.uri()) ?: error("Unable to open media")
+    private fun openStream(item: MediaItem): InputStream = context.contentResolver.openInputStream(item.uri()) ?: error("Unable to open media")
 
+    /** Shared by /v1/media and /v1/media/{id}; spatial metadata round-trips identically. */
     private fun metadataJson(item: MediaItem): JSONObject = JSONObject().apply {
         put("id", item.id); put("name", item.displayName); put("mimeType", item.mimeType)
         put("size", item.size); put("seekable", item.seekable)
         put("projection", item.projection); put("fov", item.fov)
         put("stereo", item.stereo); put("eyeOrder", item.eyeOrder)
+        put("spatialFormat", item.spatialFormat)
+        put("manifestUrl", item.manifestUrl)
+        put("referenceSpace", item.referenceSpace)
+        item.spatialBounds?.let { bounds ->
+            put("spatialBounds", JSONObject().apply {
+                put("centerX", bounds.centerX); put("centerY", bounds.centerY); put("centerZ", bounds.centerZ)
+                put("sizeX", bounds.sizeX); put("sizeY", bounds.sizeY); put("sizeZ", bounds.sizeZ)
+            })
+        }
     }
 
     private fun sendJson(output: BufferedOutputStream, code: Int, body: String) {
@@ -343,8 +315,7 @@ class MediaHttpServer(
         return true
     }
 
-    private fun safeMime(mime: String): String = mime.replace(Regex("[^A-Za-z0-9!#$%&'*+.^_`|~/.\\-]"), "")
-        .ifBlank { "video/mp4" }
+    private fun safeMime(mime: String): String = mime.replace(Regex("[^A-Za-z0-9!#$%&'*+.^_`|~/.\\-]"), "").ifBlank { "video/mp4" }
 
     private data class Capability(val mediaId: String, val expiresAt: Long)
 

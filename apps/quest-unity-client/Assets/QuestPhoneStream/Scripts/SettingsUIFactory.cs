@@ -92,10 +92,8 @@ namespace QuestPhoneStream
 
             var diagnostics = gameObject.GetComponent<QuestDiagnostics>() ?? gameObject.AddComponent<QuestDiagnostics>();
             diagnostics.Initialize(receiver);
-            var p2Diagnostics = gameObject.GetComponent<QuestDeveloperHud>() ?? gameObject.AddComponent<QuestDeveloperHud>();
-            p2Diagnostics.Initialize(receiver, signalingClient);
             var developerHud = gameObject.GetComponent<DeveloperHud>() ?? gameObject.AddComponent<DeveloperHud>();
-            developerHud.Initialize(_canvas, diagnostics, p2Diagnostics, wirelessAdbHelper, _settingsUI.HideDeveloperTools);
+            developerHud.Initialize(_canvas, diagnostics, wirelessAdbHelper, _settingsUI.HideDeveloperTools);
             _settingsUI.developerHud = developerHud;
             statusRight = 0.48f;
 #endif

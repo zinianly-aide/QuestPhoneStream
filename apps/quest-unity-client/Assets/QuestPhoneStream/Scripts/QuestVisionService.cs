@@ -16,7 +16,7 @@ namespace QuestPhoneStream
         public int height;
         public string source = "camera.rgb";
 
-        public byte[] EncodeJpg(int quality = 85) => texture != null ? texture.GetRawTextureData() : Array.Empty<byte>();
+        public byte[] EncodeJpg(int quality = 85) => texture != null ? texture.EncodeToJPG(Mathf.Clamp(quality, 1, 100)) : Array.Empty<byte>();
     }
 
     public interface IQuestVisionProvider
@@ -37,17 +37,12 @@ namespace QuestPhoneStream
         public static bool CanActivate(bool available, bool authorized, bool requested) => available && authorized && requested;
     }
 
-    /// <summary>
-    /// Compile-safe adapter for Meta MRUK PassthroughCameraAccess. The repository
-    /// intentionally does not hard-depend on MRUK; when that package/component is
-    /// absent, camera.rgb remains unavailable instead of breaking the Unity build.
-    /// Provider discovery is cached and retried at low frequency; it is never an
-    /// every-frame AppDomain/assembly/type scan.
-    /// </summary>
+    /// <summary>Compile-safe PCA adapter using the shared bounded provider cache.</summary>
     public sealed class MetaPassthroughCameraProvider : IQuestVisionProvider
     {
         public const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
-        public const float DiscoveryRetrySeconds = 5f;
+        public const float DiscoveryRetrySeconds = OptionalProviderDiscovery.DefaultRetrySeconds;
+        private const string DiscoveryKey = "camera.rgb.provider";
 
         private readonly GameObject _owner;
         private Component _component;
@@ -57,12 +52,11 @@ namespace QuestPhoneStream
         private PropertyInfo _isSupported;
         private PropertyInfo _timestamp;
         private bool _requestedActive;
-        private float _nextDiscoveryAt;
 
         public MetaPassthroughCameraProvider(GameObject owner)
         {
             _owner = owner;
-            Discover(force: true);
+            Discover(force: false);
         }
 
         public bool IsAvailable
@@ -99,10 +93,17 @@ namespace QuestPhoneStream
             }
         }
 
-        public string StateText => !IsAvailable ? "Unavailable (MRUK/PCA not present)" :
+        public string StateText => !IsAvailable ? "Unavailable (PCA provider not present)" :
             !IsAuthorized ? "Permission required" : IsActive ? "Active" : "Ready";
 
         public void Refresh() => Discover(force: false);
+
+        public void RefreshExplicit()
+        {
+            OptionalProviderDiscovery.Refresh(DiscoveryKey);
+            ClearBinding();
+            Discover(force: true);
+        }
 
         public void RequestPermission(Action<bool> completion)
         {
@@ -131,9 +132,7 @@ namespace QuestPhoneStream
 
         public bool StartCapture()
         {
-            // An explicit camera request may probe immediately even if the low-frequency
-            // retry window has not elapsed yet.
-            Discover(force: true);
+            if (_component == null) Discover(force: true);
             _requestedActive = true;
             if (!QuestVisionPermissionGate.CanActivate(IsAvailable, IsAuthorized, true)) return false;
             if (_component is Behaviour behaviour) behaviour.enabled = true;
@@ -168,16 +167,9 @@ namespace QuestPhoneStream
         private void Discover(bool force)
         {
             if (_component != null && _componentType != null && _getTexture != null) return;
-            var now = Time.realtimeSinceStartup;
-            if (!force && now < _nextDiscoveryAt) return;
-            _nextDiscoveryAt = now + DiscoveryRetrySeconds;
-
-            _componentType = FindPassthroughCameraAccessType();
-            if (_componentType == null || !typeof(Component).IsAssignableFrom(_componentType))
-            {
-                ClearBinding();
-                return;
-            }
+            _componentType = OptionalProviderDiscovery.ResolveType(DiscoveryKey,
+                type => type.Name == "PassthroughCameraAccess" && typeof(MonoBehaviour).IsAssignableFrom(type), force);
+            if (_componentType == null) { ClearBinding(); return; }
 
             _component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
             if (_component == null && _owner != null)
@@ -189,11 +181,7 @@ namespace QuestPhoneStream
                 }
                 catch { _component = null; }
             }
-            if (_component == null)
-            {
-                ClearBinding(keepType: true);
-                return;
-            }
+            if (_component == null) { ClearBinding(keepType: true); return; }
 
             _getTexture = _componentType.GetMethod("GetTexture", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
             _isPlaying = _componentType.GetProperty("IsPlaying", BindingFlags.Instance | BindingFlags.Public);
@@ -210,25 +198,6 @@ namespace QuestPhoneStream
             _isPlaying = null;
             _isSupported = null;
             _timestamp = null;
-        }
-
-        private static Type FindPassthroughCameraAccessType()
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    foreach (var type in assembly.GetTypes())
-                        if (type.Name == "PassthroughCameraAccess" && typeof(MonoBehaviour).IsAssignableFrom(type)) return type;
-                }
-                catch (ReflectionTypeLoadException error)
-                {
-                    foreach (var type in error.Types)
-                        if (type != null && type.Name == "PassthroughCameraAccess" && typeof(MonoBehaviour).IsAssignableFrom(type)) return type;
-                }
-                catch { }
-            }
-            return null;
         }
 
         private long ReadTimestampMs()
@@ -306,6 +275,13 @@ namespace QuestPhoneStream
             if (!sampledPreviewEnabled || !IsActive || now < _nextSampleAt) return;
             _nextSampleAt = now + 1f / Mathf.Max(0.2f, sampleHz);
             CaptureSingleFrame();
+        }
+
+        public void RefreshProvider()
+        {
+            if (_provider is MetaPassthroughCameraProvider meta) meta.RefreshExplicit();
+            else _provider?.Refresh();
+            RefreshCapabilityState();
         }
 
         public void RequestPermission(Action<bool> completion = null)

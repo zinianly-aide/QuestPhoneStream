@@ -7,7 +7,8 @@
     "test:signaling": "pnpm --dir apps/signaling-server test",
     "build:signaling": "pnpm --dir apps/signaling-server build",
     "check:spatial": "node scripts/check-spatial-protocol.mjs",
-    "check:p1p2": "node scripts/check-p1-p2-closeout.mjs"
+    "check:p1p2": "node scripts/check-p1-p2-closeout.mjs",
+    "check:p3": "node scripts/check-p3-spatial.mjs"
   },
   "packageManager": "pnpm@9.12.0"
 }
