@@ -16,7 +16,7 @@ namespace QuestPhoneStream
         public int height;
         public string source = "camera.rgb";
 
-        public byte[] EncodeJpg(int quality = 85) => texture != null ? texture.EncodeToJPG(Mathf.Clamp(quality, 1, 100)) : Array.Empty<byte>();
+        public byte[] EncodeJpg(int quality = 85) => texture != null ? texture.GetRawTextureData() : Array.Empty<byte>();
     }
 
     public interface IQuestVisionProvider

@@ -1,5 +1,5 @@
 {
   "name": "QuestPhoneStream.PlayModeTests",
-  "references": ["QuestPhoneStream.Runtime", "Unity.InputSystem", "Unity.XR.Interaction.Toolkit", "Unity.XR.CoreUtils", "Unity.ugui"],
+  "references": ["QuestPhoneStream.Runtime", "Unity.InputSystem", "Unity.XR.Interaction.Toolkit", "Unity.XR.CoreUtils", "Unity.XR.Hands", "Unity.ugui"],
   "optionalUnityReferences": ["TestAssemblies"]
 }

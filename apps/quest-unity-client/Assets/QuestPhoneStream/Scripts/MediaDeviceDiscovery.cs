@@ -18,6 +18,30 @@ namespace QuestPhoneStream
         public string signalingUrl { get; internal set; }
         public bool IsReady { get; internal set; }
 
+        public MediaDeviceInfo() { }
+
+        public MediaDeviceInfo(
+            string deviceId = null,
+            string name = null,
+            string host = null,
+            int port = 0,
+            string serviceType = null,
+            string capabilities = null,
+            string streamId = null,
+            string signalingUrl = null,
+            bool isReady = false)
+        {
+            this.deviceId = deviceId;
+            this.name = name;
+            this.host = host;
+            this.port = port;
+            this.serviceType = serviceType;
+            this.capabilities = capabilities;
+            this.streamId = streamId;
+            this.signalingUrl = signalingUrl;
+            this.IsReady = isReady;
+        }
+
         public string BaseUrl => MediaDeviceDiscovery.BuildBaseUrl(host, port);
 
         public bool HasCapability(string capability)
@@ -65,6 +89,15 @@ namespace QuestPhoneStream
             }
         }
         public event Action DevicesChanged;
+
+        public string State => IsDiscovering ? "Discovering" : (HasReadyDevice ? "Ready" : "Idle");
+
+        public bool TryGetDevice(string deviceId, out MediaDeviceInfo device)
+        {
+            device = null;
+            if (string.IsNullOrWhiteSpace(deviceId)) return false;
+            return _devices.TryGetValue(deviceId, out device);
+        }
 
         public void StartDiscovery()
         {

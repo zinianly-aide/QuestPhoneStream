@@ -111,6 +111,7 @@ namespace QuestPhoneStream
 
         public bool Remove(string id, out SpatialTelemetrySubscription subscription)
         {
+            subscription = null;
             if (string.IsNullOrWhiteSpace(id) || !_items.TryGetValue(id, out subscription)) return false;
             _items.Remove(id);
             return true;

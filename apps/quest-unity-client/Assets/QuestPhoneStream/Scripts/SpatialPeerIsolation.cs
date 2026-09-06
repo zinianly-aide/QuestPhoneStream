@@ -2,17 +2,6 @@ using System;
 
 namespace QuestPhoneStream
 {
-    [Serializable]
-    public sealed class SpatialEnvelope
-    {
-        public string type;
-        public string source;
-        public string target;
-        public string sessionId;
-        public string streamId;
-        public string payload;
-    }
-
     /// <summary>
     /// Common source gate for future Spatial messages. Spatial messages are
     /// accepted only from the Android peer selected for the active session.

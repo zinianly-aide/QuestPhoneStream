@@ -238,11 +238,11 @@ namespace QuestPhoneStream.Tests
         [Test]
         public void UnifiedDeviceCapabilitiesRemainDiscoverableWithoutSecrets()
         {
-            var device = new MediaDeviceInfo {
-                capabilities = "media,screen,control",
-                streamId = "android-stream-001",
-                signalingUrl = "ws://192.168.1.9:8787"
-            };
+            var device = new MediaDeviceInfo(
+                capabilities: "media,screen,control",
+                streamId: "android-stream-001",
+                signalingUrl: "ws://192.168.1.9:8787"
+            );
             Assert.IsTrue(device.HasCapability("media"));
             Assert.IsTrue(device.HasCapability("screen"));
             Assert.IsTrue(device.HasCapability("control"));

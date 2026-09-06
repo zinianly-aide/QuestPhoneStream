@@ -59,6 +59,7 @@ object ControlCommandDispatcher {
         val command = runCatching { ControlCommand.fromJson(json) }
             .onFailure { Log.e(TAG, "Invalid control command: $json", it) }
             .getOrNull() ?: return
+        Log.i(TAG, "Dispatching command: type=${command.type} x=${command.x} y=${command.y} start=(${command.startX},${command.startY}) end=(${command.endX},${command.endY})")
         service?.execute(command) ?: Log.w(TAG, "Accessibility service is not enabled")
     }
 }
@@ -95,6 +96,7 @@ class ControlAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     fun execute(command: ControlCommand) {
+        Log.i(TAG, "Execute command: type=${command.type}")
         when (command.type) {
             "click" -> gesture(scaleX(command.x), scaleY(command.y), scaleX(command.x), scaleY(command.y), 1, 80)
             "long_press" -> gesture(scaleX(command.x), scaleY(command.y), scaleX(command.x), scaleY(command.y), 1, command.durationMs.coerceAtLeast(500))
@@ -121,6 +123,7 @@ class ControlAccessibilityService : AccessibilityService() {
     }
 
     private fun gesture(startX: Int, startY: Int, endX: Int, endY: Int, startTime: Long, durationMs: Long) {
+        Log.i(TAG, "Gesture: ($startX,$startY)→($endX,$endY) dur=${durationMs}ms screen=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels} video=${VideoResolutionHolder.width}x${VideoResolutionHolder.height}")
         val path = Path().apply {
             moveTo(startX.toFloat(), startY.toFloat())
             if (startX != endX || startY != endY) lineTo(endX.toFloat(), endY.toFloat())

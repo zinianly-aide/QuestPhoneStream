@@ -24,6 +24,12 @@ namespace QuestPhoneStream
         public string NegotiationId { get; private set; }
         public string ActiveSessionId => _activeSession;
         public string ActiveAndroidDeviceId => _activeAndroid;
+
+        public bool AcceptSpatialMessage(SpatialEnvelope message)
+        {
+            if (message == null) return false;
+            return SpatialPeerIsolation.Accept(message, androidDeviceId, _activeAndroid, _activeSession);
+        }
         public event Action<ConnectionState> StateChanged;
         public event Action<SignalMessage> MessageReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
