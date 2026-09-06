@@ -94,6 +94,7 @@ namespace QuestPhoneStream
             signaling.SubscriptionCreateRequested += OnSubscriptionCreate;
             signaling.SubscriptionCancelRequested += OnSubscriptionCancel;
             signaling.NegotiationInvalidated += OnNegotiationInvalidated;
+            dataPlane.ReliableOpenStateChanged += OnReliableOpenChanged;
             RefreshCapability();
         }
 
@@ -146,7 +147,8 @@ namespace QuestPhoneStream
             if (!_subscriptions.Add(subscription)) return;
             _ = signaling.SendSubscriptionCreatedAsync(request, subscription.id, 1f,
                 "qps.spatial.anchor+json", "webrtc.datachannel", "reliable_ordered");
-            foreach (var anchor in _anchors.All) BroadcastTo(subscription, "snapshot", anchor, anchor.id);
+            if (dataPlane.IsReliableOpen)
+                foreach (var anchor in _anchors.All) BroadcastTo(subscription, "snapshot", anchor, anchor.id);
             RefreshCapability();
         }
 
@@ -178,18 +180,37 @@ namespace QuestPhoneStream
             dataPlane.TrySendReliableJson(packet.ToJson(), packet.sequence);
         }
 
+        private void OnReliableOpenChanged(bool open)
+        {
+            if (!open)
+            {
+                _subscriptions.Clear();
+                RefreshCapability();
+                return;
+            }
+            foreach (var subscription in _subscriptions.Snapshot())
+                foreach (var anchor in _anchors.All)
+                    BroadcastTo(subscription, "snapshot", anchor, anchor.id);
+            RefreshCapability();
+        }
+
         private void RefreshCapability() => signaling?.ReportCapabilityState("spatial.anchor",
-            available: true, authorized: true, active: AnchorCount > 0 || SubscriberCount > 0);
+            available: true, authorized: true,
+            active: AnchorCount > 0 || (SubscriberCount > 0 && dataPlane != null && dataPlane.IsReliableOpen));
 
         private void OnNegotiationInvalidated()
         {
             _subscriptions.Clear();
+            _anchors.Clear();
+            _sequence = 0;
             RefreshCapability();
         }
 
         private void OnDestroy()
         {
             _subscriptions.Clear();
+            _anchors.Clear();
+            if (dataPlane != null) dataPlane.ReliableOpenStateChanged -= OnReliableOpenChanged;
             if (signaling != null)
             {
                 signaling.SubscriptionCreateRequested -= OnSubscriptionCreate;
