@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Reflection;
 using UnityEngine;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -42,10 +41,13 @@ namespace QuestPhoneStream
     /// Compile-safe adapter for Meta MRUK PassthroughCameraAccess. The repository
     /// intentionally does not hard-depend on MRUK; when that package/component is
     /// absent, camera.rgb remains unavailable instead of breaking the Unity build.
+    /// Provider discovery is cached and retried at low frequency; it is never an
+    /// every-frame AppDomain/assembly/type scan.
     /// </summary>
     public sealed class MetaPassthroughCameraProvider : IQuestVisionProvider
     {
         public const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
+        public const float DiscoveryRetrySeconds = 5f;
 
         private readonly GameObject _owner;
         private Component _component;
@@ -55,18 +57,18 @@ namespace QuestPhoneStream
         private PropertyInfo _isSupported;
         private PropertyInfo _timestamp;
         private bool _requestedActive;
+        private float _nextDiscoveryAt;
 
         public MetaPassthroughCameraProvider(GameObject owner)
         {
             _owner = owner;
-            Discover();
+            Discover(force: true);
         }
 
         public bool IsAvailable
         {
             get
             {
-                Discover();
                 if (_component == null || _getTexture == null) return false;
                 if (_isSupported == null) return true;
                 try { return Convert.ToBoolean(_isSupported.GetValue(_component)); }
@@ -100,7 +102,7 @@ namespace QuestPhoneStream
         public string StateText => !IsAvailable ? "Unavailable (MRUK/PCA not present)" :
             !IsAuthorized ? "Permission required" : IsActive ? "Active" : "Ready";
 
-        public void Refresh() => Discover();
+        public void Refresh() => Discover(force: false);
 
         public void RequestPermission(Action<bool> completion)
         {
@@ -129,7 +131,9 @@ namespace QuestPhoneStream
 
         public bool StartCapture()
         {
-            Refresh();
+            // An explicit camera request may probe immediately even if the low-frequency
+            // retry window has not elapsed yet.
+            Discover(force: true);
             _requestedActive = true;
             if (!QuestVisionPermissionGate.CanActivate(IsAvailable, IsAuthorized, true)) return false;
             if (_component is Behaviour behaviour) behaviour.enabled = true;
@@ -161,11 +165,20 @@ namespace QuestPhoneStream
             };
         }
 
-        private void Discover()
+        private void Discover(bool force)
         {
-            if (_component != null && _componentType != null) return;
+            if (_component != null && _componentType != null && _getTexture != null) return;
+            var now = Time.realtimeSinceStartup;
+            if (!force && now < _nextDiscoveryAt) return;
+            _nextDiscoveryAt = now + DiscoveryRetrySeconds;
+
             _componentType = FindPassthroughCameraAccessType();
-            if (_componentType == null || !typeof(Component).IsAssignableFrom(_componentType)) return;
+            if (_componentType == null || !typeof(Component).IsAssignableFrom(_componentType))
+            {
+                ClearBinding();
+                return;
+            }
+
             _component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
             if (_component == null && _owner != null)
             {
@@ -176,11 +189,27 @@ namespace QuestPhoneStream
                 }
                 catch { _component = null; }
             }
-            if (_component == null) return;
+            if (_component == null)
+            {
+                ClearBinding(keepType: true);
+                return;
+            }
+
             _getTexture = _componentType.GetMethod("GetTexture", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
             _isPlaying = _componentType.GetProperty("IsPlaying", BindingFlags.Instance | BindingFlags.Public);
             _isSupported = _componentType.GetProperty("IsSupported", BindingFlags.Instance | BindingFlags.Public);
             _timestamp = _componentType.GetProperty("Timestamp", BindingFlags.Instance | BindingFlags.Public);
+            if (_getTexture == null) ClearBinding(keepType: true);
+        }
+
+        private void ClearBinding(bool keepType = false)
+        {
+            _component = null;
+            if (!keepType) _componentType = null;
+            _getTexture = null;
+            _isPlaying = null;
+            _isSupported = null;
+            _timestamp = null;
         }
 
         private static Type FindPassthroughCameraAccessType()
@@ -242,10 +271,12 @@ namespace QuestPhoneStream
     {
         public QuestSignalingClient signaling;
         [Range(0.2f, 5f)] public float sampleHz = 1f;
+        [Min(1f)] public float providerRefreshSeconds = MetaPassthroughCameraProvider.DiscoveryRetrySeconds;
         public bool sampledPreviewEnabled;
 
         private IQuestVisionProvider _provider;
         private float _nextSampleAt;
+        private float _nextProviderRefreshAt;
         public QuestVisionFrame LastFrame { get; private set; }
         public event Action<QuestVisionFrame> FrameSampled;
         public bool IsAvailable => _provider != null && _provider.IsAvailable;
@@ -257,16 +288,23 @@ namespace QuestPhoneStream
         {
             if (signaling == null) signaling = GetComponent<QuestSignalingClient>();
             _provider = new MetaPassthroughCameraProvider(gameObject);
+            _nextProviderRefreshAt = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
         }
 
         private void Start() => RefreshCapabilityState();
 
         private void Update()
         {
-            _provider?.Refresh();
-            RefreshCapabilityState();
-            if (!sampledPreviewEnabled || !IsActive || Time.unscaledTime < _nextSampleAt) return;
-            _nextSampleAt = Time.unscaledTime + 1f / Mathf.Max(0.2f, sampleHz);
+            var now = Time.unscaledTime;
+            if (now >= _nextProviderRefreshAt)
+            {
+                _nextProviderRefreshAt = now + Mathf.Max(1f, providerRefreshSeconds);
+                _provider?.Refresh();
+                RefreshCapabilityState();
+            }
+
+            if (!sampledPreviewEnabled || !IsActive || now < _nextSampleAt) return;
+            _nextSampleAt = now + 1f / Mathf.Max(0.2f, sampleHz);
             CaptureSingleFrame();
         }
 
@@ -322,7 +360,7 @@ namespace QuestPhoneStream
         {
             _provider?.StopCapture();
             if (LastFrame?.texture != null) Destroy(LastFrame.texture);
-            if (signaling != null) signaling.ReportCapabilityState("camera.rgb", active: false);
+            if (signaling != null) signaling.ReportCapabilityState("camera.rgb", available: false, active: false);
         }
     }
 
