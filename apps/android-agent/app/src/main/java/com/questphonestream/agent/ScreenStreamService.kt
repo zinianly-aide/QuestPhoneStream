@@ -121,10 +121,13 @@ class ScreenStreamService : Service() {
         private const val NOTIFICATION_ID = 41
 
         fun start(context: Context, resultCode: Int, data: Intent, config: StreamConfig) {
+            // MediaProjection may be granted after the user has edited the fields again.
+            // Only the explicitly applied endpoint identity is allowed to reach signaling.
+            val effectiveConfig = AppliedConfigStore.merge(config)
             val intent = Intent(context, ScreenStreamService::class.java).apply {
                 putExtra("resultCode", resultCode)
                 putExtra("projectionData", data)
-                config.writeTo(this)
+                effectiveConfig.writeTo(this)
             }
             ContextCompat.startForegroundService(context, intent)
         }
