@@ -383,7 +383,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 23347caf3403b48fe93cf0029573498d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  signalingUrl: ws://192.168.1.16:8787
+  signalingUrl:
   token: dev-token
   questDeviceId: quest-3s-001
   androidDeviceId: android-phone-001

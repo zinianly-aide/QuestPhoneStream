@@ -125,21 +125,30 @@ namespace QuestPhoneStream
 
         public void ApplyDiscoveredSignaling(string endpoint, string streamId)
         {
+            var changed = false;
             if (!string.IsNullOrWhiteSpace(endpoint))
             {
-                signalingClient.signalingUrl = endpoint.Trim();
+                var normalizedEndpoint = endpoint.Trim();
+                changed |= !string.Equals(signalingClient.signalingUrl, normalizedEndpoint, StringComparison.Ordinal);
+                signalingClient.signalingUrl = normalizedEndpoint;
                 if (signalingUrlInput != null) signalingUrlInput.text = signalingClient.signalingUrl;
             }
             if (!string.IsNullOrWhiteSpace(streamId))
             {
-                signalingClient.androidDeviceId = streamId.Trim();
+                var normalizedStreamId = streamId.Trim();
+                changed |= !string.Equals(signalingClient.androidDeviceId, normalizedStreamId, StringComparison.Ordinal);
+                signalingClient.androidDeviceId = normalizedStreamId;
                 if (androidDeviceIdInput != null) androidDeviceIdInput.text = signalingClient.androidDeviceId;
             }
+            if (changed) signalingClient.NotifyTargetChanged();
         }
 
         private void LoadSettings()
         {
-            signalingUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", signalingClient.signalingUrl);
+            var persistedEndpoint = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", string.Empty);
+            signalingUrlInput.text = QuestSignalingClient.ResolveSignalingEndpoint(
+                persistedEndpoint, string.Empty, signalingClient.signalingUrl);
+            signalingClient.signalingUrl = signalingUrlInput.text.Trim();
             tokenInput.text = PlayerPrefs.GetString("QuestPhoneStream_Token", signalingClient.token);
             questDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", signalingClient.questDeviceId);
             androidDeviceIdInput.text = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", signalingClient.androidDeviceId);
@@ -180,6 +189,7 @@ namespace QuestPhoneStream
                 signalingClient.questDeviceId = questDeviceIdInput.text.Trim();
                 signalingClient.androidDeviceId = androidDeviceIdInput.text.Trim();
                 signalingClient.sessionId = sessionIdInput.text.Trim();
+                signalingClient.NotifyTargetChanged();
                 await signalingClient.ReconnectAsync();
             }
             catch (Exception)
@@ -206,7 +216,9 @@ namespace QuestPhoneStream
 
         private void OnStateChanged(ConnectionState state)
         {
-            statusText.text = ConnectionStatus.Text(state);
+            statusText.text = signalingClient.HasValidSignalingEndpoint
+                ? ConnectionStatus.Text(state)
+                : "Waiting for device. Select a discovered device or configure manually.";
             SetBusy(_isConnecting || signalingClient.IsConnecting);
         }
 

@@ -79,5 +79,35 @@ namespace QuestPhoneStream.Tests
             CollectionAssert.Contains(MediaDeviceDiscovery.DiscoveryServiceTypes, MediaDeviceDiscovery.UnifiedServiceType);
             CollectionAssert.Contains(MediaDeviceDiscovery.DiscoveryServiceTypes, MediaDeviceDiscovery.LegacyServiceType);
         }
+
+        [Test]
+        public void SignalingEndpointResolution_PrefersPersistedThenDiscoveredThenManual()
+        {
+            Assert.AreEqual("ws://persisted:8787", QuestSignalingClient.ResolveSignalingEndpoint(
+                " ws://persisted:8787 ", "ws://discovered:8787", "ws://manual:8787"));
+            Assert.AreEqual("ws://discovered:8787", QuestSignalingClient.ResolveSignalingEndpoint(
+                "", " ws://discovered:8787 ", "ws://manual:8787"));
+            Assert.AreEqual("ws://manual:8787", QuestSignalingClient.ResolveSignalingEndpoint(
+                "not-an-endpoint", "", " ws://manual:8787 "));
+            Assert.AreEqual("", QuestSignalingClient.ResolveSignalingEndpoint("", "", ""));
+        }
+
+        [Test]
+        public void TargetChanged_NotifiesWithoutRequiringStateTransition()
+        {
+            var root = new UnityEngine.GameObject("target change test");
+            try
+            {
+                var client = root.AddComponent<QuestSignalingClient>();
+                var notifications = 0;
+                client.TargetChanged += () => ++notifications;
+                client.NotifyTargetChanged();
+                Assert.AreEqual(1, notifications);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
     }
 }

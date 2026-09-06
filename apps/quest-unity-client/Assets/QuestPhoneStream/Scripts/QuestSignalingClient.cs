@@ -11,7 +11,7 @@ namespace QuestPhoneStream
 {
     public sealed class QuestSignalingClient : MonoBehaviour
     {
-        public string signalingUrl = "ws://192.168.1.16:8787";
+        public string signalingUrl = "";
         public string token = "dev-token";
         public string questDeviceId = "quest-3s-001";
         public string androidDeviceId = "android-phone-001";
@@ -31,6 +31,7 @@ namespace QuestPhoneStream
             return SpatialPeerIsolation.Accept(message, androidDeviceId, _activeAndroid, _activeSession);
         }
         public event Action<ConnectionState> StateChanged;
+        public event Action TargetChanged;
         public event Action<SignalMessage> MessageReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesChanged;
@@ -54,7 +55,8 @@ namespace QuestPhoneStream
 
         private void Awake()
         {
-            signalingUrl = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", signalingUrl);
+            var persistedEndpoint = PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_v2", string.Empty);
+            signalingUrl = ResolveSignalingEndpoint(persistedEndpoint, string.Empty, signalingUrl);
             token = PlayerPrefs.GetString("QuestPhoneStream_Token", token);
             questDeviceId = PlayerPrefs.GetString("QuestPhoneStream_QuestDeviceId", questDeviceId);
             androidDeviceId = PlayerPrefs.GetString("QuestPhoneStream_AndroidDeviceId", androidDeviceId);
@@ -63,9 +65,34 @@ namespace QuestPhoneStream
             _capabilities.Changed += BroadcastCapabilityChange;
         }
 
+        public bool HasValidSignalingEndpoint => IsValidSignalingEndpoint(signalingUrl);
+
+        public static bool IsValidSignalingEndpoint(string endpoint)
+        {
+            if (!Uri.TryCreate((endpoint ?? string.Empty).Trim(), UriKind.Absolute, out var uri)) return false;
+            return (uri.Scheme == "ws" || uri.Scheme == "wss") && string.IsNullOrEmpty(uri.UserInfo);
+        }
+
+        public static string ResolveSignalingEndpoint(string persisted, string discovered, string manual)
+        {
+            foreach (var candidate in new[] { persisted, discovered, manual })
+                if (IsValidSignalingEndpoint(candidate)) return candidate.Trim();
+            return string.Empty;
+        }
+
+        public void NotifyTargetChanged() => TargetChanged?.Invoke();
+
         public Task ReconnectAsync()
         {
             if (_destroyed) return Task.CompletedTask;
+            if (!HasValidSignalingEndpoint)
+            {
+                ++_attemptGeneration;
+                if (IsConnecting) StopTransport();
+                IsConnecting = false;
+                SetState(ConnectionState.Disconnected);
+                return Task.CompletedTask;
+            }
             if (IsConnecting && !ConnectionTargetChanged()) return _attempt ?? Task.CompletedTask;
 
             var transportAlreadyStopped = false;

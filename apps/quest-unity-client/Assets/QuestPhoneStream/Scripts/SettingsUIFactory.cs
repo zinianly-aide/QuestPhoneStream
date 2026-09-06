@@ -51,7 +51,7 @@ namespace QuestPhoneStream
             CreateBackButton(panel, out var backButton);
             _settingsUI.backButton = backButton;
 
-            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "ws://192.168.1.16:8787", 0, out var urlInput);
+            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "", 0, out var urlInput);
             _settingsUI.signalingUrlInput = urlInput;
 
             CreateInputField(panel, "Token:", "QuestPhoneStream_Token", "dev-token", 1, out var tokenInput);

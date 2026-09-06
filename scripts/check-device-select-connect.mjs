@@ -29,6 +29,25 @@ assert(receiver.includes("ApplyDiscoveredSignaling(device.signalingUrl, device.s
 assert(receiver.includes("_ = signaling.ReconnectAsync();"),
   "Selecting a discovered device must enter the signaling/session connection flow");
 
+const home = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestHomeUI.cs");
+const deviceClick = home.slice(home.indexOf("private void OnMediaDeviceSelected"), home.indexOf("private void OpenSettings"));
+assert(!deviceClick.includes("OpenVideoLibrary"),
+  "Selecting a discovered device must not open Media Library automatically");
+assert(home.includes("TargetChanged += OnTargetChanged") && home.includes("RefreshMediaDevices();"),
+  "Home must refresh device rows on target changes independent of connection state");
+assert(signaling.includes("public event Action TargetChanged") && signaling.includes("NotifyTargetChanged()"),
+  "Signaling target changes need an explicit UI notification path");
+assert(signaling.includes("ResolveSignalingEndpoint") && signaling.includes("persistedEndpoint") && signaling.includes("string.Empty, signalingUrl"),
+  "Signaling endpoint resolution must not depend on a fixed LAN fallback");
+assert(signaling.includes('public string signalingUrl = ""'),
+  "Quest signaling must not contain an environment-specific default endpoint");
+assert(!read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity").includes("192.168.1.16"),
+  "Quest scene must not contain the development machine signaling address");
+assert(!read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SettingsUIFactory.cs").includes("192.168.1.16"),
+  "Quest Settings must not contain the development machine signaling address");
+assert(!read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt").includes("192.168.1.16"),
+  "Android Settings must not contain the development machine signaling address");
+
 const settings = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SettingsUI.cs");
 assert(settings.includes('PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl_v2"'),
   "SettingsUI must persist the same signaling URL key read by QuestSignalingClient");
