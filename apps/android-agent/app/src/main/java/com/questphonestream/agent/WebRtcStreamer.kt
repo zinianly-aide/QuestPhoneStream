@@ -214,6 +214,7 @@ class WebRtcStreamer(
         controlChannel?.unregisterObserver()
         val oldChannel = controlChannel
         controlChannel = null
+        CapabilityRuntime.setDisplayControl(authorized = false, active = false)
         val oldPeer = peerConnection
         peerConnection = null
         // DataChannel is owned by PeerConnection. Closing it is enough here;

@@ -87,6 +87,7 @@ class ControlAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         DeviceControlPlane.setControlAuthorized(false)
         ControlCommandDispatcher.detach(this)
+        CapabilityRuntime.setAccessibilityAvailable(false)
         super.onDestroy()
     }
 

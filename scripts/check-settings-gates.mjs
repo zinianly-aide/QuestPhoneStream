@@ -204,6 +204,61 @@ test("Android normal flow exposes readiness and hides engineering controls", () 
   assert.match(android, /openAccessibilitySettings\(\)/);
 });
 
+test("Spatial messages are isolated to the selected active Android peer", () => {
+  assert.match(spatialIsolation, /IsSpatialMessageType/);
+  for (const type of ["hello", "capabilities", "subscription"])
+    assert.match(spatialIsolation, new RegExp('"' + type + '"'));
+  assert.match(signaling, /SpatialPeerIsolation\.IsSpatialMessageType/);
+  assert.match(signaling, /SpatialPeerIsolation\.Accept\(spatial, androidDeviceId, _activeAndroid, _activeSession\)/);
+  assert.match(signaling, /public bool AcceptSpatialMessage/);
+  assert.match(receiver, /AcceptSpatialMessage\(SpatialEnvelope message\)/);
+  assert.doesNotMatch(signaling, /SpatialPeerIsolation\.Accept\(spatial, [^,]+, [^,]+, null\)/);
+});
+
+test("Android signaling control plane is independent from screen capture", () => {
+  assert.match(androidControlPlane, /object AndroidSpatialControlPlane/);
+  assert.match(androidControlPlane, /fun attach\(publisher: WebRtcStreamer\)/);
+  assert.match(androidControlPlane, /fun detach\(publisher: WebRtcStreamer\)/);
+  assert.match(androidControlPlane, /SignalingClient\(/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt"), /AndroidSpatialControlPlane\.start\(currentStreamConfig\(\)\)/);
+  assert.doesNotMatch(screenService, /SignalingClient\(/);
+  assert.doesNotMatch(screenService, /signalingClient\?\.close/);
+  assert.match(screenService, /AndroidSpatialControlPlane\.start/);
+  assert.match(screenService, /CapabilityRuntime\.setDisplayPublish/);
+  assert.match(androidControl, /CapabilityRuntime\.setAccessibilityAvailable\(true\)/);
+  assert.match(androidCapabilityRuntime, /available = accessibilityAvailable/);
+  assert.match(androidCapabilityRuntime, /authorized = accessibilityAvailable && dataChannelAuthorized/);
+});
+
+test("Capability runtime and read-only developer diagnostics are wired without Home changes", () => {
+  assert.match(capabilityRuntime, /display\.publish/);
+  assert.match(capabilityRuntime, /display\.consume/);
+  assert.match(capabilityRuntime, /DataChannel/);
+  assert.match(capabilityRuntime, /WebRTC video/);
+  assert.match(diagnostics, /QuestDiagnosticsSnapshot/);
+  for (const field of ["questDeviceId", "selectedAndroidDeviceId", "spatialVersion", "nsdState", "streamId", "signalingEndpoint", "sessionId", "negotiationId", "peerState", "controlState", "mediaHttpState", "videoWidth", "videoHeight", "rendererBackend", "xrActive", "hmdTracking", "hmdPoseAvailable", "capabilitiesState"])
+    assert.match(diagnostics, new RegExp(`public .* ${field}`));
+  assert.match(developerHud, /Refresh/);
+  assert.match(developerHud, /Auto Refresh \(1 Hz\)/);
+  assert.match(developerHud, /Time\.unscaledTime \+ 1f/);
+  assert.doesNotMatch(developerHud, /Debug\.Log/);
+  assert.match(factory, /developerHud\.Initialize/);
+  assert.match(ui, /developerHud\?\.Show\(\)/);
+  assert.match(factory, /#if QPS_DEV_TOOLS \|\| DEVELOPMENT_BUILD \|\| UNITY_EDITOR/);
+});
+
+test("NSD metadata refresh is explicit and stale registration callbacks are ignored", () => {
+  assert.match(androidNsd, /fun refreshMetadata\(\)/);
+  assert.match(androidNsd, /metadataGenerations/);
+  assert.match(androidNsd, /metadataGenerations\[type\] == generation/);
+  assert.match(androidNsd, /createRegistrationListener\(advertisement\.type, registrationGeneration\)/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt"), /refreshNsdMetadata/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt"), /saveConfigurationAndRefreshNsd/);
+  const mainActivity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  const tokenWatcher = mainActivity.slice(mainActivity.indexOf("tokenField.addTextChangedListener"), mainActivity.indexOf("deviceIdField ="));
+  assert.doesNotMatch(tokenWatcher, /refreshNsdMetadata/);
+});
+
 test("Quest video library exposes playback controls without closing after play", () => {
   assert.match(mediaUi, /BuildPlaybackControls\(_panel\.transform\)/);
   for (const method of ["Pause", "Resume", "Seek", "SetVolume"])
@@ -534,8 +589,8 @@ test("UX navigation and readiness states have explicit recovery paths", () => {
   const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
   assert.match(android, /MEDIA MANAGER/);
   assert.match(android, /private fun showMediaManager\(\)/);
-  assert.match(android, /homeScreenStatusView\.text = if \(isStreaming\) "Active" else "Off"/);
-  assert.match(android, /homeScreenActionButton\.text = if \(isStreaming\)/);
+  assert.match(android, /homeScreenStatusView\.text = if \(screenActive\) "Active" else "Off"/);
+  assert.match(android, /homeScreenActionButton\.text = if \(screenActive\)/);
   assert.match(android, /statusRow\(homeCard, "Signaling",/);
   assert.match(android, /ConnectionState\.CONNECTED -> "Ready"/);
 });

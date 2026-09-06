@@ -109,6 +109,11 @@ class MediaHttpServer(
         runCatching { server.close() }
         workers.shutdownNow()
         capabilities.clear()
+        CapabilityRuntime.setMediaCatalog(available = false, authorized = false, active = false)
+    }
+
+    fun refreshNsdMetadata() {
+        nsdRegistration.refreshMetadata()
     }
 
     /** Force a unified-only metadata refresh; the legacy media advertisement is untouched. */

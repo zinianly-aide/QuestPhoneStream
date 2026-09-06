@@ -11,18 +11,18 @@ namespace QuestPhoneStream
         private MediaLibraryUI _mediaLibrary;
 
         public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera) =>
-            Initialize(signalingClient, xrCamera, null);
+            Initialize(signalingClient, xrCamera, null, null);
 
-        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback = null)
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback = null, QuestWebRtcReceiver receiver = null)
         {
             if (signalingClient == null || xrCamera == null)
                 throw new System.ArgumentException("Settings UI requires signaling and XR camera dependencies");
             if (_settingsUI != null) return _settingsUI;
-            CreateUI(signalingClient, xrCamera, playback);
+            CreateUI(signalingClient, xrCamera, playback, receiver);
             return _settingsUI;
         }
 
-        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback)
+        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback, QuestWebRtcReceiver receiver)
         {
             var canvasGo = new GameObject("SettingsCanvas");
             canvasGo.transform.SetParent(transform, false);

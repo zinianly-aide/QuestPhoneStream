@@ -11,6 +11,7 @@ namespace QuestPhoneStream
 
         private RTCDataChannel _channel;
         public bool IsOpen => _channel != null && _channel.ReadyState == RTCDataChannelState.Open;
+        public string StateLabel => _channel == null ? "None" : _channel.ReadyState.ToString();
 
         public void Attach(RTCDataChannel channel)
         {

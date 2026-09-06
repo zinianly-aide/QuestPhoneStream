@@ -194,6 +194,7 @@ class MainActivity : AppCompatActivity() {
         deviceIdField = configRow(configCard, "Android Device ID", "android-phone-001")
         questDeviceIdField = configRow(configCard, "Quest Device ID", "quest-3s-001")
         sessionIdField = configRow(configCard, "Session ID", "local-session-001")
+        configCard.addView(actionButton("Save settings", R.color.status_idle) { saveConfigurationAndRefreshNsd() })
         advancedContainer.addView(configCard)
 
         mediaServer = runCatching {
@@ -373,6 +374,14 @@ class MainActivity : AppCompatActivity() {
         projectionLauncher.launch(manager.createScreenCaptureIntent())
     }
 
+    private fun currentStreamConfig() = StreamConfig(
+        signalingUrl = signalingUrlField.text.toString().trim(),
+        token = tokenField.text.toString(),
+        deviceId = deviceIdField.text.toString().trim(),
+        questDeviceId = questDeviceIdField.text.toString().trim(),
+        sessionId = sessionIdField.text.toString().trim()
+    )
+
     private fun stopStream() {
         val serviceIntent = Intent()
         serviceIntent.setClassName(packageName, "com.questphonestream.agent.ScreenStreamService")
@@ -385,6 +394,20 @@ class MainActivity : AppCompatActivity() {
         webrtcStatusView.setTextColor(color(R.color.status_idle))
         currentSessionIdView.setText("—", TextView.BufferType.NORMAL)
         addLog("Streaming stopped")
+    }
+
+    private fun saveConfigurationAndRefreshNsd() {
+        getSharedPreferences("QuestPhoneStream", MODE_PRIVATE).edit()
+            .putString("signalingUrl", signalingUrlField.text.toString().trim())
+            .putString("token", tokenField.text.toString())
+            .putString("deviceId", deviceIdField.text.toString().trim())
+            .putString("questDeviceId", questDeviceIdField.text.toString().trim())
+            .putString("sessionId", sessionIdField.text.toString().trim())
+            .apply()
+        if (!isStreaming) AndroidSpatialControlPlane.start(currentStreamConfig())
+        mediaServer?.refreshNsdMetadata()
+        addLog("Settings saved; NSD metadata refresh requested")
+        updateHomeStatus()
     }
 
     private fun showMediaManager() {
@@ -580,17 +603,26 @@ class MainActivity : AppCompatActivity() {
             }
         ))
 
-        homeScreenStatusView.text = if (isStreaming) "Active" else "Off"
-        homeScreenStatusView.setTextColor(color(if (isStreaming) R.color.status_ok else R.color.status_idle))
-        homeScreenActionButton.text = if (isStreaming) "Stop screen sharing" else "Start screen sharing"
+        val runtime = CapabilityRuntime.snapshot().associateBy { it.name }
+        val publish = runtime["display.publish"]
+        val control = runtime["display.control"]
+        val media = runtime["media.catalog"]
+        val screenActive = publish?.active == true
+        homeScreenStatusView.text = if (screenActive) "Active" else "Off"
+        homeScreenStatusView.setTextColor(color(if (screenActive) R.color.status_ok else R.color.status_idle))
+        homeScreenActionButton.text = if (screenActive) "Stop screen sharing" else "Start screen sharing"
 
         val controlReady = isAccessibilityEnabled()
-        homeControlStatusView.text = if (controlReady) "Ready" else "Permission required"
+        homeControlStatusView.text = when {
+            !controlReady -> "Permission required"
+            control?.active == true -> "Ready"
+            else -> "Waiting for connection"
+        }
         homeControlStatusView.setTextColor(color(if (controlReady) R.color.status_ok else R.color.status_warn))
 
         val sharedCount = if (::mediaCatalog.isInitialized) mediaCatalog.all().count { it.shared } else 0
         homeMediaStatusView.text = when {
-            mediaServer == null -> "Unavailable"
+            mediaServer == null || media?.available != true -> "Unavailable"
             sharedCount > 0 -> "Ready · $sharedCount shared"
             else -> "Ready · no videos shared"
         }

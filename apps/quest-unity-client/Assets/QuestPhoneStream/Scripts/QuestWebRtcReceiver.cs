@@ -33,7 +33,9 @@ namespace QuestPhoneStream
         private QuestHomeUI _homeUI;
         private PanelInputMapper _panelInput;
         private string _negotiationId;
+        private string _selectedMediaDeviceId;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
+        public string PeerConnectionState { get; private set; } = "None";
         private bool _mediaProbeReady, _mediaProbeChecking, _mediaProbeFailed;
         private string _mediaProbeUrl;
         private float _mediaProbeAt = -Mathf.Infinity;
@@ -43,6 +45,22 @@ namespace QuestPhoneStream
         public bool HasVideoFrame => _hasFrame;
         public bool IsPeerConnected => _peerConnected;
         public bool IsControlConnected => controlChannel != null && controlChannel.IsOpen;
+        public int VideoWidth => _receivedTexture == null ? 0 : _receivedTexture.width;
+        public int VideoHeight => _receivedTexture == null ? 0 : _receivedTexture.height;
+        public string VideoSource => mediaPlayback != null && mediaPlayback.IsMediaMode ? "Media" : "Phone";
+        public string SelectedAndroidDeviceId => signaling == null ? string.Empty : signaling.androidDeviceId;
+        public string ActiveAndroidDeviceId => signaling == null ? string.Empty : signaling.ActiveAndroidDeviceId;
+        public string ActiveSessionId => signaling == null ? string.Empty : signaling.ActiveSessionId;
+        public bool AcceptSpatialMessage(SpatialEnvelope message) => signaling != null && signaling.AcceptSpatialMessage(message);
+        public MediaDeviceInfo SelectedMediaDevice
+        {
+            get
+            {
+                if (mediaDiscovery == null || string.IsNullOrWhiteSpace(_selectedMediaDeviceId)) return null;
+                mediaDiscovery.TryGetDevice(_selectedMediaDeviceId, out var device);
+                return device;
+            }
+        }
         public bool HasMediaUrl => !string.IsNullOrWhiteSpace(CurrentMediaUrl);
         public bool IsMediaStale => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl &&
             Time.unscaledTime - _mediaProbeAt > MediaProbeTtlSeconds;
@@ -216,7 +234,7 @@ namespace QuestPhoneStream
             if (_settingsUI != null) return;
             var settingsGo = new GameObject("SettingsUI");
             settingsGo.transform.SetParent(transform, false);
-            _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback);
+            _settingsUI = settingsGo.AddComponent<SettingsUIFactory>().Initialize(signaling, xrCamera, mediaPlayback, this);
             _settingsUI.onBackToHome = ShowHome;
             _settingsUI.mediaLibrary?.SetAvailabilityHandler((ready, error) => {
                 _mediaProbeUrl = CurrentMediaUrl;
@@ -243,6 +261,7 @@ namespace QuestPhoneStream
             if (_offerRoutine != null) { StopCoroutine(_offerRoutine); _offerRoutine = null; }
             _pendingIce.Clear();
             _remoteReady = _handlingOffer = _peerConnected = _hasFrame = false;
+            PeerConnectionState = "None";
             _receivedTexture = null;
             controlChannel?.ResetChannel();
             if (_videoTrack != null)
@@ -274,6 +293,7 @@ namespace QuestPhoneStream
             };
             var peer = new RTCPeerConnection(ref config);
             _peer = peer;
+            PeerConnectionState = "New";
             peer.OnIceCandidate = candidate =>
             {
                 if (candidate == null || !IsCurrent(peer, id)) return;
@@ -285,6 +305,7 @@ namespace QuestPhoneStream
             peer.OnConnectionStateChange = state =>
             {
                 if (!IsCurrent(peer, id)) return;
+                PeerConnectionState = state.ToString();
                 if (state == RTCPeerConnectionState.Connected)
                 {
                     _peerConnected = true;

@@ -22,6 +22,8 @@ namespace QuestPhoneStream
         public bool IsConnecting { get; private set; }
         public bool IsOpen => _socket != null && _socket.State == WebSocketState.Open;
         public string NegotiationId { get; private set; }
+        public string ActiveSessionId => _activeSession;
+        public string ActiveAndroidDeviceId => _activeAndroid;
         public event Action<ConnectionState> StateChanged;
         public event Action<SignalMessage> MessageReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
@@ -193,6 +195,20 @@ namespace QuestPhoneStream
         private void HandleMessage(SignalMessage message, int epoch)
         {
             if (message == null || !IsCurrent(epoch)) return;
+            if (SpatialPeerIsolation.IsSpatialMessageType(message.type))
+            {
+                var source = string.IsNullOrWhiteSpace(message.source) ? message.from : message.source;
+                var spatial = new SpatialEnvelope {
+                    type = message.type,
+                    source = source,
+                    target = message.to,
+                    sessionId = message.sessionId,
+                    streamId = message.androidDeviceId
+                };
+                if (!SpatialPeerIsolation.Accept(spatial, androidDeviceId, _activeAndroid, _activeSession)) return;
+                MessageReceived?.Invoke(message);
+                return;
+            }
             if (message.type == "registered")
             {
                 if (State != ConnectionState.Registering) return;
