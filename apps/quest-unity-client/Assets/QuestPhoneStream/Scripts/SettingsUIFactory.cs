@@ -109,6 +109,7 @@ namespace QuestPhoneStream
             });
             _settingsUI.mediaLibrary = _mediaLibrary;
             _settingsUI.mediaPlayback = playback;
+            _settingsUI.receiver = receiver;
 
             CreateStatusText(panel, 8, 0.05f, statusRight, out var statusText);
             _settingsUI.statusText = statusText;

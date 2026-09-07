@@ -15,6 +15,7 @@ namespace QuestPhoneStream
         public Text statusText;
         public MediaLibraryUI mediaLibrary;
         public MediaPlaybackController mediaPlayback;
+        public QuestWebRtcReceiver receiver;
         public MediaCatalogClient mediaCatalogClient;
         public WirelessAdbHelper wirelessAdbHelper;
         public DeveloperHud developerHud;
@@ -38,10 +39,16 @@ namespace QuestPhoneStream
             connectButton.onClick.AddListener(OnConnect);
             backButton?.onClick.AddListener(OnBack);
             developerToolsButton?.onClick.AddListener(ShowDeveloperTools);
-            phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
+            phoneScreenButton?.onClick.AddListener(() => {
+                mediaLibrary?.Close();
+                if (receiver != null) receiver.SetPhoneScreenMode();
+                else mediaPlayback?.SetPhoneScreenMode();
+            });
             videoLibraryButton?.onClick.AddListener(() => {
+                if (receiver != null && !receiver.SupportsMedia) return;
                 SetAdvancedVisible(false);
-                mediaLibrary?.Open();
+                if (receiver != null) receiver.OpenVideoLibrary();
+                else mediaLibrary?.Open();
             });
             client.StateChanged += OnStateChanged;
             LoadSettings();

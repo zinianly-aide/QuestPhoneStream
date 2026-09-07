@@ -50,6 +50,7 @@ namespace QuestPhoneStream
             Build();
             _signaling.StateChanged += OnStateChanged;
             _signaling.TargetChanged += OnTargetChanged;
+            _receiver.ActiveDeviceChanged += OnActiveDeviceChanged;
             if (_receiver.mediaDiscovery != null)
                 _receiver.mediaDiscovery.DevicesChanged += RefreshMediaDevices;
             UpdateStatus(_signaling.State);
@@ -122,7 +123,7 @@ namespace QuestPhoneStream
             Anchor(devicesTitle.rectTransform, 0.05f, 0.37f, 0.95f, 0.42f);
             BuildDeviceScroll(panelGo.transform);
 
-            var hint = MakeText(panelGo.transform, "Select a device · then choose 切换推流 or 抓取视频", 16, TextAnchor.MiddleLeft);
+            var hint = MakeText(panelGo.transform, "Select a device, then choose Screen, Media, or Keyboard", 16, TextAnchor.MiddleLeft);
             hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
             Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.07f);
             _hint = hint.textComponent;
@@ -183,6 +184,11 @@ namespace QuestPhoneStream
 
         private void OnPhone()
         {
+            if (_receiver == null || !_receiver.SupportsScreen)
+            {
+                SetNotice("Screen is unavailable on this device", 3f);
+                return;
+            }
             _videosSelected = false;
             _receiver?.SetPhoneScreenMode();
             SetTab(_phoneTab, true);
@@ -193,6 +199,11 @@ namespace QuestPhoneStream
         private void OnVideos()
         {
             if (_receiver == null) return;
+            if (!_receiver.SupportsMedia)
+            {
+                SetNotice("Media is unavailable on this device", 3f);
+                return;
+            }
             _videosSelected = true;
             if (!_receiver.HasMediaUrl)
             {
@@ -291,11 +302,10 @@ namespace QuestPhoneStream
 
         private void OnMediaDeviceSelected(string deviceId)
         {
-            if (_receiver == null || !_receiver.SelectMediaDevice(deviceId)) return;
-            SetNotice("Device selected. Connecting… Choose 切换推流 or 抓取视频 when ready.", 3f);
-            // Selecting a device resets the media probe state; re-probe immediately so the
-            // media service does not stay "unavailable" until the user pokes it again.
-            if (_receiver.HasMediaUrl) _receiver.ProbeMedia();
+            if (_receiver == null || !_receiver.SelectDevice(deviceId)) return;
+            SetNotice(_signaling != null && _signaling.IsConnecting
+                ? "Device selected. Connecting in background…"
+                : "Device selected. Choose Screen, Media, or Control.", 3f);
         }
 
         private void OpenSettings()
@@ -306,9 +316,20 @@ namespace QuestPhoneStream
 
         private void OpenKeyboard()
         {
-            if (_receiver == null || !_receiver.IsControlConnected)
+            if (_receiver == null || !_receiver.SupportsControl)
             {
-                SetNotice("Connect a control channel to use Keyboard", 3f);
+                SetNotice("Control is unavailable on this device", 3f);
+                return;
+            }
+            if (_receiver.ActiveDevice.Capabilities.HasSpatialCapabilities &&
+                !_receiver.ActiveDevice.Capabilities.IsAuthorized("display.control"))
+            {
+                SetNotice("Control needs permission on this device", 3f);
+                return;
+            }
+            if (!_receiver.IsControlConnected)
+            {
+                SetNotice("Control is connecting in background…", 3f);
                 return;
             }
             if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
@@ -354,15 +375,19 @@ namespace QuestPhoneStream
             RefreshMediaDevices();
         }
 
+        private void OnActiveDeviceChanged(ActiveDeviceContext _)
+        {
+            UpdateStatus(_signaling.State);
+            RefreshMediaDevices();
+        }
+
         private string DeviceConnectionLabel(MediaDeviceInfo device)
         {
             if (!device.IsReady) return "○ Lost";
-            if (_signaling == null) return "● Ready";
-            var isActive = string.Equals(device.deviceId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
-                           string.Equals(device.streamId, _signaling.ActiveAndroidDeviceId, StringComparison.Ordinal) ||
-                           string.Equals(device.deviceId, _signaling.androidDeviceId, StringComparison.Ordinal) ||
-                           string.Equals(device.streamId, _signaling.androidDeviceId, StringComparison.Ordinal);
+            var active = _receiver?.ActiveDevice;
+            var isActive = active != null && string.Equals(device.deviceId, active.DeviceId, StringComparison.Ordinal);
             if (!isActive) return "● Ready";
+            if (_signaling == null) return "✓ Selected";
             var state = _signaling.State;
             if (state == ConnectionState.Registered) return "✓ Found";
             if ((int)state >= (int)ConnectionState.SessionRequesting && (int)state < (int)ConnectionState.MediaConnected) return "⟳ Connecting";
@@ -403,9 +428,9 @@ namespace QuestPhoneStream
                     if (label != null)
                     {
                         var status = DeviceConnectionLabel(device);
-                        var suffix = device.HasCapability("media") ? "" : "  ·  stream only";
+                        var capabilities = CapabilityLabel(device);
                         label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
-                            suffix + "    " + status;
+                            "    " + status + "\n" + capabilities;
                     }
                     button.interactable = device.IsReady;
                     button.gameObject.SetActive(true);
@@ -425,26 +450,55 @@ namespace QuestPhoneStream
         {
             if (_phoneStatus == null || _receiver == null) return;
             var failed = ConnectionStatus.IsFailure(state);
-            var phone = !_signaling.HasValidSignalingEndpoint ? "Waiting for device" :
+            var active = _receiver.ActiveDevice;
+            var phone = active == null ? "Waiting for device" : active.IsLost ? "Lost" :
                 failed ? "Offline" : _receiver.IsPeerConnected ? "Connected" :
                 state == ConnectionState.Registered ? "Found" :
                 (int)state >= (int)ConnectionState.SessionRequesting ? "Connecting…" : "Searching…";
-            _phoneStatus.text = "Device  ·  " + phone;
-            _screenStatus.text = "Screen  ·  " + (_receiver.HasVideoFrame ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
-            _controlStatus.text = "Control  ·  " + (_receiver.IsControlConnected ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "—");
-            _mediaStatus.text = "Media  ·  " + (!_receiver.HasMediaUrl ? "Not configured" :
+            _phoneStatus.text = "Device  ·  " + phone + (active == null ? string.Empty : "  " + active.Name);
+            _screenStatus.text = "Screen  ·  " + ScreenStatus();
+            _controlStatus.text = "Control  ·  " + ControlStatus();
+            _mediaStatus.text = "Media  ·  " + (!_receiver.SupportsMedia ? "Unavailable" :
                 _receiver.IsMediaReady ? "Ready" : _receiver.IsMediaStale ? "Stale" :
                 _receiver.IsMediaChecking ? "Checking…" : "Unreachable");
-            var controlReady = _receiver.IsControlConnected;
-            if (_keyboardButton != null) _keyboardButton.interactable = controlReady;
+            if (_phoneTab != null) _phoneTab.interactable = _receiver.SupportsScreen;
+            if (_videosTab != null) _videosTab.interactable = _receiver.SupportsMedia;
+            if (_keyboardButton != null) _keyboardButton.interactable = _receiver.SupportsControl;
             if (_hint != null && !HasActiveNotice)
-                _hint.text = !_signaling.HasValidSignalingEndpoint
-                    ? "Waiting for device. Select a phone or Configure manually in Advanced Settings."
-                    : controlReady
-                    ? "Select a device · then choose 切换推流 or 抓取视频"
-                    : "Screen and Media are available; Keyboard needs control permission";
+                _hint.text = active == null
+                    ? "Select a device. This does not open Screen or Media."
+                    : active.IsLost
+                    ? "Selected device was lost. Choose another device."
+                    : "Selected: " + active.Name + ". Choose Screen, Media, or Keyboard.";
             SetTab(_phoneTab, !_videosSelected);
             SetTab(_videosTab, _videosSelected);
+        }
+
+        private string ScreenStatus()
+        {
+            if (!_receiver.SupportsScreen) return "Unavailable";
+            return _receiver.HasVideoFrame ? "Ready" : _receiver.IsPeerConnected ? "Waiting" : "Connecting";
+        }
+
+        private string ControlStatus()
+        {
+            if (!_receiver.SupportsControl) return "Unavailable";
+            var capabilities = _receiver.ActiveDevice.Capabilities;
+            if (capabilities.HasSpatialCapabilities && !capabilities.IsAuthorized("display.control")) return "Needs permission";
+            return _receiver.IsControlConnected ? "Ready" : "Connecting";
+        }
+
+        private string CapabilityLabel(MediaDeviceInfo device)
+        {
+            var active = _receiver?.ActiveDevice;
+            var capabilities = active != null && string.Equals(active.DeviceId, device.deviceId, StringComparison.Ordinal)
+                ? active.Capabilities : null;
+            var screen = capabilities != null ? capabilities.Supports("display.publish") : device.HasCapability("screen");
+            var media = capabilities != null
+                ? capabilities.Supports("media.list") || capabilities.Supports("media.open")
+                : device.HasCapability("media");
+            var control = capabilities != null ? capabilities.Supports("display.control") : device.HasCapability("control");
+            return "Screen " + (screen ? "✓" : "—") + "   Media " + (media ? "✓" : "—") + "   Control " + (control ? "✓" : "—");
         }
 
         private static void SetTab(Button button, bool selected)
@@ -502,6 +556,7 @@ namespace QuestPhoneStream
         {
             if (_signaling != null) _signaling.StateChanged -= OnStateChanged;
             if (_signaling != null) _signaling.TargetChanged -= OnTargetChanged;
+            if (_receiver != null) _receiver.ActiveDeviceChanged -= OnActiveDeviceChanged;
             if (_receiver != null && _receiver.mediaDiscovery != null) _receiver.mediaDiscovery.DevicesChanged -= RefreshMediaDevices;
             if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
         }

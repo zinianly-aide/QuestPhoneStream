@@ -109,5 +109,89 @@ namespace QuestPhoneStream.Tests
                 UnityEngine.Object.DestroyImmediate(root);
             }
         }
+
+        [Test]
+        public void ActiveDeviceContext_StoresEveryEndpointForTheSelectedDevice()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(
+                deviceId: "pixel-10", name: "Pixel 10", host: "192.168.1.10", port: 8788,
+                capabilities: "screen,media,control", streamId: "android-pixel",
+                signalingUrl: "ws://192.168.1.10:8787", isReady: true));
+
+            Assert.AreEqual("pixel-10", context.DeviceId);
+            Assert.AreEqual("android-pixel", context.StreamId);
+            Assert.AreEqual("ws://192.168.1.10:8787", context.SignalingUrl);
+            Assert.AreEqual("http://192.168.1.10:8788", context.MediaBaseUrl);
+            Assert.IsTrue(context.Capabilities.Supports("display.publish"));
+            Assert.IsTrue(context.Capabilities.Supports("media.list"));
+            Assert.IsTrue(context.Capabilities.Supports("display.control"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_NsdCapsAreBootstrapHints()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(capabilities: "screen,control", isReady: true));
+            Assert.IsFalse(context.Capabilities.HasSpatialCapabilities);
+            Assert.IsTrue(context.Capabilities.Supports("display.publish"));
+            Assert.IsFalse(context.Capabilities.Supports("media.open"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_SpatialCapabilitiesOverrideNsdBootstrap()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(capabilities: "screen,media,control", isReady: true));
+            context.Capabilities.ApplySpatial(new[] {
+                Capability("display.publish", available: false, authorized: false),
+                Capability("media.open", available: true, authorized: true)
+            });
+
+            Assert.IsTrue(context.Capabilities.HasSpatialCapabilities);
+            Assert.IsFalse(context.Capabilities.Supports("display.publish"));
+            Assert.IsTrue(context.Capabilities.Supports("media.open"));
+            Assert.IsFalse(context.Capabilities.Supports("display.control"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_RejectsOldPeerAfterQuickDeviceSwitch()
+        {
+            var deviceA = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(deviceId: "a", streamId: "android-a", isReady: true));
+            var deviceB = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(deviceId: "b", streamId: "android-b", isReady: true));
+
+            Assert.IsFalse(deviceB.MatchesPeer("android-a"));
+            Assert.IsTrue(deviceB.MatchesPeer("android-b"));
+            Assert.IsTrue(deviceA.MatchesPeer("a"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_LostDeviceRetainsIdentityButBecomesUnavailable()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(
+                deviceId: "pixel", streamId: "android-pixel", capabilities: "media", isReady: true));
+            context.MarkLost();
+
+            Assert.AreEqual("pixel", context.DeviceId);
+            Assert.IsTrue(context.IsLost);
+        }
+
+        [Test]
+        public void ActiveDeviceContext_UpdatesSameDeviceWithoutReplacingSpatialCapabilities()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(
+                deviceId: "pixel", host: "192.168.1.2", port: 8788, capabilities: "screen", isReady: true));
+            context.Capabilities.ApplySpatial(new[] { Capability("media.list", available: true, authorized: true) });
+            context.UpdateFromDiscovery(new MediaDeviceInfo(
+                deviceId: "pixel", host: "192.168.1.3", port: 8788, capabilities: "screen", isReady: true));
+
+            Assert.AreEqual("http://192.168.1.3:8788", context.MediaBaseUrl);
+            Assert.IsTrue(context.Capabilities.Supports("media.list"));
+            Assert.IsFalse(context.Capabilities.Supports("display.publish"));
+        }
+
+        private static SpatialCapabilityDescriptor Capability(string name, bool available, bool authorized) =>
+            new SpatialCapabilityDescriptor
+            {
+                name = name,
+                state = new SpatialCapabilityState { available = available, authorized = authorized, active = false }
+            };
     }
 }

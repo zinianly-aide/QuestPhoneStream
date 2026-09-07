@@ -33,7 +33,7 @@ namespace QuestPhoneStream
         private QuestHomeUI _homeUI;
         private PanelInputMapper _panelInput;
         private string _negotiationId;
-        private string _selectedMediaDeviceId;
+        private ActiveDeviceContext _activeDevice;
         private bool _remoteReady, _handlingOffer, _peerConnected, _hasFrame;
         public string PeerConnectionState { get; private set; } = "None";
         private bool _mediaProbeReady, _mediaProbeChecking, _mediaProbeFailed;
@@ -52,16 +52,23 @@ namespace QuestPhoneStream
         public string ActiveAndroidDeviceId => signaling == null ? string.Empty : signaling.ActiveAndroidDeviceId;
         public string ActiveSessionId => signaling == null ? string.Empty : signaling.ActiveSessionId;
         public bool AcceptSpatialMessage(SpatialEnvelope message) => signaling != null && signaling.AcceptSpatialMessage(message);
+        public ActiveDeviceContext ActiveDevice => _activeDevice;
+        public event Action<ActiveDeviceContext> ActiveDeviceChanged;
         public MediaDeviceInfo SelectedMediaDevice
         {
             get
             {
-                if (mediaDiscovery == null || string.IsNullOrWhiteSpace(_selectedMediaDeviceId)) return null;
-                mediaDiscovery.TryGetDevice(_selectedMediaDeviceId, out var device);
+                if (mediaDiscovery == null || _activeDevice == null) return null;
+                mediaDiscovery.TryGetDevice(_activeDevice.DeviceId, out var device);
                 return device;
             }
         }
-        public bool HasMediaUrl => !string.IsNullOrWhiteSpace(CurrentMediaUrl);
+        public bool HasSelectedDevice => _activeDevice != null && !_activeDevice.IsLost;
+        public bool SupportsScreen => HasSelectedDevice && _activeDevice.Capabilities.Supports("display.publish");
+        public bool SupportsMedia => HasSelectedDevice &&
+            (_activeDevice.Capabilities.Supports("media.list") || _activeDevice.Capabilities.Supports("media.open"));
+        public bool SupportsControl => HasSelectedDevice && _activeDevice.Capabilities.Supports("display.control");
+        public bool HasMediaUrl => SupportsMedia && !string.IsNullOrWhiteSpace(CurrentMediaUrl);
         public bool IsMediaStale => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl &&
             Time.unscaledTime - _mediaProbeAt > MediaProbeTtlSeconds;
         public bool IsMediaReady => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl && !IsMediaStale;
@@ -70,9 +77,7 @@ namespace QuestPhoneStream
         public bool IsMediaFailed => HasMediaUrl && _mediaProbeFailed && _mediaProbeUrl == CurrentMediaUrl;
         public bool HasReadyMediaDevice => mediaDiscovery != null && mediaDiscovery.HasReadyDevice;
 
-        private string CurrentMediaUrl => _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
-            ? _settingsUI.mediaBaseUrlInput.text.Trim()
-            : PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", string.Empty).Trim();
+        private string CurrentMediaUrl => _activeDevice != null ? _activeDevice.MediaBaseUrl.Trim() : string.Empty;
 
         /// <summary>
         /// Creates the dedicated unreliable/unordered Spatial data channel on the
@@ -112,6 +117,9 @@ namespace QuestPhoneStream
             EnsureHomeUI();
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
+            signaling.PeerCapabilitiesReceived += OnPeerCapabilities;
+            signaling.PeerCapabilitiesChanged += OnPeerCapabilities;
+            mediaDiscovery.DevicesChanged += OnDiscoveredDevicesChanged;
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
             _videoRender = StartCoroutine(RenderVideoAtEndOfFrame());
             if (connectOnStart) _ = signaling.ReconnectAsync();
@@ -169,42 +177,46 @@ namespace QuestPhoneStream
             mediaDiscovery.StartDiscovery();
         }
 
-        public bool SelectMediaDevice(string deviceId)
+        public bool SelectDevice(string deviceId)
         {
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
-            _selectedMediaDeviceId = deviceId;
+            _activeDevice = ActiveDeviceContext.FromDiscovered(device);
             EnsureSettingsUI();
             // Screen-only publishers (e.g. the macOS sender) advertise no media
             // capability; never point the catalog/probe at their NSD port, which is
             // not an HTTP server. Only media-capable devices get a catalog base URL.
-            var mediaCapable = device.HasCapability("media");
+            var mediaCapable = SupportsMedia;
             if (mediaCapable)
             {
-                _settingsUI.SetMediaBaseUrl(device.BaseUrl);
+                _settingsUI.SetMediaBaseUrl(_activeDevice.MediaBaseUrl);
                 _mediaProbeReady = false;
                 _mediaProbeChecking = false;
                 _mediaProbeFailed = false;
                 _mediaProbeAt = -Mathf.Infinity;
                 _mediaProbeUrl = null;
             }
-            _settingsUI.ApplyDiscoveredSignaling(device.signalingUrl, device.streamId);
+            _settingsUI.ApplyDiscoveredSignaling(_activeDevice.SignalingUrl, _activeDevice.StreamId);
             // Persist discovered endpoint so restart keeps the same peer.
-            if (!string.IsNullOrWhiteSpace(device.signalingUrl))
-                PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl_v2", device.signalingUrl.Trim());
-            if (!string.IsNullOrWhiteSpace(device.streamId))
-                PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", device.streamId.Trim());
+            if (!string.IsNullOrWhiteSpace(_activeDevice.SignalingUrl))
+                PlayerPrefs.SetString("QuestPhoneStream_SignalingUrl_v2", _activeDevice.SignalingUrl.Trim());
+            if (!string.IsNullOrWhiteSpace(_activeDevice.StreamId))
+                PlayerPrefs.SetString("QuestPhoneStream_AndroidDeviceId", _activeDevice.StreamId.Trim());
             PlayerPrefs.Save();
-            // Auto-connect signaling for screen streaming. Media browsing works without this,
-            // but selecting a device should also establish the control/screen transport.
-            if (signaling != null && !string.IsNullOrWhiteSpace(device.signalingUrl))
+            // Device selection may preconnect the display transport for latency, but does not
+            // change the selected content mode. Screen, Media, and Control stay explicit actions.
+            if (signaling != null && !string.IsNullOrWhiteSpace(_activeDevice.SignalingUrl))
             {
-                Debug.Log($"[QuestPhoneStream] Auto-connect signaling after device select url={device.signalingUrl} android={device.streamId}");
+                Debug.Log($"[QuestPhoneStream] Background preconnect after device select url={_activeDevice.SignalingUrl} android={_activeDevice.StreamId}");
                 _ = signaling.ReconnectAsync();
             }
-            Debug.Log($"[QuestPhoneStream] Selected discovered media device name={device.name} id={device.deviceId} baseUrl={(mediaCapable ? device.BaseUrl : "(none, screen-only)")} mediaCapable={mediaCapable}");
+            ActiveDeviceChanged?.Invoke(_activeDevice);
+            Debug.Log($"[QuestPhoneStream] Selected device name={_activeDevice.Name} id={_activeDevice.DeviceId} baseUrl={(mediaCapable ? _activeDevice.MediaBaseUrl : "(none, screen-only)")} mediaCapable={mediaCapable}");
             _homeUI?.RefreshStatus();
             return true;
         }
+
+        // Compatibility entry point for existing UI/tests while terminology migrates to Device.
+        public bool SelectMediaDevice(string deviceId) => SelectDevice(deviceId);
 
         public void ToggleSettings()
         {
@@ -236,6 +248,7 @@ namespace QuestPhoneStream
 
         public void OpenVideoLibrary()
         {
+            if (!SupportsMedia) return;
             EnsureSettingsUI();
             _settingsUI.SetAdvancedVisible(false);
             _settingsUI.Show();
@@ -245,6 +258,7 @@ namespace QuestPhoneStream
 
         public void SetPhoneScreenMode()
         {
+            if (!SupportsScreen) return;
             mediaPlayback?.SetPhoneScreenMode();
             if (phoneScreenRenderer != null) phoneScreenRenderer.enabled = true;
             _homeUI?.Show();
@@ -271,6 +285,27 @@ namespace QuestPhoneStream
         {
             if (_homeUI == null) _homeUI = gameObject.AddComponent<QuestHomeUI>();
             _homeUI.Initialize(signaling, xrCamera, this);
+        }
+
+        private void OnPeerCapabilities(string peerId, SpatialCapabilityDescriptor[] capabilities)
+        {
+            // The signaling client already isolates the active reconnect epoch. Keep a second
+            // device identity check here so an A -> B switch cannot restore A's UI capability set.
+            if (_activeDevice == null || !_activeDevice.MatchesPeer(peerId)) return;
+            _activeDevice.Capabilities.ApplySpatial(capabilities);
+            ActiveDeviceChanged?.Invoke(_activeDevice);
+            _homeUI?.RefreshStatus();
+        }
+
+        private void OnDiscoveredDevicesChanged()
+        {
+            if (_activeDevice == null || mediaDiscovery == null) return;
+            if (mediaDiscovery.TryGetDevice(_activeDevice.DeviceId, out var device))
+                _activeDevice.UpdateFromDiscovery(device);
+            else
+                _activeDevice.MarkLost();
+            ActiveDeviceChanged?.Invoke(_activeDevice);
+            _homeUI?.RefreshStatus();
         }
 
         private bool IsCurrent(RTCPeerConnection peer, string id) =>
@@ -465,7 +500,10 @@ namespace QuestPhoneStream
             {
                 signaling.MessageReceived -= OnSignalMessage;
                 signaling.NegotiationInvalidated -= ResetPeer;
+                signaling.PeerCapabilitiesReceived -= OnPeerCapabilities;
+                signaling.PeerCapabilitiesChanged -= OnPeerCapabilities;
             }
+            if (mediaDiscovery != null) mediaDiscovery.DevicesChanged -= OnDiscoveredDevicesChanged;
             if (_videoRender != null) StopCoroutine(_videoRender);
             ResetPeer();
             if (_webRtcUpdate != null) StopCoroutine(_webRtcUpdate);
