@@ -3,6 +3,7 @@ using System.IO;
 using NUnit.Framework;
 using QuestPhoneStream.Interaction;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace QuestPhoneStream.Tests
 {
