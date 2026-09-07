@@ -1,59 +1,24 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 namespace QuestPhoneStream
 {
     /// <summary>
-    /// Maps controller / head-gaze ray hits on the PhonePanel collider to
-    /// Android touch coordinates sent over the WebRTC control data channel.
-    ///
-    /// Gesture model:
-    ///   Trigger pressed  → record start UV (must hit panel)
-    ///   held             → track current UV each frame
-    ///   Trigger released → if moved &gt; threshold → swipe, else → click
+    /// SDK-neutral mapping only. Interaction backends provide pointer events to
+    /// PhonePanelTouchController; this component maps panel hit positions to Android pixels.
     /// </summary>
     public sealed class PanelInputMapper : MonoBehaviour
     {
-        [Header("Ray Source")]
-        public Camera rayCamera; // fallback: head gaze when no controller is wired
-        public XRRayInteractor controllerInteractor; // right-hand controller ray (set at runtime)
-        public XRRayInteractor secondaryControllerInteractor; // left-hand/controller-or-hand ray
-
-        [Header("Targets")]
+        public Camera rayCamera;
         public Collider panelCollider;
         public ControlChannel controlChannel;
-
-        [Header("Input")]
-        public InputAction clickAction; // right trigger press (set at runtime)
-        public InputAction secondaryClickAction; // left trigger / hand-ray select
-        public PhonePanelSpatialInteraction spatialInteraction;
-
-        [Header("Gate")]
-        public SettingsUI settingsUI; // blocks panel clicks while settings panel is visible
-
-        [Header("Gesture")]
-        [Tooltip("Minimum pixel distance (in Android screen space) between press and release to count as a swipe instead of a click.")]
+        public SettingsUI settingsUI;
+        [Tooltip("Minimum Android-pixel movement that is sent as a swipe.")]
         public int swipeThresholdPixels = 24;
-
-        [Header("Cursor Highlight")]
-        [Tooltip("Shows a live marker at the controller ray hit point on the panel.")]
         public bool showCursor = true;
-        [Tooltip("Optional prefab/transform to use as the cursor. If null, a red sphere is created at runtime.")]
         public Transform cursorIndicator;
 
         private int _androidWidth = 720;
         private int _androidHeight = 1280;
-        private GameObject _runtimeCursor;
-
-        // Gesture state
-        private bool _gestureActive;
-        private string _gestureSource;
-        private XRRayInteractor _gestureRay;
-        private Vector2 _gestureStartUv;
-        private Vector2 _lastUv;
-        private float _gestureStartTime;
-
         public int AndroidWidth => _androidWidth;
         public int AndroidHeight => _androidHeight;
 
@@ -63,232 +28,32 @@ namespace QuestPhoneStream
             controlChannel = FindFirstObjectByType<ControlChannel>();
         }
 
-        private void Update()
-        {
-            // Lazy-resolve settings UI if not wired at init time.
-            if (settingsUI == null) settingsUI = FindFirstObjectByType<SettingsUI>();
-
-            // Live cursor highlight at the ray hit point (helps debug coordinate mapping).
-            UpdateCursor();
-
-            // Block touch passthrough while the settings panel is open.
-            if (settingsUI != null && settingsUI.IsVisible)
-            {
-                // Cancel any in-progress gesture so we don't send a stale swipe later.
-                _gestureActive = false;
-                _gestureSource = null;
-                _gestureRay = null;
-                spatialInteraction?.EndScreenTouch();
-                return;
-            }
-
-            ProcessRayInput("right-ray", controllerInteractor, clickAction);
-            ProcessRayInput("left-ray", secondaryControllerInteractor, secondaryClickAction);
-        }
-
-        // ── Gesture lifecycle ─────────────────────────────────────────────
-
-        private void ProcessRayInput(string source, XRRayInteractor interactor, InputAction action)
-        {
-            if (action == null) return;
-            if (action.WasPressedThisFrame()) BeginGesture(source, interactor);
-            if (!_gestureActive || _gestureSource != source) return;
-            if (TryGetPanelUv(interactor, out var currentUv)) _lastUv = currentUv;
-            if (action.WasReleasedThisFrame()) EndGesture(source);
-        }
-
-        private void BeginGesture(string source, XRRayInteractor interactor)
-        {
-            if (_gestureActive || (spatialInteraction != null && !spatialInteraction.TryBeginScreenTouch())) return;
-            if (!TryGetPanelUv(interactor, out var uv))
-            {
-                spatialInteraction?.EndScreenTouch();
-                Debug.Log("[QuestPhoneStream] Gesture begin: ray missed panel, ignoring press");
-                return;
-            }
-
-            _gestureActive = true;
-            _gestureSource = source;
-            _gestureRay = interactor;
-            _gestureStartUv = uv;
-            _lastUv = uv;
-            _gestureStartTime = Time.unscaledTime;
-            Debug.Log($"[QuestPhoneStream] Gesture begin uv=({uv.x:F3},{uv.y:F3})");
-        }
-
-        private void EndGesture(string source)
-        {
-            if (!_gestureActive || _gestureSource != source) return;
-            _gestureActive = false;
-            _gestureSource = null;
-            _gestureRay = null;
-            spatialInteraction?.EndScreenTouch();
-
-            var start = ToAndroidPixels(_gestureStartUv);
-            var end = ToAndroidPixels(_lastUv);
-
-            int dx = end.x - start.x;
-            int dy = end.y - start.y;
-            int distSq = dx * dx + dy * dy;
-            int thresholdSq = swipeThresholdPixels * swipeThresholdPixels;
-
-            if (distSq >= thresholdSq)
-            {
-                int durationMs = Mathf.Clamp(
-                    Mathf.RoundToInt((Time.unscaledTime - _gestureStartTime) * 1000f),
-                    100, 2000);
-
-                controlChannel.SendSwipe(start.x, start.y, end.x, end.y, durationMs);
-                Debug.Log($"[QuestPhoneStream] Swipe ({start.x},{start.y})→({end.x},{end.y}) " +
-                          $"dist={Mathf.Sqrt(distSq):F0}px dur={durationMs}ms res={_androidWidth}x{_androidHeight}");
-            }
-            else
-            {
-                controlChannel.SendClick(start.x, start.y);
-                Debug.Log($"[QuestPhoneStream] Click ({start.x},{start.y}) " +
-                          $"dist={Mathf.Sqrt(distSq):F0}px res={_androidWidth}x{_androidHeight}");
-            }
-        }
-
-        // ── Ray / UV helpers ──────────────────────────────────────────────
-
-        /// <summary>Cast the active ray (controller, fallback head gaze) and return the panel UV at the hit point.</summary>
         public bool TryMapHitToUv(Ray ray, out Vector2 uv)
         {
             uv = default;
-            if (panelCollider == null) return false;
-            if (!panelCollider.Raycast(ray, out RaycastHit hit, 20f))
-                return false;
+            if (panelCollider == null || !panelCollider.Raycast(ray, out RaycastHit hit, 20f)) return false;
             uv = hit.textureCoord;
             return true;
         }
 
-        private bool TryGetPanelUv(XRRayInteractor interactor, out Vector2 uv)
+        public bool TryMapWorldPointToUv(Vector3 worldPosition, Vector3 worldNormal, out Vector2 uv)
         {
-            if (interactor != null)
-            {
-                var origin = interactor.rayOriginTransform != null ? interactor.rayOriginTransform : interactor.transform;
-                return TryMapHitToUv(new Ray(origin.position, origin.forward), out uv);
-            }
-            if (rayCamera != null) return TryMapHitToUv(new Ray(rayCamera.transform.position, rayCamera.transform.forward), out uv);
-            uv = default;
-            return false;
+            var normal = worldNormal.sqrMagnitude > 0.0001f ? worldNormal.normalized : -transform.forward;
+            return TryMapHitToUv(new Ray(worldPosition + normal * 0.04f, -normal), out uv);
         }
 
-        public bool TryBeginExternalTouch(string source, Vector2 uv)
+        public Vector2Int MapUvToAndroidPixels(Vector2 uv)
         {
-            if (_gestureActive || (spatialInteraction != null && !spatialInteraction.TryBeginScreenTouch())) return false;
-            _gestureActive = true;
-            _gestureSource = source;
-            _gestureStartUv = _lastUv = uv;
-            _gestureStartTime = Time.unscaledTime;
-            return true;
+            return new Vector2Int(
+                Mathf.RoundToInt(Mathf.Clamp01(uv.x) * _androidWidth),
+                Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * _androidHeight));
         }
 
-        public void UpdateExternalTouch(string source, Vector2 uv)
-        {
-            if (_gestureActive && _gestureSource == source) _lastUv = uv;
-        }
-
-        public void EndExternalTouch(string source)
-        {
-            EndGesture(source);
-        }
-
-        /// <summary>Convert panel UV (0-1, origin bottom-left) to Android pixel coordinates (origin top-left).</summary>
-        private Vector2Int ToAndroidPixels(Vector2 uv)
-        {
-            int x = Mathf.RoundToInt(Mathf.Clamp01(uv.x) * _androidWidth);
-            int y = Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * _androidHeight);
-            return new Vector2Int(x, y);
-        }
-
-        // ── Resolution ────────────────────────────────────────────────────
-
-        /// <summary>Update the target Android resolution from the incoming video texture.</summary>
         public void SetAndroidResolution(int width, int height)
         {
-            if (width > 0 && height > 0 && (width != _androidWidth || height != _androidHeight))
-            {
-                _androidWidth = width;
-                _androidHeight = height;
-                Debug.Log($"[QuestPhoneStream] PanelInputMapper android resolution -> {width}x{height}");
-            }
-        }
-
-        // ── Cursor highlight ───────────────────────────────────────────────
-
-        /// <summary>Create a visible cursor marker if none was assigned in the inspector.</summary>
-        private void EnsureRuntimeCursor()
-        {
-            if (cursorIndicator != null || _runtimeCursor != null) return;
-            try
-            {
-                _runtimeCursor = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                _runtimeCursor.name = "CursorIndicator";
-                _runtimeCursor.transform.localScale = Vector3.one * 0.032f;
-                // Remove the sphere's collider so it never blocks the panel raycast.
-                var col = _runtimeCursor.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-                var r = _runtimeCursor.GetComponent<Renderer>();
-                if (r != null && r.material != null)
-                {
-                    r.material.color = new Color(1f, 0.15f, 0.15f, 1f);
-                }
-                _runtimeCursor.SetActive(false);
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"[QuestPhoneStream] Failed to create cursor: {e.Message}");
-            }
-        }
-
-        /// <summary>Raycast every frame and position the cursor marker at the hit point on the panel.</summary>
-        private void UpdateCursor()
-        {
-            if (!showCursor || panelCollider == null) return;
-            EnsureRuntimeCursor();
-            var cursorGo = cursorIndicator != null ? cursorIndicator.gameObject : _runtimeCursor;
-            if (cursorGo == null) return;
-
-            Ray ray;
-            var activeRay = _gestureRay != null ? _gestureRay : controllerInteractor;
-            if (activeRay != null)
-            {
-                var origin = activeRay.rayOriginTransform != null ? activeRay.rayOriginTransform : activeRay.transform;
-                ray = new Ray(origin.position, origin.forward);
-            }
-            else if (rayCamera != null)
-            {
-                ray = new Ray(rayCamera.transform.position, rayCamera.transform.forward);
-            }
-            else { cursorGo.SetActive(false); return; }
-
-            if (panelCollider.Raycast(ray, out RaycastHit hit, 20f))
-            {
-                cursorGo.SetActive(true);
-                // Offset well in front of the panel so the entire sphere is visible
-                // (sphere radius ~0.016m at scale 0.032; offset 0.035m prevents z-fighting).
-                cursorGo.transform.position = hit.point + hit.normal * 0.035f;
-                cursorGo.transform.rotation = Quaternion.LookRotation(-hit.normal);
-            }
-            else
-            {
-                cursorGo.SetActive(false);
-            }
-        }
-
-        private void OnDisable()
-        {
-            _gestureActive = false;
-            _gestureSource = null;
-            _gestureRay = null;
-            spatialInteraction?.EndScreenTouch();
-        }
-
-        private void OnDestroy()
-        {
-            if (_runtimeCursor != null) Destroy(_runtimeCursor);
+            if (width <= 0 || height <= 0) return;
+            _androidWidth = width;
+            _androidHeight = height;
         }
     }
 }

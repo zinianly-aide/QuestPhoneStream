@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
+using QuestPhoneStream.Interaction;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.XR.Management;
@@ -74,13 +75,18 @@ namespace QuestPhoneStream.Editor
             var receiver = app.AddComponent<QuestWebRtcReceiver>();
             var mapper = panel.AddComponent<PanelInputMapper>();
             panelRoot.AddComponent<PhonePanelController>();
-            var spatial = panelRoot.AddComponent<PhonePanelSpatialInteraction>();
-            spatial.screenCollider = panel.GetComponent<Collider>();
-            spatial.grabCollider = grabHandle.GetComponent<Collider>();
-            spatial.frameRenderer = grabHandle.GetComponent<Renderer>();
-            var handInteraction = panelRoot.AddComponent<PhonePanelHandInteraction>();
-            handInteraction.panel = spatial;
-            handInteraction.inputMapper = mapper;
+            var manipulator = panelRoot.AddComponent<PhonePanelManipulator>();
+            manipulator.frameRenderer = grabHandle.GetComponent<Renderer>();
+            var touch = panelRoot.AddComponent<PhonePanelTouchController>();
+            touch.mapper = mapper;
+            touch.manipulator = manipulator;
+            var backendManager = panelRoot.AddComponent<InteractionBackendManager>();
+            var router = panelRoot.AddComponent<PhonePanelInteractionRouter>();
+            router.screenCollider = panel.GetComponent<Collider>();
+            router.grabCollider = grabHandle.GetComponent<Collider>();
+            router.touchController = touch;
+            router.manipulator = manipulator;
+            router.backendManager = backendManager;
 
             control.signaling = signaling;
             receiver.signaling = signaling;
@@ -94,7 +100,6 @@ namespace QuestPhoneStream.Editor
             mapper.rayCamera = camera;
             mapper.panelCollider = panel.GetComponent<Collider>();
             mapper.controlChannel = control;
-            mapper.spatialInteraction = spatial;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
 

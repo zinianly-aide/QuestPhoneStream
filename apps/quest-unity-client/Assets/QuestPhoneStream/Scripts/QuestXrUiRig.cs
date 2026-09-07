@@ -10,6 +10,8 @@ using UnityEngine.XR.Interaction.Toolkit.Inputs.Readers;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using QuestPhoneStream.Interaction;
+using QuestPhoneStream.Interaction.Backends.XRI;
 
 namespace QuestPhoneStream
 {
@@ -69,16 +71,17 @@ namespace QuestPhoneStream
             _root.SetActive(true);
             Debug.Log($"[QuestPhoneStream] XR rig initialized. Camera world pos={camera.transform.position} rot={camera.transform.eulerAngles}");
             ConfigureSpatialPhonePanel(camera);
-            WirePanelInput();
+            InitializePhonePanelBackend(camera);
         }
 
-        /// <summary>Wire the right-hand controller ray and trigger action to PanelInputMapper at runtime.</summary>
-        private void WirePanelInput()
+        /// <summary>Provide XRI runtime dependencies to the SDK-neutral interaction backend.</summary>
+        private void InitializePhonePanelBackend(Camera camera)
         {
-            var panelInput = FindFirstObjectByType<PanelInputMapper>();
-            if (panelInput == null)
+            var router = FindFirstObjectByType<PhonePanelInteractionRouter>();
+            var backendManager = FindFirstObjectByType<InteractionBackendManager>();
+            if (router == null || backendManager == null)
             {
-                Debug.LogWarning("[QuestPhoneStream] WirePanelInput: PanelInputMapper not found in scene");
+                Debug.LogWarning("[QuestPhoneStream] PhonePanel interaction components not found in scene");
                 return;
             }
             var rightController = GameObject.Find("Right Controller");
@@ -88,34 +91,26 @@ namespace QuestPhoneStream
             if (rightController != null)
             {
                 rightRay = rightController.GetComponent<XRRayInteractor>();
-                if (rightRay != null)
-                {
-                    panelInput.controllerInteractor = rightRay;
-                    Debug.Log("[QuestPhoneStream] PanelInputMapper wired to Right Controller ray");
-                }
+                if (rightRay != null) Debug.Log("[QuestPhoneStream] XRI backend received Right Controller ray");
             }
             if (leftController != null)
             {
                 leftRay = leftController.GetComponent<XRRayInteractor>();
-                if (leftRay != null) panelInput.secondaryControllerInteractor = leftRay;
             }
-            var triggerAction = Actions.FindAction("RightHand UI Click", true);
-            if (triggerAction != null)
-            {
-                panelInput.clickAction = triggerAction;
-                Debug.Log("[QuestPhoneStream] PanelInputMapper clickAction bound to RightHand UI Click (trigger)");
-            }
-            panelInput.secondaryClickAction = Actions.FindAction("LeftHand UI Click", true);
-
-            var spatial = panelInput.GetComponentInParent<PhonePanelSpatialInteraction>();
-            if (spatial != null)
-            {
-                spatial.leftRay = leftRay;
-                spatial.rightRay = rightRay;
-                spatial.leftGrabAction = Actions.FindAction("LeftHand Grab", true);
-                spatial.rightGrabAction = Actions.FindAction("RightHand Grab", true);
-                panelInput.spatialInteraction = spatial;
-            }
+            XriInteractionBackend.EnsureRegistered();
+            var dependencies = new XriRuntimeDependencies {
+                leftRay = leftRay, rightRay = rightRay,
+                leftClick = Actions.FindAction("LeftHand UI Click", true),
+                rightClick = Actions.FindAction("RightHand UI Click", true),
+                leftGrab = Actions.FindAction("LeftHand Grab", true),
+                rightGrab = Actions.FindAction("RightHand Grab", true)
+            };
+            var context = new InteractionBackendContext {
+                panelRoot = router.gameObject, screenCollider = router.screenCollider,
+                grabCollider = router.grabCollider, camera = camera, runtimeDependencies = dependencies
+            };
+            if (backendManager.InitializeBackend(context)) router.Attach(backendManager.ActiveBackend);
+            else Debug.LogWarning("[QuestPhoneStream] no PhonePanel interaction backend is available");
         }
 
         private void ConfigureSpatialPhonePanel(Camera camera)
@@ -139,24 +134,28 @@ namespace QuestPhoneStream
             var screen = root.transform.Find("PhoneScreen")?.gameObject ?? panel;
             var screenCollider = screen.GetComponent<Collider>();
             var handle = EnsureGrabHandle(root.transform);
-            var spatial = root.GetComponent<PhonePanelSpatialInteraction>() ?? root.AddComponent<PhonePanelSpatialInteraction>();
-            spatial.screenCollider = screenCollider;
-            spatial.grabCollider = handle.GetComponent<Collider>();
-            spatial.frameRenderer = handle.GetComponent<Renderer>();
-            spatial.defaultDistance = 1.5f;
-            spatial.minScale = 0.5f;
-            spatial.maxScale = 2.5f;
-            spatial.ResetPose(camera);
+            var manipulator = root.GetComponent<PhonePanelManipulator>() ?? root.AddComponent<PhonePanelManipulator>();
+            manipulator.frameRenderer = handle.GetComponent<Renderer>();
+            manipulator.defaultDistance = 1.5f;
+            manipulator.minScale = 0.5f;
+            manipulator.maxScale = 2.5f;
+            manipulator.ResetPose(camera);
 
             var mapper = screen.GetComponent<PanelInputMapper>();
             if (mapper != null)
             {
                 mapper.panelCollider = screenCollider;
-                mapper.spatialInteraction = spatial;
             }
-            var handInteraction = root.GetComponent<PhonePanelHandInteraction>() ?? root.AddComponent<PhonePanelHandInteraction>();
-            handInteraction.panel = spatial;
-            handInteraction.inputMapper = mapper;
+            var touch = root.GetComponent<PhonePanelTouchController>() ?? root.AddComponent<PhonePanelTouchController>();
+            touch.mapper = mapper;
+            touch.manipulator = manipulator;
+            var backendManager = root.GetComponent<InteractionBackendManager>() ?? root.AddComponent<InteractionBackendManager>();
+            var router = root.GetComponent<PhonePanelInteractionRouter>() ?? root.AddComponent<PhonePanelInteractionRouter>();
+            router.screenCollider = screenCollider;
+            router.grabCollider = handle.GetComponent<Collider>();
+            router.touchController = touch;
+            router.manipulator = manipulator;
+            router.backendManager = backendManager;
 
             // Ensure the receiver writes video to the SAME material the renderer uses.
             // Use sharedMaterial to avoid creating a per-renderer instance that would
@@ -239,7 +238,7 @@ namespace QuestPhoneStream
                 inputActionReferenceValue = Reference(hand + " UI Click Value")
             };
             // Trigger remains screen/UI-only. No XRI select input is configured;
-            // PhonePanelSpatialInteraction owns frame grabbing from the separate grip action.
+            // Trigger is screen/UI-only; the XRI backend maps the separate grip action to the frame.
             controller.AddComponent<XRInteractorLineVisual>();
         }
 

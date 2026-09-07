@@ -1,4 +1,5 @@
 using UnityEngine;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
 {
@@ -43,27 +44,27 @@ namespace QuestPhoneStream
 
         public void ResetScale()
         {
-            var spatial = GetComponent<PhonePanelSpatialInteraction>();
-            if (spatial != null) spatial.SetUniformScale(1f);
+            var manipulator = GetComponent<PhonePanelManipulator>();
+            if (manipulator != null) manipulator.SetUniformScale(1f);
             else transform.localScale = _initialLocalScale;
         }
 
         public void ResetPose()
         {
-            var spatial = GetComponent<PhonePanelSpatialInteraction>();
-            if (spatial == null) return;
+            var manipulator = GetComponent<PhonePanelManipulator>();
+            if (manipulator == null) return;
             var camera = Camera.main ?? FindFirstObjectByType<Camera>();
-            spatial.ResetPose(camera);
+            manipulator.ResetPose(camera);
         }
 
         public void Recenter() => ResetPose();
 
         private void SetUniformScale(float scale)
         {
-            var spatial = GetComponent<PhonePanelSpatialInteraction>();
-            if (spatial != null)
+            var manipulator = GetComponent<PhonePanelManipulator>();
+            if (manipulator != null)
             {
-                spatial.SetUniformScale(scale);
+                manipulator.SetUniformScale(scale);
                 return;
             }
             float clamped = Mathf.Clamp(scale, minScale, maxScale);

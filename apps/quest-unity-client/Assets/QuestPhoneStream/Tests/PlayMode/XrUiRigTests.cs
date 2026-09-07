@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.TestTools;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream.Tests
 {
@@ -51,7 +52,9 @@ namespace QuestPhoneStream.Tests
                 Assert.IsNotNull(panelRoot);
                 Assert.AreSame(origin.transform.Find("SpatialPanels"), panelRoot.transform.parent);
                 Assert.AreNotSame(camera.transform, panelRoot.transform.parent);
-                Assert.AreNotSame(panel.GetComponent<Collider>(), panelRoot.GetComponent<PhonePanelSpatialInteraction>().grabCollider);
+                var router = panelRoot.GetComponent<PhonePanelInteractionRouter>();
+                Assert.IsNotNull(router);
+                Assert.AreNotSame(panel.GetComponent<Collider>(), router.grabCollider);
                 yield return null;
             }
             finally
