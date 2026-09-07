@@ -171,7 +171,9 @@ namespace QuestPhoneStream.Tests
             var deviceScroll = panel.Find("DeviceScroll") as RectTransform;
             Assert.IsNotNull(deviceScroll);
             Assert.Less(deviceScroll.anchorMax.y, advanced.GetComponent<RectTransform>().anchorMin.y);
-            Assert.Less(advanced.GetComponent<RectTransform>().anchorMax.y, phone.GetComponent<RectTransform>().anchorMin.y);
+            Assert.Less(phone.GetComponent<RectTransform>().anchorMax.x, videos.GetComponent<RectTransform>().anchorMin.x);
+            Assert.Less(videos.GetComponent<RectTransform>().anchorMax.x, keyboard.GetComponent<RectTransform>().anchorMin.x);
+            Assert.Less(keyboard.GetComponent<RectTransform>().anchorMax.x, advanced.GetComponent<RectTransform>().anchorMin.x);
 
             advanced.onClick.Invoke();
             var settingsObject = GameObject.Find("SettingsUI");
