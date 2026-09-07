@@ -101,6 +101,9 @@ namespace QuestPhoneStream
 
         private static bool TryGetJointPoses(XRHand hand, out Pose wrist, out Pose index, out Pose thumb)
         {
+            wrist = default;
+            index = default;
+            thumb = default;
             return hand.GetJoint(XRHandJointID.Wrist).TryGetPose(out wrist) &&
                    hand.GetJoint(XRHandJointID.IndexTip).TryGetPose(out index) &&
                    hand.GetJoint(XRHandJointID.ThumbTip).TryGetPose(out thumb);
