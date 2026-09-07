@@ -25,6 +25,10 @@ namespace QuestPhoneStream.Editor
         private const string ScenePath = SceneDir + "/QuestPhoneStreamMvp.unity";
         private const string MaterialDir = "Assets/QuestPhoneStream/Materials";
         private const string PanelMaterialPath = MaterialDir + "/PhonePanel.mat";
+        private const string PanelShaderName = "QuestPhoneStream/UnlitVideo";
+        private const string PanoramicMaterialPath = MaterialDir + "/UnityPanoramic.mat";
+        private const string PanoramicShaderName = "Skybox/Panoramic";
+        private const string DevToolsDefine = "QPS_DEV_TOOLS";
 
         [MenuItem("QuestPhoneStream/Create MVP Scene")]
         public static void CreateMvpScene()
@@ -43,18 +47,13 @@ namespace QuestPhoneStream.Editor
             light.intensity = 1.25f;
             light.transform.rotation = Quaternion.Euler(45f, 25f, 0f);
 
-            var material = AssetDatabase.LoadAssetAtPath<Material>(PanelMaterialPath);
-            if (material == null)
-            {
-                material = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-                material.color = Color.white;
-                AssetDatabase.CreateAsset(material, PanelMaterialPath);
-            }
+            var material = EnsurePanelMaterial();
+            var panoramicMaterial = EnsureUnityPanoramicMaterial();
 
             var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
             panel.name = "PhonePanel";
             panel.transform.position = new Vector3(0f, 1.45f, 1.2f);
-            panel.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            panel.transform.rotation = Quaternion.identity;
             panel.transform.localScale = new Vector3(0.72f, 1.6f, 1f);
             panel.GetComponent<MeshRenderer>().sharedMaterial = material;
             if (panel.GetComponent<Collider>() == null)
@@ -76,6 +75,8 @@ namespace QuestPhoneStream.Editor
             receiver.xrUiRig = app.AddComponent<QuestXrUiRig>();
             receiver.xrUiRig.actionAsset = AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/QuestPhoneStream/Resources/QuestUi.inputactions");
             receiver.targetMaterial = material;
+            receiver.panoramicMaterialTemplate = panoramicMaterial;
+            receiver.vrBackend = VrBackend.UnityPanoramic;
             mapper.rayCamera = camera;
             mapper.panelCollider = panel.GetComponent<Collider>();
             mapper.controlChannel = control;
@@ -89,6 +90,17 @@ namespace QuestPhoneStream.Editor
 
         public static void BuildAndroid()
         {
+            BuildAndroidInternal(false);
+        }
+
+        [MenuItem("QuestPhoneStream/Build Android (Development Tools)")]
+        public static void BuildAndroidDevelopmentTools()
+        {
+            BuildAndroidInternal(true);
+        }
+
+        private static void BuildAndroidInternal(bool includeDevTools)
+        {
             if (!File.Exists(ScenePath))
             {
                 CreateMvpScene();
@@ -97,6 +109,9 @@ namespace QuestPhoneStream.Editor
             {
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             }
+            EnsurePanelMaterial();
+            EnsureUnityPanoramicMaterial();
+            AssetDatabase.SaveAssets();
 
             const string output = "Builds/QuestPhoneStream.apk";
             Directory.CreateDirectory("Builds");
@@ -120,13 +135,21 @@ namespace QuestPhoneStream.Editor
             PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android, MergeDefines(
                 PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android),
                 "USE_INPUT_SYSTEM_POSE_CONTROL",
-                "USE_STICK_CONTROL_THUMBSTICKS"));
+                "USE_STICK_CONTROL_THUMBSTICKS",
+                includeDevTools ? DevToolsDefine : string.Empty));
+            if (!includeDevTools)
+                PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android,
+                    RemoveDefine(PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android), DevToolsDefine));
 #else
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android, MergeDefines(
                 PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android),
                 "USE_INPUT_SYSTEM_POSE_CONTROL",
-                "USE_STICK_CONTROL_THUMBSTICKS"));
+                "USE_STICK_CONTROL_THUMBSTICKS",
+                includeDevTools ? DevToolsDefine : string.Empty));
+            if (!includeDevTools)
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android,
+                    RemoveDefine(PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android), DevToolsDefine));
 #endif
             EnsureAndroidExternalTools();
             EnsureAndroidOpenXrLoader();
@@ -137,7 +160,7 @@ namespace QuestPhoneStream.Editor
                 scenes = new[] { ScenePath },
                 locationPathName = output,
                 target = BuildTarget.Android,
-                options = BuildOptions.None
+                options = includeDevTools ? BuildOptions.Development | BuildOptions.AllowDebugging : BuildOptions.None
             });
 
             if (report.summary.result != BuildResult.Succeeded)
@@ -145,7 +168,58 @@ namespace QuestPhoneStream.Editor
                 throw new Exception($"QuestPhoneStream Android build failed: {report.summary.result}");
             }
 
-            Debug.Log($"QuestPhoneStream Android build succeeded: {output}");
+            Debug.Log($"QuestPhoneStream Android build succeeded: {output} (devTools={includeDevTools})");
+        }
+
+        private static Material EnsurePanelMaterial()
+        {
+            Directory.CreateDirectory(MaterialDir);
+            var shader = Shader.Find(PanelShaderName) ?? Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
+            if (shader == null) throw new InvalidOperationException("No compatible video panel shader was found");
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(PanelMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, PanelMaterialPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+            if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
+            return material;
+        }
+
+        private static Material EnsureUnityPanoramicMaterial()
+        {
+            Directory.CreateDirectory(MaterialDir);
+            var shader = Shader.Find(PanoramicShaderName);
+            if (shader == null)
+                throw new InvalidOperationException("Unity Skybox/Panoramic shader was not found; VR panoramic backend cannot be built");
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(PanoramicMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, PanoramicMaterialPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+
+            if (material.HasProperty("_Mapping")) material.SetFloat("_Mapping", 1f); // Latitude Longitude
+            if (material.HasProperty("_ImageType")) material.SetFloat("_ImageType", 0f); // 360
+            if (material.HasProperty("_Layout")) material.SetFloat("_Layout", 0f); // Mono
+            if (material.HasProperty("_MirrorOnBack")) material.SetFloat("_MirrorOnBack", 0f);
+            if (material.HasProperty("_Rotation")) material.SetFloat("_Rotation", 0f);
+            if (material.HasProperty("_Exposure")) material.SetFloat("_Exposure", 1f);
+            if (material.HasProperty("_Tint")) material.SetColor("_Tint", Color.white);
+            EditorUtility.SetDirty(material);
+            return material;
         }
 
         private static void EnsureAndroidExternalTools()
@@ -168,6 +242,7 @@ namespace QuestPhoneStream.Editor
                 "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home");
             var gradlePath = FirstExistingDirectory(
                 Environment.GetEnvironmentVariable("UNITY_GRADLE_PATH"),
+                "/Volumes/ssd/Applications/Unity/PlaybackEngines/AndroidPlayer/Tools/gradle",
                 "/Users/anshi/ssd/Applications/Unity/PlaybackEngines/AndroidPlayer/Tools/gradle");
 
             SetAndroidToolPath("AndroidSDKRoot", sdkRoot);
@@ -446,6 +521,7 @@ namespace QuestPhoneStream.Editor
             var defines = currentDefines.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var define in requiredDefines)
             {
+                if (string.IsNullOrWhiteSpace(define)) continue;
                 if (Array.IndexOf(defines, define) < 0)
                 {
                     currentDefines = string.IsNullOrWhiteSpace(currentDefines)
@@ -455,6 +531,15 @@ namespace QuestPhoneStream.Editor
             }
 
             return currentDefines;
+        }
+
+        private static string RemoveDefine(string currentDefines, string defineToRemove)
+        {
+            var defines = currentDefines.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var kept = new List<string>();
+            foreach (var define in defines)
+                if (!string.Equals(define, defineToRemove, StringComparison.Ordinal)) kept.Add(define);
+            return string.Join(";", kept.ToArray());
         }
 
         private static XRGeneralSettingsPerBuildTarget LoadOrCreateXrBuildTargetSettings()

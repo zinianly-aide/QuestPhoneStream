@@ -10,19 +10,42 @@ namespace QuestPhoneStream
         public string channelName = "control";
 
         private RTCDataChannel _channel;
+        public bool IsOpen => _channel != null && _channel.ReadyState == RTCDataChannelState.Open;
+        public string StateLabel => _channel == null ? "None" : _channel.ReadyState.ToString();
 
         public void Attach(RTCDataChannel channel)
         {
             ResetChannel();
             _channel = channel;
+            _channel.OnOpen = HandleOpen;
+            _channel.OnClose = HandleClose;
+            signaling?.ReportCapabilityState("display.control", active: IsOpen);
             Debug.Log("[QuestPhoneStream] Control DataChannel attached");
         }
 
         public void ResetChannel()
         {
-            _channel?.Close();
-            _channel?.Dispose();
-            _channel = null;
+            signaling?.ReportCapabilityState("display.control", active: false);
+            if (_channel != null)
+            {
+                _channel.OnOpen = null;
+                _channel.OnClose = null;
+                _channel.Close();
+                _channel.Dispose();
+                _channel = null;
+            }
+        }
+
+        private void HandleOpen()
+        {
+            signaling?.ReportCapabilityState("display.control", active: true);
+            Debug.Log("[QuestPhoneStream] Control DataChannel open");
+        }
+
+        private void HandleClose()
+        {
+            signaling?.ReportCapabilityState("display.control", active: false);
+            Debug.Log("[QuestPhoneStream] Control DataChannel closed");
         }
 
         private void OnDestroy() { ResetChannel(); }
@@ -82,9 +105,11 @@ namespace QuestPhoneStream
             if (_channel != null && _channel.ReadyState == RTCDataChannelState.Open)
             {
                 _channel.Send(Encoding.UTF8.GetBytes(json));
+                Debug.Log($"[QuestPhoneStream] Control sent: type={command.type} x={command.x} y={command.y}");
             }
             else
             {
+                signaling?.ReportCapabilityState("display.control", active: false);
                 Debug.LogWarning("[QuestPhoneStream] Control channel is not open");
             }
         }

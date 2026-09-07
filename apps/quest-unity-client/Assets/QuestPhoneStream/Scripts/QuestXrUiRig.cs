@@ -69,27 +69,35 @@ namespace QuestPhoneStream
             _root.SetActive(true);
             Debug.Log($"[QuestPhoneStream] XR rig initialized. Camera world pos={camera.transform.position} rot={camera.transform.eulerAngles}");
             PinPanelToCamera(camera);
-            StartCoroutine(LogCameraPose(camera));
+            WirePanelInput();
         }
 
-        private System.Collections.IEnumerator LogCameraPose(Camera camera)
+        /// <summary>Wire the right-hand controller ray and trigger action to PanelInputMapper at runtime.</summary>
+        private void WirePanelInput()
         {
-            var panel = GameObject.Find("PhonePanel");
-            for (int i = 0; i < 20; i++)
+            var panelInput = FindFirstObjectByType<PanelInputMapper>();
+            if (panelInput == null)
             {
-                yield return new WaitForSeconds(1f);
-                var r = panel != null ? panel.GetComponent<Renderer>() : null;
-                string parentName = panel != null && panel.transform.parent != null ? panel.transform.parent.name : "NULL";
-                string vis = r != null ? $"renEn={r.enabled} isVis={r.isVisible}" : "noRenderer";
-                Debug.Log($"[QuestPhoneStream] Pose[{i}] camPos={camera.transform.position} camRot={camera.transform.eulerAngles} " +
-                          $"panelWorldPos={(panel != null ? panel.transform.position.ToString() : "NULL")} " +
-                          $"panelLocalPos={(panel != null ? panel.transform.localPosition.ToString() : "NULL")} " +
-                          $"parent={parentName} active={(panel != null ? panel.activeInHierarchy : false)} {vis} " +
-                          $"cullMask={camera.cullingMask} panelLayer={(panel != null ? panel.layer : -1)}");
+                Debug.LogWarning("[QuestPhoneStream] WirePanelInput: PanelInputMapper not found in scene");
+                return;
+            }
+            var rightController = GameObject.Find("Right Controller");
+            if (rightController != null)
+            {
+                var interactor = rightController.GetComponent<XRRayInteractor>();
+                if (interactor != null)
+                {
+                    panelInput.controllerInteractor = interactor;
+                    Debug.Log("[QuestPhoneStream] PanelInputMapper wired to Right Controller ray");
+                }
+            }
+            var triggerAction = Actions.FindAction("RightHand UI Click", true);
+            if (triggerAction != null)
+            {
+                panelInput.clickAction = triggerAction;
+                Debug.Log("[QuestPhoneStream] PanelInputMapper clickAction bound to RightHand UI Click (trigger)");
             }
         }
-
-        public Vector3 _panelWorldPos;
 
         // The phone mirror panel lives at a fixed scene position by default, which
         // is not where the real head is after the XR origin is rebuilt from the
@@ -106,7 +114,6 @@ namespace QuestPhoneStream
             panel.transform.localPosition = new Vector3(0, 0.05f, 2.2f);
             panel.transform.localRotation = Quaternion.identity;
             panel.transform.localScale = new Vector3(0.9f, 1.6f, 1f); // 9:16 portrait mirror
-            _panelWorldPos = panel.transform.position;
 
             // Ensure the receiver writes video to the SAME material the renderer uses.
             // Use sharedMaterial to avoid creating a per-renderer instance that would
@@ -114,10 +121,14 @@ namespace QuestPhoneStream
             var r = panel.GetComponent<Renderer>();
             if (r != null)
             {
+                _receiver.phoneScreenRenderer = r;
+                if (_receiver.mediaPlayback != null) _receiver.mediaPlayback.phoneScreenRenderer = r;
                 var shared = r.sharedMaterial;
-                if (_receiver.targetMaterial == null) _receiver.targetMaterial = shared;
-                // Double-sided: Quad orientation cannot cause backface culling to hide it.
-                if (shared != null) shared.SetFloat("_Cull", 0);
+                if (shared != null)
+                {
+                    _receiver.targetMaterial = shared;
+                    if (shared.HasProperty("_Cull")) shared.SetFloat("_Cull", 0f);
+                }
                 Debug.Log($"[QuestPhoneStream] Panel material: renderer.shared={shared?.name} " +
                           $"receiver.target={_receiver.targetMaterial?.name} " +
                           $"same={shared == _receiver.targetMaterial}");
@@ -157,12 +168,17 @@ namespace QuestPhoneStream
                 inputActionReferencePerformed = Reference(hand + " UI Click"),
                 inputActionReferenceValue = Reference(hand + " UI Click Value")
             };
-            // UI selection is handled by XRI; no custom raycast/input dispatch implementation.
-            ray.selectInput = new XRInputButtonReader { inputSourceMode = XRInputButtonReader.InputSourceMode.Unused };
+            // Reuse the existing controller click action for XRI grab selection.
+            // FlatMediaPanelController gates the interactable outside Flat mode.
+            ray.selectInput = new XRInputButtonReader {
+                inputSourceMode = XRInputButtonReader.InputSourceMode.InputActionReference,
+                inputActionReferencePerformed = Reference(hand + " UI Click"),
+                inputActionReferenceValue = Reference(hand + " UI Click Value")
+            };
             controller.AddComponent<XRInteractorLineVisual>();
         }
 
-        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleSettings(); }
+        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleHome(); }
         private void OnDisable() { Actions?.Disable(); }
         private void OnEnable() { Actions?.Enable(); }
         private void OnDestroy()

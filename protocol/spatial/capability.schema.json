@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/capability.schema.json",
+  "title": "Spatial Capability Descriptor",
+  "type": "object",
+  "required": ["name", "version", "state", "transports", "features", "limits", "permissions"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^(display|media|xr|camera|audio|spatial|ai|input)\\.[a-z0-9][a-z0-9._-]*$"
+    },
+    "version": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "object",
+      "required": ["available", "authorized", "active"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "authorized": { "type": "boolean" },
+        "active": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "transports": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "features": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "limits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "value"],
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": ["string", "number", "integer", "boolean"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "permissions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+  },
+  "additionalProperties": true
+}

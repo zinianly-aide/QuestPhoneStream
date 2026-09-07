@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/error.schema.json",
+  "title": "Spatial Protocol Error",
+  "type": "object",
+  "required": ["code", "message", "retryable"],
+  "properties": {
+    "code": { "type": "string", "minLength": 1 },
+    "message": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "details": { "type": "object" }
+  },
+  "additionalProperties": true
+}

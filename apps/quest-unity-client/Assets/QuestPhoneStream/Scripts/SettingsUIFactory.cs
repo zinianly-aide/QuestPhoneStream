@@ -8,17 +8,21 @@ namespace QuestPhoneStream
     {
         private Canvas _canvas;
         private SettingsUI _settingsUI;
+        private MediaLibraryUI _mediaLibrary;
 
-        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera)
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera) =>
+            Initialize(signalingClient, xrCamera, null, null);
+
+        public SettingsUI Initialize(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback = null, QuestWebRtcReceiver receiver = null)
         {
             if (signalingClient == null || xrCamera == null)
                 throw new System.ArgumentException("Settings UI requires signaling and XR camera dependencies");
             if (_settingsUI != null) return _settingsUI;
-            CreateUI(signalingClient, xrCamera);
+            CreateUI(signalingClient, xrCamera, playback, receiver);
             return _settingsUI;
         }
 
-        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera)
+        private void CreateUI(QuestSignalingClient signalingClient, Camera xrCamera, MediaPlaybackController playback, QuestWebRtcReceiver receiver)
         {
             var canvasGo = new GameObject("SettingsCanvas");
             canvasGo.transform.SetParent(transform, false);
@@ -40,11 +44,14 @@ namespace QuestPhoneStream
             rt.localRotation = Quaternion.identity;
 
             var panel = CreatePanel(canvasGo.transform);
+            CreatePanelTitle(panel, "Connection Settings");
 
             _settingsUI = gameObject.AddComponent<SettingsUI>();
             _settingsUI.canvas = _canvas;
+            CreateBackButton(panel, out var backButton);
+            _settingsUI.backButton = backButton;
 
-            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "ws://192.168.1.9:8787", 0, out var urlInput);
+            CreateInputField(panel, "Signaling URL:", "QuestPhoneStream_SignalingUrl_v2", "", 0, out var urlInput);
             _settingsUI.signalingUrlInput = urlInput;
 
             CreateInputField(panel, "Token:", "QuestPhoneStream_Token", "dev-token", 1, out var tokenInput);
@@ -60,13 +67,50 @@ namespace QuestPhoneStream
             CreateInputField(panel, "Session ID:", "QuestPhoneStream_SessionId", "local-session-001", 4, out var sessionIdInput);
             _settingsUI.sessionIdInput = sessionIdInput;
 
-            CreateButton(panel, "Save", 5, out var saveBtn);
+            CreateInputField(panel, "Media HTTP URL:", "QuestPhoneStream_MediaBaseUrl", "", 5, out var mediaUrlInput);
+            _settingsUI.mediaBaseUrlInput = mediaUrlInput;
+
+            CreateButton(panel, "Save locally", 6, 0.05f, out var saveBtn, false);
             _settingsUI.saveButton = saveBtn;
 
-            CreateButton(panel, "Connect / Reconnect", 5, out var connectBtn);
+            CreateButton(panel, "Apply & Reconnect", 6, 0.52f, out var connectBtn, true);
             _settingsUI.connectButton = connectBtn;
 
-            CreateStatusText(panel, 7, out var statusText);
+            CreateButton(panel, "Screen", 7, 0.05f, out var phoneBtn, false);
+            CreateButton(panel, "Media Library", 7, 0.52f, out var videoBtn, true);
+            _settingsUI.phoneScreenButton = phoneBtn;
+            _settingsUI.videoLibraryButton = videoBtn;
+
+            var statusRight = 0.95f;
+#if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
+            CreateButton(panel, "Diagnostics", 8, 0.52f, out var developerToolsButton, false);
+            _settingsUI.developerToolsButton = developerToolsButton;
+
+            var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();
+            _settingsUI.wirelessAdbHelper = wirelessAdbHelper;
+            wirelessAdbHelper.Initialize(_canvas, _settingsUI.HideDeveloperTools);
+
+            var diagnostics = gameObject.GetComponent<QuestDiagnostics>() ?? gameObject.AddComponent<QuestDiagnostics>();
+            diagnostics.Initialize(receiver);
+            var developerHud = gameObject.GetComponent<DeveloperHud>() ?? gameObject.AddComponent<DeveloperHud>();
+            developerHud.Initialize(_canvas, diagnostics, wirelessAdbHelper, _settingsUI.HideDeveloperTools);
+            _settingsUI.developerHud = developerHud;
+            statusRight = 0.48f;
+#endif
+
+            var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
+            catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
+            _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
+            _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
+            _settingsUI.mediaCatalogClient = catalogClient;
+            _mediaLibrary.SetOnClose(() => {
+                _settingsUI.SetAdvancedVisible(true);
+                _settingsUI.BackToHome();
+            });
+            _settingsUI.mediaLibrary = _mediaLibrary;
+            _settingsUI.mediaPlayback = playback;
+
+            CreateStatusText(panel, 8, 0.05f, statusRight, out var statusText);
             _settingsUI.statusText = statusText;
 
             _settingsUI.Initialize(signalingClient, xrCamera);
@@ -78,7 +122,7 @@ namespace QuestPhoneStream
             panelGo.transform.SetParent(parent, false);
 
             var image = panelGo.AddComponent<Image>();
-            image.color = new Color(0.1f, 0.1f, 0.15f, 0.95f);
+            image.color = new Color(0.08f, 0.09f, 0.14f, 0.97f);
 
             var rt = panelGo.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.1f, 0.1f);
@@ -88,14 +132,60 @@ namespace QuestPhoneStream
             return panelGo.transform;
         }
 
+        private void CreatePanelTitle(Transform parent, string value)
+        {
+            var titleGo = new GameObject("Title");
+            titleGo.transform.SetParent(parent, false);
+            var title = titleGo.AddComponent<Text>();
+            title.text = value;
+            title.fontSize = 30;
+            title.fontStyle = FontStyle.Bold;
+            title.alignment = TextAnchor.MiddleCenter;
+            title.color = Color.white;
+            title.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            title.raycastTarget = false;
+            var rt = titleGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.28f, 0.91f);
+            rt.anchorMax = new Vector2(0.95f, 0.99f);
+            rt.sizeDelta = Vector2.zero;
+        }
+
+        private void CreateBackButton(Transform parent, out Button button)
+        {
+            var btnGo = new GameObject("Button_Back");
+            btnGo.transform.SetParent(parent, false);
+            var image = btnGo.AddComponent<Image>();
+            image.color = new Color(0.18f, 0.22f, 0.3f, 1f);
+            button = btnGo.AddComponent<Button>();
+            button.targetGraphic = image;
+            var rt = btnGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.05f, 0.94f);
+            rt.anchorMax = new Vector2(0.25f, 0.995f);
+            rt.sizeDelta = Vector2.zero;
+
+            var textGo = new GameObject("Text");
+            textGo.transform.SetParent(btnGo.transform, false);
+            var text = textGo.AddComponent<Text>();
+            text.text = "← Back";
+            text.fontSize = 22;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+            var textRt = textGo.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.sizeDelta = Vector2.zero;
+        }
+
         private void CreateInputField(Transform parent, string label, string prefKey, string defaultValue, int index, out InputField inputField)
         {
             var row = new GameObject($"Row_{index}");
             row.transform.SetParent(parent, false);
 
             var rowRt = row.AddComponent<RectTransform>();
-            rowRt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.12f);
-            rowRt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.12f + 0.1f);
+            rowRt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.1f);
+            rowRt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.1f + 0.08f);
             rowRt.sizeDelta = Vector2.zero;
 
             var labelGo = new GameObject("Label");
@@ -114,7 +204,7 @@ namespace QuestPhoneStream
             var inputGo = new GameObject("Input");
             inputGo.transform.SetParent(row.transform, false);
             var inputImage = inputGo.AddComponent<Image>();
-            inputImage.color = new Color(0.2f, 0.2f, 0.25f, 1f);
+            inputImage.color = new Color(0.17f, 0.18f, 0.24f, 1f);
             var inputRt = inputGo.GetComponent<RectTransform>();
             inputRt.anchorMin = new Vector2(0.37f, 0.1f);
             inputRt.anchorMax = new Vector2(1f, 0.9f);
@@ -134,27 +224,29 @@ namespace QuestPhoneStream
             textRt.offsetMin = new Vector2(10, 5);
             textRt.offsetMax = new Vector2(-10, -5);
 
-            inputField = inputGo.AddComponent<InputField>();
+            inputField = inputGo.AddComponent<QuestKeyboardInputField>();
             inputField.textComponent = text;
             inputField.targetGraphic = inputImage;
+            inputField.shouldHideMobileInput = false;
+            inputField.keyboardType = TouchScreenKeyboardType.Default;
+            inputField.lineType = InputField.LineType.SingleLine;
             inputField.text = PlayerPrefs.GetString(prefKey, defaultValue);
         }
 
-        private void CreateButton(Transform parent, string label, int index, out Button button)
+        private void CreateButton(Transform parent, string label, int index, float xPos, out Button button, bool primary)
         {
             var btnGo = new GameObject($"Button_{label}");
             btnGo.transform.SetParent(parent, false);
 
             var btnImage = btnGo.AddComponent<Image>();
-            btnImage.color = label == "Save" ? new Color(0.3f, 0.3f, 0.4f, 1f) : new Color(0.2f, 0.6f, 0.2f, 1f);
+            btnImage.color = primary ? new Color(0.16f, 0.52f, 0.34f, 1f) : new Color(0.16f, 0.20f, 0.28f, 1f);
 
             button = btnGo.AddComponent<Button>();
             button.targetGraphic = btnImage;
 
             var rt = btnGo.GetComponent<RectTransform>();
-            float xPos = label == "Save" ? 0.05f : 0.52f;
-            rt.anchorMin = new Vector2(xPos, 0.85f - index * 0.12f);
-            rt.anchorMax = new Vector2(xPos + 0.43f, 0.85f - index * 0.12f + 0.1f);
+            rt.anchorMin = new Vector2(xPos, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(xPos + 0.43f, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
 
             var textGo = new GameObject("Text");
@@ -172,7 +264,7 @@ namespace QuestPhoneStream
             textRt.sizeDelta = Vector2.zero;
         }
 
-        private void CreateStatusText(Transform parent, int index, out Text statusText)
+        private void CreateStatusText(Transform parent, int index, float minX, float maxX, out Text statusText)
         {
             var textGo = new GameObject("StatusText");
             textGo.transform.SetParent(parent, false);
@@ -180,13 +272,13 @@ namespace QuestPhoneStream
             statusText = textGo.AddComponent<Text>();
             statusText.fontSize = 22;
             statusText.raycastTarget = false;
-            statusText.color = Color.yellow;
+            statusText.color = new Color(0.95f, 0.82f, 0.35f, 1f);
             statusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             statusText.text = "";
 
             var rt = textGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.05f, 0.85f - index * 0.12f);
-            rt.anchorMax = new Vector2(0.95f, 0.85f - index * 0.12f + 0.1f);
+            rt.anchorMin = new Vector2(minX, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(maxX, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
         }
     }

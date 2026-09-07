@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QuestPhoneStream Mac Sender</title>
+  <style>
+    body { font: 14px -apple-system, BlinkMacSystemFont, sans-serif; margin: 28px; background: #111; color: #eee; }
+    .card { background: #1c1c1e; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    select, button { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px; border-radius: 8px; }
+    button { border: 0; font-weight: 600; }
+    #status { margin-top: 12px; color: #9ad; }
+    .muted { color: #999; font-size: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h2>QuestPhoneStream · Mac</h2>
+  <div class="card">
+    <div id="identity" class="muted">Loading…</div>
+    <select id="sources"></select>
+    <button id="start">Start screen stream</button>
+    <button id="stop">Stop</button>
+    <div id="status">Starting…</div>
+  </div>
+  <div class="muted">Video only · WebRTC · 1080p/30fps baseline</div>
+  <script src="renderer.js"></script>
+</body>
+</html>

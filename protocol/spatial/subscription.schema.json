@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/subscription.schema.json",
+  "title": "Spatial Subscription",
+  "type": "object",
+  "required": ["id", "capability", "rateHz", "format", "transport", "reliability", "state"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "capability": { "$ref": "capability.schema.json#/properties/name" },
+    "rateHz": { "type": "number", "minimum": 0 },
+    "format": { "type": "string", "minLength": 1 },
+    "transport": {
+      "type": "string",
+      "enum": ["webrtc.datachannel", "webrtc.track", "local"]
+    },
+    "reliability": {
+      "type": "string",
+      "enum": ["reliable", "unreliable", "partial"]
+    },
+    "state": { "type": "string", "enum": ["creating", "active", "closing", "closed"] }
+  },
+  "additionalProperties": true
+}

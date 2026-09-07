@@ -13,19 +13,37 @@ const factory = read(scripts + "SettingsUIFactory.cs");
 const receiver = read(scripts + "QuestWebRtcReceiver.cs");
 const signaling = read(scripts + "QuestSignalingClient.cs");
 const rig = read(scripts + "QuestXrUiRig.cs");
+const keyboard = read(scripts + "QuestKeyboardInputField.cs");
+const home = read(scripts + "QuestHomeUI.cs");
+const mediaUi = read(scripts + "MediaLibraryUI.cs");
+const mediaPlayback = read(scripts + "MediaPlaybackController.cs");
+const mediaRenderer = read(scripts + "VrMediaRenderer.cs");
+const flatPanel = read(scripts + "FlatMediaPanelController.cs");
+const mediaDiscovery = read(scripts + "MediaDeviceDiscovery.cs");
+const mediaDto = read(scripts + "MediaItemDto.cs");
+const settings = read(scripts + "SettingsUI.cs");
+const vrShader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Shaders/VRMediaStereo.shader");
+const build = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/QuestPhoneStreamBuild.cs");
+const panoramicMaterial = read("apps/quest-unity-client/Assets/QuestPhoneStream/Materials/UnityPanoramic.mat");
+const androidMediaItem = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaItem.kt");
+const androidMediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
+const androidNsd = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaNsdRegistration.kt");
+const androidIdentity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaDeviceIdentity.kt");
+const wirelessAdb = read(scripts + "WirelessAdbHelper.cs");
 
 test("settings dependencies are explicit; Awake/Start cannot race initialization", () => {
   assert.match(factory, /Initialize\(QuestSignalingClient signalingClient, Camera xrCamera\)/);
   assert.doesNotMatch(factory, /void (Awake|Start)\(/);
   assert.doesNotMatch(ui, /void (Awake|Start|Update)\(/);
-  for (const source of [factory, ui, receiver, rig])
+  for (const source of [factory, ui])
     assert.doesNotMatch(source, /Camera\.main|Find(?:First|Any)?Object(?:s)?(?:OfType|ByType)/);
+  assert.doesNotMatch(rig, /Camera\.main/);
   assert.match(factory, /_settingsUI\.Initialize\(signalingClient, xrCamera\)/);
 });
 
 test("visibility has one source of truth", () => {
   assert.match(ui, /bool IsVisible => canvas != null && canvas\.gameObject\.activeInHierarchy/);
-  assert.match(receiver, /_settingsUI\.Toggle\(\)/);
+  assert.match(receiver, /(_settingsUI\.Toggle\(\)|_receiver\.ToggleHome|_homeUI\?\.Toggle\(\))/);
   assert.doesNotMatch(receiver, /_settingsUI\.gameObject\.activeSelf/);
   assert.match(ui, /public void Toggle\(\) \{ if \(IsVisible\) Hide\(\); else Show\(\); \}/);
 });
@@ -40,6 +58,14 @@ test("canvas uses pixel layout and small world scale with positive input padding
   // Canvas -> panel anchors(.8) -> row(.9 x .1) -> input(.63 x .8) -> padding.
   assert.ok(width * .8 * .9 * .63 - 20 > 0);
   assert.ok(height * .8 * .1 * .8 - 10 > 22);
+});
+
+test("Quest input fields have a native keyboard fallback", () => {
+  assert.match(factory, /AddComponent<QuestKeyboardInputField>/);
+  assert.match(factory, /shouldHideMobileInput = false/);
+  assert.match(keyboard, /TouchScreenKeyboard\.Open/);
+  assert.match(keyboard, /TouchScreenKeyboard\.isSupported/);
+  assert.match(keyboard, /Status\.Done/);
 });
 
 test("scene explicitly wires camera/rig and XR input uses XRI 3 standard components", () => {
@@ -76,14 +102,14 @@ test("media callbacks and ICE are scoped and disposed on invalidation", () => {
   assert.match(receiver, /if \(IsCurrent\(peer, id\) && _videoTrack == track\)/);
   assert.match(receiver, /_pendingIce.Clear\(\)/);
   assert.match(receiver, /controlChannel\?\.ResetChannel\(\)/);
-  assert.match(receiver, /private void LateUpdate\(\)/);
+  assert.match(receiver, /RenderVideoAtEndOfFrame/);
   assert.match(read(scripts + "ControlChannel.cs"), /_channel\?\.Dispose\(\)/);
 });
 
 test("Android creates fresh peers without repeating MediaProjection startCapture", () => {
   const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/WebRtcStreamer.kt");
   const sessionBody = android.slice(android.indexOf("fun startSession("), android.indexOf("private fun createOffer("));
-  assert.match(sessionBody, /resetPeer\(\)/);
+  assert.match(sessionBody, /(resetPeer|teardownPeer)\(\)/);
   assert.match(sessionBody, /createPeerConnection/);
   assert.doesNotMatch(sessionBody, /startCapture|ScreenCapturerAndroid/);
   assert.match(android, /if \(!isCurrent\(epoch\)\) return@post/);
@@ -93,4 +119,478 @@ test("Android creates fresh peers without repeating MediaProjection startCapture
 test("Android manifest is valid XML", () => {
   execFileSync("python3", ["-c", "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])",
     root + "apps/android-agent/app/src/main/AndroidManifest.xml"]);
+});
+
+test("media control endpoints require pairing and cleartext false is corrected", () => {
+  const mediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
+  const auth = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaPairingAuth.kt");
+  const client = read(scripts + "MediaCatalogClient.cs");
+  const manifestProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ sendCatalog\(output\) \}/);
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ sendMetadata\(output/);
+  assert.match(mediaServer, /ifAuthorized\(headers, output\) \{ issueToken\(output/);
+  assert.match(mediaServer, /sendContent\(output, method == "HEAD"/);
+  const streamBody = mediaServer.slice(mediaServer.indexOf("private fun sendContent"), mediaServer.indexOf("private fun openStream"));
+  assert.ok(streamBody.indexOf("openStream(item)") < streamBody.indexOf("writeHeaders(output"));
+  assert.match(auth, /Bearer /);
+  assert.match(client, /SetRequestHeader\("Authorization", "Bearer /);
+  assert.match(manifestProcessor, /cleartextAttr\.Value, "true"/);
+  assert.doesNotMatch(client, /192\.168\.1\.6/);
+});
+
+test("Quest normal flow is compact and keeps engineering fields behind Advanced Settings", () => {
+  assert.match(home, /QuestHomeCanvas/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Phone"/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Videos"/);
+  assert.match(home, /MakeButton\(panelGo\.transform, "Keyboard"/);
+  assert.match(home, /_advancedSettingsButton = MakeButton\(panelGo\.transform, "Advanced Settings"/);
+  assert.match(home, /HomeWorldPosition\(/);
+  assert.match(home, /cameraPosition \+ forward\.normalized \* 1\.5f \+ Vector3\.down \* 0\.15f/);
+  assert.match(home, /sizeDelta = new Vector2\(900, 500\)/);
+  assert.match(home, /localScale = Vector3\.one \* 0\.0015f/);
+  assert.match(home, /deviceListGo\.AddComponent<RectMask2D>\(\)/);
+  assert.match(home, /deviceListRect\.SetParent\(panelGo\.transform, false\)/);
+  assert.match(home, /Anchor\(deviceListRect, 0\.05f, 0\.08f, 0\.95f, 0\.18f\)/);
+  assert.match(home, /OpenSettings\)/);
+  assert.match(home, /Screen  ·  /);
+  assert.match(home, /Control  ·  /);
+  assert.match(home, /Media  ·  /);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /EnsureHomeUI\(\)/);
+  assert.match(read(scripts + "QuestXrUiRig.cs"), /_receiver\.ToggleHome\(\)/);
+  assert.match(read(scripts + "SettingsUIFactory.cs"), /Advanced Settings/);
+  for (const field of ["signalingUrlInput", "tokenInput", "questDeviceIdInput", "androidDeviceIdInput", "sessionIdInput", "mediaBaseUrlInput"])
+    assert.match(settings, new RegExp(`public InputField .*${field}`));
+  assert.match(settings, /connectButton\.onClick\.AddListener\(OnConnect\)/);
+  assert.doesNotMatch(settings, /state == ConnectionState\.PeerConnected[\s\S]*BackToHome\(\)/);
+  const settingsTests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs");
+  assert.match(settingsTests, /HomeKeepsNavigationAndAdvancedSettingsInViewport/);
+  assert.match(settingsTests, /receiver\.enabled = false/);
+  assert.match(settingsTests, /PeerConnectedDoesNotHideVisibleAdvancedSettings/);
+});
+
+test("Quest wireless ADB helper is developer-only and non-invasive", () => {
+  assert.match(build, /DevToolsDefine = "QPS_DEV_TOOLS"/);
+  assert.match(build, /BuildAndroidDevelopmentTools/);
+  assert.match(build, /BuildAndroidInternal\(false\)/);
+  assert.match(build, /BuildAndroidInternal\(true\)/);
+  assert.match(build, /includeDevTools \? BuildOptions\.Development \| BuildOptions\.AllowDebugging : BuildOptions\.None/);
+  assert.match(build, /RemoveDefine\([\s\S]*DevToolsDefine/);
+  assert.match(factory, /#if QPS_DEV_TOOLS \|\| DEVELOPMENT_BUILD \|\| UNITY_EDITOR[\s\S]*Developer Tools/);
+  assert.match(ui, /developerToolsButton/);
+  assert.match(ui, /ShowDeveloperTools\(\)/);
+  assert.match(wirelessAdb, /WIRELESS_DEBUGGING_SETTINGS/);
+  assert.match(wirelessAdb, /APPLICATION_DEVELOPMENT_SETTINGS/);
+  assert.match(wirelessAdb, /TryOpenSettings\(StartSettingsActivity\)/);
+  assert.match(wirelessAdb, /MaxProbeTimeoutMs = 500/);
+  assert.match(wirelessAdb, /BeginConnect/);
+  assert.match(wirelessAdb, /StartCoroutine\(ProbeRoutine/);
+  assert.match(wirelessAdb, /CancelProbe()/);
+  assert.match(wirelessAdb, /StopCoroutine\(_probeRoutine\)/);
+  assert.doesNotMatch(wirelessAdb.slice(wirelessAdb.indexOf("public void Refresh"), wirelessAdb.indexOf("public static string SelectIpv4")), /ProbePort\(/);
+  assert.match(wirelessAdb, /adb connect \{ip\}:\{port\}/);
+  assert.doesNotMatch(wirelessAdb, /Runtime\.exec|Process\.Start|WRITE_SECURE_SETTINGS|settings put global|service\.adb/);
+  assert.doesNotMatch(wirelessAdb, /void Update\(/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /WirelessAdbHelperSelectsIpv4AndBuildsSafeCommand/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /WirelessAdbHelperMapsProbeStatesAndSettingsFallback/);
+});
+
+test("Android normal flow exposes readiness and hides engineering controls", () => {
+  const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  for (const label of ["READY", "Screen Sharing", "Remote Control", "Media", "Advanced settings"])
+    assert.match(android, new RegExp(label));
+  assert.match(android, /visibility = View\.GONE/);
+  assert.match(android, /private fun updateHomeStatus\(\)/);
+  assert.match(android, /Settings\.Secure\.ENABLED_ACCESSIBILITY_SERVICES/);
+  assert.match(android, /openAccessibilitySettings\(\)/);
+});
+
+test("Spatial messages are isolated to the selected active Android peer", () => {
+  assert.match(spatialIsolation, /IsSpatialMessageType/);
+  for (const type of ["hello", "capabilities", "subscription"])
+    assert.match(spatialIsolation, new RegExp('"' + type + '"'));
+  assert.match(signaling, /SpatialPeerIsolation\.IsSpatialMessageType/);
+  assert.match(signaling, /SpatialPeerIsolation\.Accept\(spatial, androidDeviceId, _activeAndroid, _activeSession\)/);
+  assert.match(signaling, /public bool AcceptSpatialMessage/);
+  assert.match(receiver, /AcceptSpatialMessage\(SpatialEnvelope message\)/);
+  assert.doesNotMatch(signaling, /SpatialPeerIsolation\.Accept\(spatial, [^,]+, [^,]+, null\)/);
+});
+
+test("Android signaling control plane is independent from screen capture", () => {
+  assert.match(androidControlPlane, /object AndroidSpatialControlPlane/);
+  assert.match(androidControlPlane, /fun attach\(publisher: WebRtcStreamer\)/);
+  assert.match(androidControlPlane, /fun detach\(publisher: WebRtcStreamer\)/);
+  assert.match(androidControlPlane, /SignalingClient\(/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt"), /AndroidSpatialControlPlane\.start\(currentStreamConfig\(\)\)/);
+  assert.doesNotMatch(screenService, /SignalingClient\(/);
+  assert.doesNotMatch(screenService, /signalingClient\?\.close/);
+  assert.match(screenService, /AndroidSpatialControlPlane\.start/);
+  assert.match(screenService, /CapabilityRuntime\.setDisplayPublish/);
+  assert.match(androidControl, /CapabilityRuntime\.setAccessibilityAvailable\(true\)/);
+  assert.match(androidCapabilityRuntime, /available = accessibilityAvailable/);
+  assert.match(androidCapabilityRuntime, /authorized = accessibilityAvailable && dataChannelAuthorized/);
+});
+
+test("Capability runtime and read-only developer diagnostics are wired without Home changes", () => {
+  assert.match(capabilityRuntime, /display\.publish/);
+  assert.match(capabilityRuntime, /display\.consume/);
+  assert.match(capabilityRuntime, /DataChannel/);
+  assert.match(capabilityRuntime, /WebRTC video/);
+  assert.match(diagnostics, /QuestDiagnosticsSnapshot/);
+  for (const field of ["questDeviceId", "selectedAndroidDeviceId", "spatialVersion", "nsdState", "streamId", "signalingEndpoint", "sessionId", "negotiationId", "peerState", "controlState", "mediaHttpState", "videoWidth", "videoHeight", "rendererBackend", "xrActive", "hmdTracking", "hmdPoseAvailable", "capabilitiesState"])
+    assert.match(diagnostics, new RegExp(`public .* ${field}`));
+  assert.match(developerHud, /Refresh/);
+  assert.match(developerHud, /Auto Refresh \(1 Hz\)/);
+  assert.match(developerHud, /Time\.unscaledTime \+ 1f/);
+  assert.doesNotMatch(developerHud, /Debug\.Log/);
+  assert.match(factory, /developerHud\.Initialize/);
+  assert.match(ui, /developerHud\?\.Show\(\)/);
+  assert.match(factory, /#if QPS_DEV_TOOLS \|\| DEVELOPMENT_BUILD \|\| UNITY_EDITOR/);
+});
+
+test("NSD metadata refresh is explicit and stale registration callbacks are ignored", () => {
+  assert.match(androidNsd, /fun refreshMetadata\(\)/);
+  assert.match(androidNsd, /metadataGenerations/);
+  assert.match(androidNsd, /metadataGenerations\[type\] == generation/);
+  assert.match(androidNsd, /createRegistrationListener\(advertisement\.type, registrationGeneration\)/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt"), /refreshNsdMetadata/);
+  assert.match(read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt"), /saveConfigurationAndRefreshNsd/);
+  const mainActivity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  const tokenWatcher = mainActivity.slice(mainActivity.indexOf("tokenField.addTextChangedListener"), mainActivity.indexOf("deviceIdField ="));
+  assert.doesNotMatch(tokenWatcher, /refreshNsdMetadata/);
+});
+
+test("Quest video library exposes playback controls without closing after play", () => {
+  assert.match(mediaUi, /BuildPlaybackControls\(_panel\.transform\)/);
+  for (const method of ["Pause", "Resume", "Seek", "SetVolume"])
+    assert.match(mediaUi, new RegExp(`\\.${method}\\(`));
+  assert.match(mediaUi, /SetStatus\("Playing: " \+ item\.name\)/);
+  assert.doesNotMatch(mediaUi, /SetStatus\("Playing: " \+ item\.name\)[\s\S]{0,180}Close\(\)/);
+});
+
+test("VR media renderer keeps flat playback and supports projection/stereo switching", () => {
+  assert.match(mediaDto, /ProjectionMode \{ Flat, Equirectangular \}/);
+  assert.match(mediaDto, /StereoMode \{ Mono, Sbs \}/);
+  assert.match(mediaDto, /EyeOrder \{ Lr, Rl \}/);
+  assert.match(mediaDto, /projection;[\s\S]*fov;[\s\S]*stereo;[\s\S]*eyeOrder;/);
+  assert.match(mediaDto, /projection = ProjectionMode\.Flat, fov = 360, stereo = StereoMode\.Mono, eyeOrder = EyeOrder\.Lr/);
+  assert.match(mediaRenderer, /public void Apply\(RenderTexture texture, ProjectionMode projection, int fov, StereoMode stereo, EyeOrder eyeOrder\)/);
+  assert.match(mediaRenderer, /PrimitiveType\.Sphere/);
+  assert.match(mediaRenderer, /HideVr\(\)/);
+  assert.match(mediaRenderer, /VRMediaStereo/);
+  assert.match(vrShader, /Cull Front/);
+  assert.match(vrShader, /unity_StereoEyeIndex/);
+  assert.match(vrShader, /_EyeOrder/);
+  assert.match(vrShader, /float lon = atan2\(dir\.x, dir\.z\)/);
+  assert.match(vrShader, /is180 && abs\(lon\) > UNITY_PI \/ 2\.0/);
+  assert.match(vrShader, /lon \/ UNITY_PI \+ 0\.5/);
+  assert.match(vrShader, /lon \/ \(2\.0 \* UNITY_PI\) \+ 0\.5/);
+  assert.match(vrShader, /float sampledU = is180 \? saturate\(u\) : frac\(u\)/);
+  assert.ok(vrShader.indexOf("float u =") < vrShader.indexOf("if (_Stereo > 0.5)"), "SBS sampling must follow base longitude mapping");
+  assert.match(mediaRenderer, /private void LateUpdate\(\)[\s\S]*IsVrVisible[\s\S]*_sphere\.transform\.position = xrCamera\.transform\.position/);
+  assert.doesNotMatch(mediaRenderer, /private void LateUpdate\(\)[\s\S]*_sphere\.transform\.rotation/);
+  assert.match(mediaPlayback, /PlayUrl\(string url\) => PlayUrl\(url, MediaVideoProfile\.Default\)/);
+  assert.match(mediaPlayback, /vrRenderer\?\.Apply\(renderer\.RenderTexture/);
+  assert.match(mediaPlayback, /public void ApplyProfile\(MediaVideoProfile profile\)/);
+  assert.match(mediaPlayback, /vrRenderer\?\.Release\(\)/);
+  assert.match(mediaPlayback, /phoneScreenRenderer != null\) phoneScreenRenderer\.enabled = false/);
+  assert.match(mediaPlayback, /phoneScreenRenderer != null\) phoneScreenRenderer\.enabled = true/);
+  assert.match(mediaUi, /MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /PlayUrl\(url, profile\)/);
+  for (const field of ["projection", "fov", "stereo", "eyeOrder"])
+    assert.match(androidMediaItem, new RegExp("\\b" + field + ":"));
+  assert.match(androidMediaServer, /put\("projection", item\.projection\)/);
+  assert.match(androidMediaServer, /put\("eyeOrder", item\.eyeOrder\)/);
+});
+
+test("VR playback preserves overrides and explicitly references the VR shader asset", () => {
+  const scene = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity");
+  const vrMaterial = read("apps/quest-unity-client/Assets/QuestPhoneStream/Materials/VRMediaStereo.mat");
+  assert.match(mediaUi, /private bool _manualProfileOverride/);
+  assert.match(mediaUi, /if \(!_manualProfileOverride\)[\s\S]*MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /ApplySelectedProfile\(true\)/);
+  assert.match(mediaRenderer, /public Material vrMaterialTemplate/);
+  assert.match(mediaRenderer, /new Material\(vrMaterialTemplate\)/);
+  assert.match(mediaRenderer, /Shader\.Find\("QuestPhoneStream\/VRMediaStereo"\)/);
+  assert.match(mediaRenderer, /VR media shader is unavailable/);
+  assert.match(mediaRenderer, /projection=.*fov=.*stereo=.*eye=.*shader=.*sphereVisible=/);
+  assert.match(receiver, /public Material vrMaterialTemplate/);
+  assert.match(receiver, /Initialize\(xrCamera, mediaPlayback\.renderer, vrMaterialTemplate, panoramicMaterialTemplate\)/);
+  assert.match(vrMaterial, /guid: 7f3ef1a3e7c04b1d9a6c8f20e3b64512/);
+  assert.match(scene, /vrMaterialTemplate: \{fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2\}/);
+});
+
+test("UnityPanoramic backend is an explicit skybox POC and does not create a sphere", () => {
+  assert.match(mediaRenderer, /public enum VrBackend/);
+  assert.match(mediaRenderer, /SphereCustom/);
+  assert.match(mediaRenderer, /UnityPanoramic/);
+  assert.match(mediaRenderer, /public VrBackend vrBackend = VrBackend\.UnityPanoramic/);
+  assert.match(mediaRenderer, /public Material panoramicMaterialTemplate/);
+  assert.match(mediaRenderer, /RenderSettings\.skybox/);
+  assert.match(mediaRenderer, /_originalSkybox/);
+  assert.match(mediaRenderer, /RestoreOriginalSkybox\(\)/);
+  assert.match(mediaRenderer, /public void ExitVr\(\) => HideVr\(\)/);
+  assert.match(mediaRenderer, /private void OnDisable\(\) => HideVr\(\)/);
+  assert.match(mediaRenderer, /Shader\.Find\("Skybox\/Panoramic"\)/);
+  assert.match(mediaRenderer, /_panoramicMaterial\.SetTexture\("_MainTex", texture\)/);
+  assert.match(mediaRenderer, /SetFloat\("_Mapping", 1f\)/);
+  assert.match(mediaRenderer, /SetFloat\("_ImageType", fov == 180 \? 1f : 0f\)/);
+  assert.match(mediaRenderer, /SetFloat\("_Layout", stereo == StereoMode\.Sbs \? 1f : 0f\)/);
+  assert.match(mediaRenderer, /UnityPanoramic backend does not support RL eye order yet/);
+  assert.match(mediaRenderer, /public static float CameraYawForForward\(Vector3 cameraForward\)/);
+  assert.match(mediaRenderer, /Vector3\.ProjectOnPlane\(cameraForward, Vector3\.up\)/);
+  assert.match(mediaRenderer, /Mathf\.Atan2\(horizontal\.x, horizontal\.z\)/);
+  assert.match(mediaRenderer, /Mathf\.Repeat\(CameraYawForForward\(cameraForward\), 360f\)/);
+  assert.match(mediaRenderer, /public bool RecenterPanoramic\(\)/);
+  assert.match(mediaRenderer, /_panoramicMaterial\.SetFloat\("_Rotation", newRotation\)/);
+  assert.match(mediaRenderer, /RecenterPanoramic\(\);/);
+  assert.match(mediaRenderer, /flatRenderer\?\.SetTexture\(texture\)/);
+  assert.match(mediaRenderer, /flatRenderer\.targetRenderer\.enabled = true/);
+  assert.match(mediaRenderer, /UnityPanoramic backend is unavailable/);
+  assert.match(mediaRenderer, /backend=\{vrBackend\} projection=\{projection\} fov=\{fov\} stereo=\{stereo\} eyeOrder=\{eyeOrder\}/);
+  assert.match(mediaRenderer, /cameraYaw=\{cameraYaw\} panoramicRotation=\{panoramicRotation\}/);
+  assert.match(mediaRenderer, /_MainTex assigned=\{PanoramicTextureAssigned\(\)\} _ImageType=\{imageType\} _Layout=\{layout\}/);
+  assert.match(mediaRenderer, /skyboxChanged=\{_lastSkyboxChanged\}/);
+  const panoramicBranch = mediaRenderer.slice(mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)"), mediaRenderer.indexOf("RestoreOriginalSkybox();", mediaRenderer.indexOf("if (vrBackend == VrBackend.UnityPanoramic)")));
+  assert.doesNotMatch(panoramicBranch, /EnsureSphere|CreatePrimitive\(PrimitiveType\.Sphere\)/);
+  assert.match(mediaRenderer, /backend=\{vrBackend\}[\s\S]*shader=\{ShaderName\(\)\}[\s\S]*sphereVisible=\{IsSphereVisible\}/);
+  assert.match(build, /PanoramicMaterialPath = MaterialDir \+ "\/UnityPanoramic\.mat"/);
+  assert.match(build, /PanoramicShaderName = "Skybox\/Panoramic"/);
+  assert.match(build, /EnsureUnityPanoramicMaterial\(\)/);
+  assert.match(build, /receiver\.panoramicMaterialTemplate = panoramicMaterial/);
+  assert.match(receiver, /public VrBackend vrBackend = VrBackend\.UnityPanoramic/);
+  assert.match(receiver, /mediaPlayback\.vrRenderer\.vrBackend = vrBackend/);
+  assert.match(panoramicMaterial, /m_Shader: \{fileID: 108, guid: 0000000000000000f000000000000000, type: 0\}/);
+  for (const property of ["_MainTex", "_ImageType", "_Layout", "_Mapping"])
+    assert.match(panoramicMaterial, new RegExp(property));
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /panoramicMaterialTemplate: \{fileID: 2100000, guid: 5e7d2b8c9f4a4e1b8c2d6f3071a9b5e4, type: 2\}/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Scenes/QuestPhoneStreamMvp.unity"), /vrBackend: 1/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /UnityPanoramicBackendUsesSkyboxForAllFlatAndStereoModes/);
+  assert.match(mediaUi, /private Button _recenterButton/);
+  assert.match(mediaUi, /MakeButton\(parent, "Recenter"/);
+  assert.match(mediaUi, /_playback\.Profile\.projection == ProjectionMode\.Equirectangular/);
+  assert.match(mediaUi, /_playback\.vrRenderer\.vrBackend == VrBackend\.UnityPanoramic/);
+  assert.match(mediaUi, /_playback\?\.vrRenderer\?\.RecenterPanoramic\(\)/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /PanoramicRotationMatchesUnitySkyboxYawSign/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /ManualPanoramicRecenterUpdatesMaterialRotation/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /PanoramicFailureKeepsFlatRendererAndOriginalSkybox/);
+});
+
+test("Flat playback preserves aspect ratio and gates XRI interaction by projection", () => {
+  assert.match(flatPanel, /XRGrabInteractable/);
+  assert.match(flatPanel, /_aspectRatio = width \/ \(float\)height/);
+  assert.match(flatPanel, /_baseLongSide = 1\.6f/);
+  assert.match(flatPanel, /minScale = 0\.5f/);
+  assert.match(flatPanel, /maxScale = 2\.5f/);
+  assert.match(flatPanel, /projection == ProjectionMode\.Flat/);
+  assert.match(flatPanel, /grabInteractable\.enabled = IsFlatActive/);
+  assert.match(flatPanel, /panelRenderer\.enabled = IsFlatActive/);
+  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
+  assert.match(mediaPlayback, /SetVideoDimensions\(\(int\)player\.width, \(int\)player\.height\)/);
+  assert.match(mediaPlayback, /flatPanelController\?\.SetProjection\(Profile\.projection\)/);
+  for (const label of ['"-"', '"Rotate"', '"Reset"'])
+    assert.match(mediaUi, new RegExp(`MakeButton\\(parent, ${label}`));
+  assert.match(mediaUi, /MakeButton\(parent, "\+"/);
+  assert.match(mediaUi, /flatPanelController\?\.ScaleDown\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.ScaleUp\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.RotateOrientation\(\)/);
+  assert.match(mediaUi, /flatPanelController\?\.ResetPose\(\)/);
+  assert.match(rig, /ray\.selectInput = new XRInputButtonReader/);
+  assert.match(rig, /Reference\(hand \+ " UI Click"\)/);
+});
+
+test("Flat panel reset is world-locked and orientation toggles exactly between 0 and 90 degrees", () => {
+  assert.doesNotMatch(flatPanel, /ResetPose\(\)[\s\S]*SetParent\(xrCamera/);
+  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
+  assert.match(flatPanel, /transform\.SetPositionAndRotation\(worldPosition, _orientationBaseRotation\)/);
+  assert.match(flatPanel, /var angle = _rotated \? 90f : 0f/);
+  assert.match(flatPanel, /Quaternion\.AngleAxis\(angle/);
+  assert.doesNotMatch(flatPanel, /transform\.Rotate\(/);
+  assert.match(mediaRenderer, /_sphere\.transform\.SetParent\(transform\.parent, true\)/);
+  assert.doesNotMatch(flatPanel, /SetParent\(xrCamera\.transform/);
+});
+
+test("Flat controls require active media mode and metadata yields until a manual profile override", () => {
+  assert.match(mediaUi, /private bool _manualProfileOverride/);
+  assert.doesNotMatch(mediaUi, /_profileInitialized/);
+  assert.match(mediaUi, /if \(!_manualProfileOverride\)[\s\S]*MediaVideoProfile\.From\(item\)/);
+  assert.match(mediaUi, /ApplySelectedProfile\(true\)/);
+  assert.match(mediaUi, /_playback\.IsMediaMode[\s\S]*_playback\.Profile\.projection == ProjectionMode\.Flat/);
+  assert.match(mediaUi, /button\.gameObject\.SetActive\(active\)/);
+});
+
+test("Android media server advertises a persistent UUID through NSD for its current port", () => {
+  assert.match(androidNsd, /NsdManager/);
+  assert.match(androidNsd, /SERVICE_TYPE = "_qps-media\._tcp\."/);
+  for (const attribute of ["v", "id", "name", "caps"])
+    assert.match(androidNsd, new RegExp(`setAttribute\\("${attribute}"`));
+  assert.match(androidNsd, /setAttribute\("v", "1"\)/);
+  assert.match(androidNsd, /Advertisement\(LEGACY_SERVICE_TYPE, "media"\)/);
+  assert.match(androidNsd, /port = portProvider\(\)/);
+  assert.match(androidIdentity, /UUID\.randomUUID\(\)/);
+  assert.match(androidIdentity, /getSharedPreferences/);
+  assert.doesNotMatch(androidIdentity, /MAC|macAddress|NetworkInterface/);
+  assert.match(androidMediaServer, /MediaNsdRegistration\([\s\S]*streamIdProvider[\s\S]*signalingEndpointProvider/);
+  assert.match(androidMediaServer, /nsdRegistration\.start\(\)/);
+  assert.match(androidMediaServer, /nsdRegistration\.stop\(\)/);
+  assert.match(androidNsd, /WifiManager/);
+  assert.match(androidNsd, /Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S/);
+  assert.match(androidNsd, /createMulticastLock/);
+  assert.match(androidNsd, /setReferenceCounted\(false\)/);
+  assert.match(androidNsd, /lock\.acquire\(\)/);
+  assert.match(androidNsd, /lock\.release\(\)/);
+  const registrationFailure = androidNsd.slice(androidNsd.indexOf("override fun onRegistrationFailed"), androidNsd.indexOf("override fun onServiceUnregistered"));
+  assert.doesNotMatch(registrationFailure, /started = false/);
+  assert.match(read("apps/android-agent/app/src/main/AndroidManifest.xml"), /CHANGE_WIFI_MULTICAST_STATE/);
+});
+
+test("Quest NSD discovery deduplicates by device id, resolves services, handles loss and brackets IPv6 URLs", () => {
+  assert.match(mediaDiscovery, /ServiceType = "_qps-media\._tcp\."/);
+  assert.match(mediaDiscovery, /UnifiedServiceType = "_qps-device\._tcp\."/);
+  assert.match(mediaDiscovery, /DiscoveryServiceTypes = \{ UnifiedServiceType, LegacyServiceType \}/);
+  assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$DiscoveryListener"\)/);
+  assert.match(mediaDiscovery, /base\("android\.net\.nsd\.NsdManager\$ResolveListener"\)/);
+  assert.match(mediaDiscovery, /Dictionary<string, MediaDeviceInfo>/);
+  assert.match(mediaDiscovery, /_devices\[deviceId\]/);
+  assert.match(mediaDiscovery, /HasReadyDevice/);
+  assert.match(mediaDiscovery, /device\.IsReady = false/);
+  assert.match(mediaDiscovery, /_activeServiceKeys/);
+  assert.match(mediaDiscovery, /_discoveryGeneration/);
+  assert.match(mediaDiscovery, /!IsCurrent\(bridge, generation\)/);
+  assert.match(mediaDiscovery, /serviceIsActive = _activeServiceKeys\.Contains\(serviceKey\)/);
+  assert.match(mediaDiscovery, /previousBridge\?\.Dispose\(\)/);
+  assert.match(mediaDiscovery, /bridge\?\.Dispose\(\)/);
+  assert.match(mediaDiscovery, /onServiceFound[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onServiceResolved[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onServiceLost[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onStartDiscoveryFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onStopDiscoveryFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /onResolveFailed[\s\S]*UnityMainThread\.Enqueue/);
+  assert.match(mediaDiscovery, /createMulticastLock/);
+  assert.match(mediaDiscovery, /setReferenceCounted.*false/);
+  assert.match(mediaDiscovery, /_multicastLock\.Call\("release"\)/);
+  assert.match(mediaDiscovery, /normalizedHost\.IndexOf\(/);
+  assert.match(mediaDiscovery, /normalizedHost = "\[" \+ normalizedHost\.Trim\('\[', '\]'\) \+ "\]"/);
+  assert.match(mediaDiscovery, /TryGetReadyDevice/);
+  assert.doesNotMatch(mediaDiscovery, /capabilities != "media"/);
+  assert.match(mediaDiscovery, /string\.IsNullOrWhiteSpace\(capabilities\)/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /MediaDeviceDiscovery mediaDiscovery/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /SelectMediaDevice\(string deviceId\)/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.SetMediaBaseUrl\(device\.BaseUrl\)/);
+  assert.match(read(scripts + "QuestWebRtcReceiver.cs"), /_settingsUI\.ApplyDiscoveredSignaling\(device\.signalingUrl, device\.streamId\)/);
+  assert.match(settings, /ApplyDiscoveredSignaling\(string endpoint, string streamId\)/);
+  assert.match(settings, /public MediaCatalogClient mediaCatalogClient/);
+  assert.match(settings, /mediaCatalogClient\.baseUrl = normalized/);
+  assert.match(home, /Media phones/);
+  assert.match(home, /device\.IsReady \? "Ready" : "Lost"/);
+  assert.match(home, /button\.interactable = device\.IsReady/);
+  assert.match(home, /OnMediaDeviceSelected/);
+});
+
+test("Unified NSD advertises and discovers capabilities without secrets", () => {
+  assert.match(androidNsd, /UNIFIED_SERVICE_TYPE = "_qps-device\._tcp\."/);
+  assert.match(androidNsd, /Advertisement\(UNIFIED_SERVICE_TYPE, "media,screen,control"\)/);
+  assert.match(androidNsd, /Advertisement\(LEGACY_SERVICE_TYPE, "media"\)/);
+  assert.match(androidNsd, /advertisements\.forEach/);
+  assert.match(androidNsd, /streamIdProvider\(\)/);
+  assert.match(androidNsd, /signalingEndpointProvider\(\)/);
+  assert.match(androidNsd, /setAttribute\("streamId"/);
+  assert.match(androidNsd, /setAttribute\("signalingUrl"/);
+  assert.match(androidNsd, /advertisement\.type == UNIFIED_SERVICE_TYPE/);
+  const unifiedAttributes = androidNsd.slice(androidNsd.indexOf('if (advertisement.type == UNIFIED_SERVICE_TYPE)'), androidNsd.indexOf('if (advertisement.type == UNIFIED_SERVICE_TYPE)') + 260);
+  assert.match(unifiedAttributes, /setAttribute\("streamId"/);
+  assert.match(unifiedAttributes, /setAttribute\("signalingUrl"/);
+  assert.doesNotMatch(androidNsd.slice(androidNsd.indexOf('Advertisement(LEGACY_SERVICE_TYPE'), androidNsd.indexOf('Advertisement(LEGACY_SERVICE_TYPE') + 80), /streamId|signalingUrl/);
+  assert.doesNotMatch(androidNsd, /token|sessionId|session_id|secret/i);
+  assert.match(mediaDiscovery, /public string capabilities/);
+  assert.match(mediaDiscovery, /public string streamId/);
+  assert.match(mediaDiscovery, /public string signalingUrl/);
+  assert.match(mediaDiscovery, /GetAttribute\(attributes, "streamId"\)/);
+  assert.match(mediaDiscovery, /GetAttribute\(attributes, "signalingUrl"\)/);
+  assert.match(mediaDiscovery, /HasCapability\(string capability\)/);
+  assert.match(mediaDiscovery, /GetServiceKey\(serviceInfo\)/);
+  assert.match(mediaDiscovery, /device\.capabilities = MergeCapabilitiesForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /DiscoveryServiceTypes\.Length/);
+  assert.match(mediaDiscovery, /_manager == null[\s\S]*return false/);
+  assert.match(receiver, /signaling\.androidDeviceId =|ApplyDiscoveredSignaling/);
+  assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/SettingsUiTests.cs"), /SelectedDeviceMetadataAppliesToExistingSignalingClient/);
+});
+
+test("Quest NSD lifecycle isolates stale callbacks and resets readiness", () => {
+  assert.match(mediaDiscovery, /_activeServiceKeys\.Add\(serviceKey\)/);
+  assert.match(mediaDiscovery, /currentGeneration \? "Late resolve" : "Stale callback"/);
+  assert.match(mediaDiscovery, /Stale callback ignored/);
+  assert.match(mediaDiscovery, /ReferenceEquals\(_bridge, bridge\)/);
+  assert.match(mediaDiscovery, /generation == _discoveryGeneration/);
+  assert.match(mediaDiscovery, /_resolveListeners\.Remove\(serviceKey\)/);
+  assert.match(mediaDiscovery, /OnServiceLost[\s\S]*bridge\.RemoveResolveListener\(serviceKey\)/);
+  assert.match(mediaDiscovery, /_resolveListeners\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_activeServiceKeys\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_serviceToDevice\.Clear\(\)/);
+  assert.match(mediaDiscovery, /_servicesByDevice\.Clear\(\)/);
+  assert.match(mediaDiscovery, /device\.IsReady = false/);
+  assert.match(mediaDiscovery, /Duplicate service ignored/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceFound/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceLost/);
+  assert.match(mediaDiscovery, /UnityMainThread\.Enqueue\(\(\) => _owner\.OnServiceResolved/);
+  assert.match(mediaDiscovery, /Debug\.Log.*Device LOST/);
+  assert.match(mediaDiscovery, /Debug\.Log.*Device READY/);
+});
+
+test("Android NSD registration can retry and scopes multicast lock to lifecycle", () => {
+  assert.match(androidNsd, /started = false/);
+  assert.match(androidNsd, /registeredTypes\.clear\(\)/);
+  assert.match(androidNsd, /pendingTypes/);
+  assert.match(androidNsd, /scheduleRetry\(/);
+  assert.match(androidNsd, /MAX_RETRY_ATTEMPTS = 3/);
+  assert.match(androidNsd, /registerAdvertisement\(advertisement\)/);
+  assert.match(androidNsd, /private fun registerAdvertisement\(advertisement: Advertisement\) \{[\s\S]*try \{[\s\S]*NsdServiceInfo\(\)[\s\S]*registerService/);
+  assert.match(androidNsd, /catch \(error: Exception\)[\s\S]*pendingTypes -= advertisement\.type[\s\S]*scheduleRetry\(advertisement\.type/);
+  const registrationFailure = androidNsd.slice(androidNsd.indexOf("override fun onRegistrationFailed"), androidNsd.indexOf("override fun onServiceUnregistered"));
+  assert.doesNotMatch(registrationFailure, /started = false/);
+  assert.doesNotMatch(registrationFailure, /unregisterRegisteredServices/);
+  assert.match(androidNsd, /fun stop\(\)[\s\S]*releaseMulticastLock\(\)/);
+  assert.match(androidNsd, /if \(started\) return/);
+  assert.match(androidNsd, /Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S/);
+  assert.match(androidNsd, /lock\.acquire\(\)/);
+  assert.match(androidNsd, /lock\.release\(\)/);
+});
+
+test("NSD loss updates remaining service metadata while preserving existing transports", () => {
+  assert.match(mediaDiscovery, /remainingDevice\.capabilities = MergeCapabilitiesForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /remainingDevice\.serviceType = PreferredServiceTypeForDevice\(deviceId\)/);
+  assert.match(mediaDiscovery, /remainingDevice\.streamId = GetPreferredServiceValue/);
+  assert.match(mediaDiscovery, /remainingDevice\.signalingUrl = GetPreferredServiceValue/);
+  assert.match(mediaDiscovery, /remainingDevice\.signalingUrl[\s\S]*DevicesChanged\?\.Invoke\(\)/);
+  assert.match(receiver, /ApplyDiscoveredSignaling\(device\.signalingUrl, device\.streamId\)/);
+  assert.match(signaling, /type = "register"/);
+  assert.match(signaling, /type = "create_session"/);
+  assert.match(read(scripts + "ControlChannel.cs"), /Send/);
+  assert.match(read(scripts + "MediaCatalogClient.cs"), /baseUrl/);
+});
+
+test("UX navigation and readiness states have explicit recovery paths", () => {
+  assert.match(receiver, /public void ShowHome\(\)/);
+  assert.match(factory, /CreateBackButton\(panel/);
+  assert.match(factory, /_settingsUI\.BackToHome\(\)/);
+  assert.doesNotMatch(ui, /if \(\(state == ConnectionState\.PeerConnected \|\| state == ConnectionState\.MediaConnected\) && IsVisible\)[\s\S]*BackToHome\(\)/);
+  assert.match(home, /_receiver\.IsPeerConnected \? "Connected"/);
+  assert.match(home, /_receiver\.IsMediaReady/);
+  assert.match(home, /_receiver\.IsMediaStale/);
+  assert.match(home, /_receiver\.IsMediaChecking/);
+  assert.match(home, /_receiver\.IsMediaFailed/);
+  assert.match(home, /_receiver\.ProbeMedia\(\)/);
+  assert.match(home, /_receiver\.IsControlConnected/);
+  assert.match(home, /_keyboardButton\.interactable = controlReady/);
+  assert.match(home, /Connect phone to use Keyboard/);
+  assert.match(receiver, /public bool IsMediaStale/);
+  assert.match(receiver, /MediaProbeTtlSeconds/);
+  assert.match(receiver, /public void ProbeMedia\(\)/);
+  assert.match(mediaUi, /public void ProbeAvailability\(\)/);
+  const android = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
+  assert.match(android, /MEDIA MANAGER/);
+  assert.match(android, /private fun showMediaManager\(\)/);
+  assert.match(android, /homeScreenStatusView\.text = if \(screenActive\) "Active" else "Off"/);
+  assert.match(android, /homeScreenActionButton\.text = if \(screenActive\)/);
+  assert.match(android, /statusRow\(homeCard, "Signaling",/);
+  assert.match(android, /ConnectionState\.CONNECTED -> "Ready"/);
 });

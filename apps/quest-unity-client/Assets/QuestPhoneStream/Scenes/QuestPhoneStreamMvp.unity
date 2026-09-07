@@ -335,8 +335,13 @@ MonoBehaviour:
   controlChannel: {fileID: 1624316268}
   xrCamera: {fileID: 332583113}
   xrUiRig: {fileID: 1624316271}
+  mediaPlayback: {fileID: 0}
+  mediaPanelAnchor: {fileID: 1788554307}
   connectOnStart: 1
   targetMaterial: {fileID: 2100000, guid: 3b6ab603b5778456ebd6098585a220fd, type: 2}
+  vrMaterialTemplate: {fileID: 2100000, guid: 4a7c8e0d9f214b7ea6c3d8e1f5a902bd, type: 2}
+  panoramicMaterialTemplate: {fileID: 2100000, guid: 5e7d2b8c9f4a4e1b8c2d6f3071a9b5e4, type: 2}
+  vrBackend: 1
   textureWidth: 1280
   textureHeight: 720
 --- !u!114 &1624316271
@@ -378,7 +383,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 23347caf3403b48fe93cf0029573498d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  signalingUrl: ws://192.168.1.9:8787
+  signalingUrl:
   token: dev-token
   questDeviceId: quest-3s-001
   androidDeviceId: android-phone-001

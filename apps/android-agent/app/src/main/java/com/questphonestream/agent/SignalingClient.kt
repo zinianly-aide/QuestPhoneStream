@@ -27,7 +27,8 @@ class SignalingClient(
     private val token: String,
     private val role: String,
     private val deviceId: String,
-    private val listener: Listener
+    private val listener: Listener,
+    private val capabilityRegistry: CapabilityRegistry = CapabilityRegistry.androidDefaults()
 ) {
     interface Listener {
         fun onOpen() {}
@@ -36,12 +37,14 @@ class SignalingClient(
         fun onRemoteDescription(session: StreamSession, type: String, sdp: String) {}
         fun onIceCandidate(session: StreamSession, candidate: IceCandidateMessage) {}
         fun onSessionEnded() {}
+        fun onSpatialCapabilities(source: String, changed: Boolean, payload: JSONObject) {}
         fun onStateChanged(state: ConnectionState) {}
         fun onError(message: String) {}
     }
 
     private val main = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build()
+    private val spatialPeers = linkedSetOf<String>()
     private var socket: WebSocket? = null
     private var heartbeat: Timer? = null
     private var activeSession: StreamSession? = null
@@ -50,8 +53,15 @@ class SignalingClient(
     private var state = ConnectionState.IDLE
         set(value) { field = value; listener.onStateChanged(value) }
 
+    init {
+        capabilityRegistry.addChangedListener { capabilities ->
+            main.post { broadcastCapabilityChange(capabilities) }
+        }
+    }
+
     fun connect() {
         state = ConnectionState.CONNECTING
+        spatialPeers.clear()
         socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 main.post {
@@ -71,6 +81,7 @@ class SignalingClient(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 main.post {
                     if (closed || socket !== webSocket) return@post
+                    spatialPeers.clear()
                     endSession()
                     heartbeat?.cancel()
                     state = ConnectionState.FAILED
@@ -84,6 +95,7 @@ class SignalingClient(
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 main.post {
                     if (closed || socket !== webSocket) return@post
+                    spatialPeers.clear()
                     endSession()
                     heartbeat?.cancel()
                     state = ConnectionState.CLOSED
@@ -93,9 +105,6 @@ class SignalingClient(
         })
     }
 
-    // Self-healing: the LAN WebSocket is not guaranteed to stay up, and without a
-    // reconnect the streamer stays offline forever after a drop. Retry on any
-    // unexpected close/failure until the client is explicitly closed.
     private fun scheduleReconnect() {
         if (closed) return
         main.postDelayed({
@@ -125,8 +134,16 @@ class SignalingClient(
             .put("candidate", candidate.candidate).put("sdpMid", candidate.sdpMid).put("sdpMLineIndex", candidate.sdpMLineIndex)))
     }
 
+    fun updateCapabilityState(name: String, authorized: Boolean? = null, active: Boolean? = null): Boolean =
+        capabilityRegistry.updateState(name, authorized, active)
+
     private fun handleMessage(message: JSONObject) {
-        when (message.optString("type")) {
+        val type = message.optString("type")
+        if (SpatialProtocol.isSpatialType(type)) {
+            handleSpatial(message)
+            return
+        }
+        when (type) {
             "registered" -> {
                 if (message.optString("deviceId") != deviceId || message.optString("role") != role) return
                 state = ConnectionState.CONNECTED
@@ -145,7 +162,7 @@ class SignalingClient(
                 val session = activeSession ?: return
                 if (!matches(message, session) || message.optString("from") != session.questDeviceId ||
                     message.optString("to") != deviceId) return
-                if (message.optString("type") == "answer")
+                if (type == "answer")
                     listener.onRemoteDescription(session, "answer", message.getString("sdp"))
                 else {
                     val ice = message.getJSONObject("candidate")
@@ -162,10 +179,76 @@ class SignalingClient(
                 if (message.has("sessionId") && (session == null || !matches(message, session))) return
                 val code = message.optString("code")
                 if (code == "session_replaced" || code == "unauthorized") endSession()
-                // Only fixed diagnostic text; never echo a server payload or credential.
                 listener.onError(if (code == "unauthorized") "Authentication failed" else "Signaling request rejected")
             }
         }
+    }
+
+    private fun handleSpatial(message: JSONObject) {
+        val validationError = SpatialProtocol.validateEnvelope(message)
+        if (validationError != null) {
+            Log.w(TAG, "Spatial envelope rejected: $validationError")
+            return
+        }
+        if (message.optString("target") != deviceId) return
+        val source = message.optString("source")
+        val payload = message.getJSONObject("payload")
+        when (message.getString("type")) {
+            "device.hello" -> {
+                val selected = SpatialProtocol.negotiateVersion(payload)
+                if (selected == null) {
+                    sendSpatialError(source, message.getString("id"), "unsupported_version", "No compatible Spatial Protocol version")
+                    return
+                }
+                spatialPeers += source
+                if (!payload.has("selectedVersion")) {
+                    sendSpatial("device.hello", source, SpatialProtocol.helloPayload(deviceId, selected), message.getString("id"))
+                }
+            }
+            "device.capabilities.get" -> {
+                spatialPeers += source
+                sendSpatial(
+                    "device.capabilities.result",
+                    source,
+                    SpatialProtocol.capabilitiesPayload(capabilityRegistry.all()),
+                    message.getString("id")
+                )
+            }
+            "device.capabilities.result" -> {
+                spatialPeers += source
+                listener.onSpatialCapabilities(source, false, payload)
+            }
+            "device.capabilities.changed" -> {
+                spatialPeers += source
+                listener.onSpatialCapabilities(source, true, payload)
+            }
+            "subscription.create", "subscription.cancel" ->
+                sendSpatialError(source, message.getString("id"), "not_implemented", "Subscription data plane is not implemented")
+            "subscription.created", "subscription.closed" -> Unit
+            "protocol.error" -> Log.w(TAG, "Spatial peer reported ${payload.optString("code", "error")}")
+        }
+    }
+
+    private fun sendSpatial(type: String, target: String, payload: JSONObject, correlationId: String = "") {
+        val session = activeSession
+        send(SpatialProtocol.envelope(
+            type = type,
+            source = deviceId,
+            target = target,
+            payload = payload,
+            sessionId = session?.sessionId.orEmpty(),
+            correlationId = correlationId
+        ))
+    }
+
+    private fun sendSpatialError(target: String, correlationId: String, code: String, message: String) {
+        sendSpatial("protocol.error", target, SpatialProtocol.errorPayload(code, message), correlationId)
+    }
+
+    private fun broadcastCapabilityChange(capabilities: List<CapabilityDescriptor>) {
+        if (closed || state != ConnectionState.CONNECTED) return
+        val payload = SpatialProtocol.capabilitiesPayload(capabilities)
+        spatialPeers.toList().forEach { peer -> sendSpatial("device.capabilities.changed", peer, payload) }
     }
 
     private fun matches(message: JSONObject, session: StreamSession): Boolean =
@@ -179,6 +262,7 @@ class SignalingClient(
 
     fun close() {
         closed = true
+        spatialPeers.clear()
         heartbeat?.cancel()
         socket?.close(1000, "closed")
         endSession()
@@ -198,5 +282,9 @@ class SignalingClient(
                 }
             }, 5000, 15000)
         }
+    }
+
+    companion object {
+        private const val TAG = "QuestPhoneSpatial"
     }
 }
