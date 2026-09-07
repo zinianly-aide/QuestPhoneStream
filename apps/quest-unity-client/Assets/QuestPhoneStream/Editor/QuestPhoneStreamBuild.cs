@@ -78,7 +78,7 @@ namespace QuestPhoneStream.Editor
             var manipulator = panelRoot.AddComponent<PhonePanelManipulator>();
             manipulator.frameRenderer = grabHandle.GetComponent<Renderer>();
             var touch = panelRoot.AddComponent<PhonePanelTouchController>();
-            touch.mapper = mapper;
+            touch.mappingProvider = mapper;
             touch.manipulator = manipulator;
             var backendManager = panelRoot.AddComponent<InteractionBackendManager>();
             var router = panelRoot.AddComponent<PhonePanelInteractionRouter>();

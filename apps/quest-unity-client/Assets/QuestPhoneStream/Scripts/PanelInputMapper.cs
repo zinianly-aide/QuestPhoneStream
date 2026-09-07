@@ -1,4 +1,5 @@
 using UnityEngine;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
 {
@@ -6,7 +7,7 @@ namespace QuestPhoneStream
     /// SDK-neutral mapping only. Interaction backends provide pointer events to
     /// PhonePanelTouchController; this component maps panel hit positions to Android pixels.
     /// </summary>
-    public sealed class PanelInputMapper : MonoBehaviour
+    public sealed class PanelInputMapper : MonoBehaviour, IPhonePanelTouchMapper
     {
         public Camera rayCamera;
         public Collider panelCollider;
@@ -21,6 +22,8 @@ namespace QuestPhoneStream
         private int _androidHeight = 1280;
         public int AndroidWidth => _androidWidth;
         public int AndroidHeight => _androidHeight;
+        public bool IsInputBlocked => settingsUI != null && settingsUI.IsVisible;
+        public int SwipeThresholdPixels => swipeThresholdPixels;
 
         private void Reset()
         {
@@ -55,5 +58,8 @@ namespace QuestPhoneStream
             _androidWidth = width;
             _androidHeight = height;
         }
+
+        public void SendClick(Vector2Int point) => controlChannel?.SendClick(point.x, point.y);
+        public void SendSwipe(Vector2Int start, Vector2Int end, int durationMs) => controlChannel?.SendSwipe(start.x, start.y, end.x, end.y, durationMs);
     }
 }

@@ -147,7 +147,7 @@ namespace QuestPhoneStream
                 mapper.panelCollider = screenCollider;
             }
             var touch = root.GetComponent<PhonePanelTouchController>() ?? root.AddComponent<PhonePanelTouchController>();
-            touch.mapper = mapper;
+            touch.mappingProvider = mapper;
             touch.manipulator = manipulator;
             var backendManager = root.GetComponent<InteractionBackendManager>() ?? root.AddComponent<InteractionBackendManager>();
             var router = root.GetComponent<PhonePanelInteractionRouter>() ?? root.AddComponent<PhonePanelInteractionRouter>();

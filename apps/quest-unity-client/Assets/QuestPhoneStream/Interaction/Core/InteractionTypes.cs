@@ -67,4 +67,14 @@ namespace QuestPhoneStream.Interaction
         public Camera camera;
         public object runtimeDependencies;
     }
+
+    public interface IPhonePanelTouchMapper
+    {
+        bool IsInputBlocked { get; }
+        int SwipeThresholdPixels { get; }
+        bool TryMapWorldPointToUv(Vector3 worldPosition, Vector3 worldNormal, out Vector2 uv);
+        Vector2Int MapUvToAndroidPixels(Vector2 uv);
+        void SendClick(Vector2Int point);
+        void SendSwipe(Vector2Int start, Vector2Int end, int durationMs);
+    }
 }

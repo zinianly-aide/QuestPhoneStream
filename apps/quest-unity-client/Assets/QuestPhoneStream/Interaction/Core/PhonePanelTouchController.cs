@@ -4,7 +4,8 @@ namespace QuestPhoneStream.Interaction
 {
     public sealed class PhonePanelTouchController : MonoBehaviour
     {
-        public PanelInputMapper mapper;
+        [Tooltip("A MonoBehaviour implementing IPhonePanelTouchMapper (PanelInputMapper in the current runtime).")]
+        public MonoBehaviour mappingProvider;
         public PhonePanelManipulator manipulator;
         private bool _active;
         private InteractionSourceType _source;
@@ -14,7 +15,8 @@ namespace QuestPhoneStream.Interaction
 
         public bool Process(PointerEvent pointer)
         {
-            if (mapper == null || (mapper.settingsUI != null && mapper.settingsUI.IsVisible)) { Clear(); return false; }
+            var mapper = mappingProvider as IPhonePanelTouchMapper;
+            if (mapper == null || mapper.IsInputBlocked) { Clear(); return false; }
             // A backend may report release after the pointer has left the collider.
             // Finish from the last valid UV so a press never leaks into the next interaction.
             if (pointer.phase == InteractionPhase.PressEnd && _active && _source == pointer.source)
@@ -38,11 +40,13 @@ namespace QuestPhoneStream.Interaction
         {
             if (!_active) return;
             _active = false;
+            var mapper = mappingProvider as IPhonePanelTouchMapper;
+            if (mapper == null) { Clear(); return; }
             var start = mapper.MapUvToAndroidPixels(_startUv); var end = mapper.MapUvToAndroidPixels(_lastUv);
             var dx = end.x - start.x; var dy = end.y - start.y;
-            if (dx * dx + dy * dy >= mapper.swipeThresholdPixels * mapper.swipeThresholdPixels)
-                mapper.controlChannel?.SendSwipe(start.x, start.y, end.x, end.y, Mathf.Clamp(Mathf.RoundToInt((Time.unscaledTime - _startTime) * 1000f), 100, 2000));
-            else mapper.controlChannel?.SendClick(start.x, start.y);
+            if (dx * dx + dy * dy >= mapper.SwipeThresholdPixels * mapper.SwipeThresholdPixels)
+                mapper.SendSwipe(start, end, Mathf.Clamp(Mathf.RoundToInt((Time.unscaledTime - _startTime) * 1000f), 100, 2000));
+            else mapper.SendClick(start);
             manipulator?.EndScreenTouch();
         }
         public void Clear() { _active = false; manipulator?.EndScreenTouch(); }
