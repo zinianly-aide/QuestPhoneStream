@@ -65,7 +65,11 @@ namespace QuestPhoneStream
         {
             get
             {
-                if (_component == null || _getTexture == null) return false;
+                // PCA type resolvable on this build = platform support exists.
+                // Do NOT require a live component: creating one triggers Play().
+                if (_componentType == null) return false;
+                if (_component == null) return true;
+                if (_getTexture == null) return true;
                 if (_isSupported == null) return true;
                 try { return Convert.ToBoolean(_isSupported.GetValue(_component)); }
                 catch { return false; }
@@ -134,6 +138,14 @@ namespace QuestPhoneStream
 
         public bool StartCapture()
         {
+            if (_component == null && _componentType != null)
+            {
+                try
+                {
+                    _component = _owner.AddComponent(_componentType);
+                }
+                catch { _component = null; }
+            }
             if (_component == null) Discover(force: true);
             _requestedActive = true;
             if (!QuestVisionPermissionGate.CanActivate(IsAvailable, IsAuthorized, true)) return false;
@@ -173,16 +185,11 @@ namespace QuestPhoneStream
                 type => type.Name == "PassthroughCameraAccess" && typeof(MonoBehaviour).IsAssignableFrom(type), force);
             if (_componentType == null) { ClearBinding(); return; }
 
+            // IMPORTANT: never AddComponent here. Unity runs OnEnable (-> Play -> native
+            // setNativeTexture) the instant the component is added, before we could disable it.
+            // Only bind to an existing scene component; creation is deferred to StartCapture
+            // after the user granted the HEADSET_CAMERA permission.
             _component = UnityEngine.Object.FindObjectOfType(_componentType) as Component;
-            if (_component == null && _owner != null)
-            {
-                try
-                {
-                    _component = _owner.GetComponent(_componentType) ?? _owner.AddComponent(_componentType);
-                    if (_component is Behaviour created) created.enabled = false;
-                }
-                catch { _component = null; }
-            }
             if (_component == null) { ClearBinding(keepType: true); return; }
 
             _getTexture = _componentType.GetMethod("GetTexture", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
@@ -258,7 +265,11 @@ namespace QuestPhoneStream
         private void Awake()
         {
             if (signaling == null) signaling = GetComponent<QuestSignalingClient>();
-            _provider = new MetaPassthroughCameraProvider(gameObject);
+            // Camera2-path provider: opens the headset camera (device "50") directly through
+            // the Android Camera2 API via a small Java plugin. Avoids MRUK's native GPU
+            // texture path ("Unsupported graphics API 0" on Unity 2022.3) and its
+            // Android-disabled CPU capture API.
+            _provider = new QuestCamera2Provider();
             _nextProviderRefreshAt = Time.unscaledTime + Mathf.Max(1f, providerRefreshSeconds);
         }
 

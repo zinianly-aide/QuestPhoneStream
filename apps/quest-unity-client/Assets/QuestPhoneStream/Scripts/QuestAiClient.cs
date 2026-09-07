@@ -127,6 +127,24 @@ namespace QuestPhoneStream
                                   (uri.Scheme == "http" || uri.Scheme == "https") &&
                                   !string.IsNullOrWhiteSpace(model) && (allowAnonymousEndpoint || !string.IsNullOrWhiteSpace(apiKey));
 
+        /// <summary>
+        /// Normalizes a user-entered OpenAI-compatible endpoint to the chat completions path:
+        /// "http://host:8080/v1"      -> "http://host:8080/v1/chat/completions"
+        /// "http://host:8080"         -> "http://host:8080/v1/chat/completions"
+        /// "http://host:8080/..."     -> left untouched when it already ends in a completion path.
+        /// </summary>
+        internal static string NormalizeEndpoint(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint)) return endpoint;
+            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)) return endpoint;
+            var path = uri.AbsolutePath.TrimEnd('/');
+            if (path.EndsWith("/chat/completions") || path.EndsWith("/completions")) return endpoint;
+            var normalized = path.Length == 0 ? "/v1/chat/completions"
+                : path == "/v1" ? "/v1/chat/completions"
+                : path + "/chat/completions";
+            return new Uri(uri, normalized).ToString();
+        }
+
         public Coroutine AnalyzeLastFrame(Rect? normalizedCrop = null)
         {
             var frame = vision?.LastFrame;
@@ -154,7 +172,8 @@ namespace QuestPhoneStream
 
                 var requestPayload = BuildRequest(Convert.ToBase64String(jpeg));
                 var bytes = Encoding.UTF8.GetBytes(JsonUtility.ToJson(requestPayload));
-                using (var request = new UnityWebRequest(endpointUrl, UnityWebRequest.kHttpVerbPOST))
+                var targetUrl = NormalizeEndpoint(endpointUrl);
+                using (var request = new UnityWebRequest(targetUrl, UnityWebRequest.kHttpVerbPOST))
                 {
                     request.uploadHandler = new UploadHandlerRaw(bytes);
                     request.downloadHandler = new DownloadHandlerBuffer();

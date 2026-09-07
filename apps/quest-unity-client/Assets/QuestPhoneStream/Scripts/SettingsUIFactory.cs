@@ -81,9 +81,9 @@ namespace QuestPhoneStream
             _settingsUI.phoneScreenButton = phoneBtn;
             _settingsUI.videoLibraryButton = videoBtn;
 
-            var statusRight = 0.95f;
 #if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR
-            CreateButton(panel, "Diagnostics", 8, 0.52f, out var developerToolsButton, false);
+            CreateCompactButton(panel, "AI Vision", 8, 0.52f, 0.72f, out var aiVisionButton, true);
+            CreateCompactButton(panel, "Diagnostics", 8, 0.74f, 0.95f, out var developerToolsButton, false);
             _settingsUI.developerToolsButton = developerToolsButton;
 
             var wirelessAdbHelper = gameObject.AddComponent<WirelessAdbHelper>();
@@ -95,8 +95,10 @@ namespace QuestPhoneStream
             var developerHud = gameObject.GetComponent<DeveloperHud>() ?? gameObject.AddComponent<DeveloperHud>();
             developerHud.Initialize(_canvas, diagnostics, wirelessAdbHelper, _settingsUI.HideDeveloperTools);
             _settingsUI.developerHud = developerHud;
-            statusRight = 0.48f;
+#else
+            CreateCompactButton(panel, "AI Vision", 8, 0.52f, 0.95f, out var aiVisionButton, true);
 #endif
+            _settingsUI.aiVisionButton = aiVisionButton;
 
             var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
             catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
@@ -110,7 +112,16 @@ namespace QuestPhoneStream
             _settingsUI.mediaLibrary = _mediaLibrary;
             _settingsUI.mediaPlayback = playback;
 
-            CreateStatusText(panel, 8, 0.05f, statusRight, out var statusText);
+            var vision = signalingClient.GetComponent<QuestVisionService>() ?? signalingClient.gameObject.AddComponent<QuestVisionService>();
+            vision.signaling = signalingClient;
+            var ai = signalingClient.GetComponent<QuestAiClient>() ?? signalingClient.gameObject.AddComponent<QuestAiClient>();
+            ai.signaling = signalingClient;
+            ai.vision = vision;
+            var aiVisionUi = gameObject.GetComponent<AiVisionUI>() ?? gameObject.AddComponent<AiVisionUI>();
+            aiVisionUi.Initialize(_canvas, vision, ai, _settingsUI.HideAiVision);
+            _settingsUI.aiVisionUi = aiVisionUi;
+
+            CreateStatusText(panel, 8, 0.05f, 0.50f, out var statusText);
             _settingsUI.statusText = statusText;
 
             _settingsUI.Initialize(signalingClient, xrCamera);
@@ -235,6 +246,11 @@ namespace QuestPhoneStream
 
         private void CreateButton(Transform parent, string label, int index, float xPos, out Button button, bool primary)
         {
+            CreateCompactButton(parent, label, index, xPos, xPos + 0.43f, out button, primary);
+        }
+
+        private void CreateCompactButton(Transform parent, string label, int index, float minX, float maxX, out Button button, bool primary)
+        {
             var btnGo = new GameObject($"Button_{label}");
             btnGo.transform.SetParent(parent, false);
 
@@ -245,8 +261,8 @@ namespace QuestPhoneStream
             button.targetGraphic = btnImage;
 
             var rt = btnGo.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(xPos, 0.85f - index * 0.1f);
-            rt.anchorMax = new Vector2(xPos + 0.43f, 0.85f - index * 0.1f + 0.08f);
+            rt.anchorMin = new Vector2(minX, 0.85f - index * 0.1f);
+            rt.anchorMax = new Vector2(maxX, 0.85f - index * 0.1f + 0.08f);
             rt.sizeDelta = Vector2.zero;
 
             var textGo = new GameObject("Text");

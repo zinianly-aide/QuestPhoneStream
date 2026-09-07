@@ -11,7 +11,8 @@
     "check:p3": "node scripts/check-p3-spatial.mjs && node scripts/check-p3-lifecycle.mjs && node scripts/check-device-select-connect.mjs",
     "check:p3-regressions": "node scripts/check-p3-regressions.mjs",
     "check:p3-lifecycle": "node scripts/check-p3-lifecycle.mjs",
-    "check:device-select": "node scripts/check-device-select-connect.mjs"
+    "check:device-select": "node scripts/check-device-select-connect.mjs",
+    "check:ai-vision": "node scripts/check-ai-vision.mjs"
   },
   "packageManager": "pnpm@9.12.0"
 }
