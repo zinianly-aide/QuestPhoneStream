@@ -26,6 +26,7 @@ namespace QuestPhoneStream
         private bool _initialized;
         private bool _videosSelected;
         private Coroutine _keyboardRoutine;
+        private Coroutine _visionRoutine;
         private string _noticeText;
         private float _noticeUntil;
 
@@ -112,11 +113,16 @@ namespace QuestPhoneStream
             _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.53f, 0.49f, 0.75f, 0.61f, OpenKeyboard);
             _advancedSettingsButton = MakeButton(panelGo.transform, "⚙ Settings", 0.77f, 0.49f, 0.95f, 0.61f, OpenSettings);
 
+            // Device-scoped quick actions: pick a discovered device, then Stream (screen push)
+            // or Vision (headset camera frame -> AI). These sit directly above the device list.
+            MakeButton(panelGo.transform, "▶ 切换推流", 0.05f, 0.42f, 0.52f, 0.48f, OnPhone);
+            MakeButton(panelGo.transform, "✥ 抓取视频", 0.52f, 0.42f, 0.95f, 0.48f, OnVision);
+
             var devicesTitle = MakeText(panelGo.transform, "Devices", 17, TextAnchor.MiddleLeft);
-            Anchor(devicesTitle.rectTransform, 0.05f, 0.37f, 0.95f, 0.44f);
+            Anchor(devicesTitle.rectTransform, 0.05f, 0.37f, 0.95f, 0.42f);
             BuildDeviceScroll(panelGo.transform);
 
-            var hint = MakeText(panelGo.transform, "Select Screen, Media, or a discovered device", 16, TextAnchor.MiddleLeft);
+            var hint = MakeText(panelGo.transform, "Select a device · then choose 切换推流 or 抓取视频", 16, TextAnchor.MiddleLeft);
             hint.textComponent.color = new Color(0.72f, 0.78f, 0.9f, 1f);
             Anchor(hint.rectTransform, 0.05f, 0.01f, 0.95f, 0.07f);
             _hint = hint.textComponent;
@@ -214,10 +220,82 @@ namespace QuestPhoneStream
             Hide();
         }
 
+        private void OnVision()
+        {
+            if (_receiver == null) return;
+            _videosSelected = false;
+            SetTab(_phoneTab, true);
+            SetTab(_videosTab, false);
+            var vision = FindObjectOfType<QuestVisionService>();
+            var ai = FindObjectOfType<QuestAiClient>();
+            if (vision == null || ai == null)
+            {
+                SetNotice("Vision components unavailable", 3f);
+                return;
+            }
+            if (!ai.CanRequest)
+            {
+                SetNotice("Configure the AI endpoint in Settings first", 4f);
+                _receiver.ToggleSettings();
+                return;
+            }
+            if (_visionRoutine != null) StopCoroutine(_visionRoutine);
+            _visionRoutine = StartCoroutine(CaptureAndAnalyze(vision, ai));
+        }
+
+        private IEnumerator CaptureAndAnalyze(QuestVisionService vision, QuestAiClient ai)
+        {
+            if (!vision.IsAvailable)
+            {
+                SetNotice("Looking for headset camera…", 2f);
+                vision.RefreshProvider();
+                yield return new WaitForSeconds(1f);
+            }
+            if (!vision.IsAvailable)
+            {
+                SetNotice("Headset camera unavailable", 3f);
+                _visionRoutine = null;
+                yield break;
+            }
+            if (!vision.IsAuthorized)
+            {
+                SetNotice("Requesting camera permission…", 2f);
+                var granted = false;
+                vision.RequestPermission(ok => granted = ok);
+                yield return new WaitForSeconds(2f);
+                if (!granted)
+                {
+                    SetNotice("Camera permission denied", 3f);
+                    _visionRoutine = null;
+                    yield break;
+                }
+            }
+            if (!vision.StartCamera())
+            {
+                SetNotice("Camera start failed", 3f);
+                _visionRoutine = null;
+                yield break;
+            }
+            yield return new WaitForSeconds(0.6f);
+            var frame = vision.CaptureSingleFrame();
+            if (frame == null)
+            {
+                SetNotice("No frame captured", 3f);
+                _visionRoutine = null;
+                yield break;
+            }
+            SetNotice("Frame captured · analyzing…", 2f);
+            ai.AnalyzeLastFrame();
+            _visionRoutine = null;
+        }
+
         private void OnMediaDeviceSelected(string deviceId)
         {
             if (_receiver == null || !_receiver.SelectMediaDevice(deviceId)) return;
-            SetNotice("Device selected. Connecting… Choose Screen or Media when ready.", 3f);
+            SetNotice("Device selected. Connecting… Choose 切换推流 or 抓取视频 when ready.", 3f);
+            // Selecting a device resets the media probe state; re-probe immediately so the
+            // media service does not stay "unavailable" until the user pokes it again.
+            if (_receiver.HasMediaUrl) _receiver.ProbeMedia();
         }
 
         private void OpenSettings()
@@ -362,7 +440,7 @@ namespace QuestPhoneStream
                 _hint.text = !_signaling.HasValidSignalingEndpoint
                     ? "Waiting for device. Select a phone or Configure manually in Advanced Settings."
                     : controlReady
-                    ? "Select Screen, Media, or a discovered device"
+                    ? "Select a device · then choose 切换推流 or 抓取视频"
                     : "Screen and Media are available; Keyboard needs control permission";
             SetTab(_phoneTab, !_videosSelected);
             SetTab(_videosTab, _videosSelected);

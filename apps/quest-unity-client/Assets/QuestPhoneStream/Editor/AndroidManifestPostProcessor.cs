@@ -53,6 +53,19 @@ namespace QuestPhoneStream.Editor
                     changed = true;
                     Debug.Log("[AndroidManifestPostProcessor] Changed android:usesCleartextTraffic to true");
                 }
+
+                // A merged-in networkSecurityConfig (e.g. from a dependency or Unity default) takes
+                // precedence over usesCleartextTraffic and typically forbids cleartext (HTTP) traffic,
+                // which breaks playback of LAN media over http://. Remove the reference so the
+                // explicit usesCleartextTraffic="true" above is honored.
+                var netSecAttr = app.Attributes?["networkSecurityConfig", AndroidNs]
+                                 ?? app.Attributes?["android:networkSecurityConfig"];
+                if (netSecAttr != null)
+                {
+                    app.Attributes.Remove(netSecAttr);
+                    changed = true;
+                    Debug.Log("[AndroidManifestPostProcessor] Removed android:networkSecurityConfig to allow cleartext LAN media");
+                }
             }
             else
             {
