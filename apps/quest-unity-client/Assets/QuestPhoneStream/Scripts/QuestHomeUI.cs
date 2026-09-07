@@ -403,8 +403,9 @@ namespace QuestPhoneStream
                     if (label != null)
                     {
                         var status = DeviceConnectionLabel(device);
+                        var suffix = device.HasCapability("media") ? "" : "  ·  stream only";
                         label.text = (string.IsNullOrWhiteSpace(device.name) ? device.deviceId : device.name) +
-                            "    " + status;
+                            suffix + "    " + status;
                     }
                     button.interactable = device.IsReady;
                     button.gameObject.SetActive(true);

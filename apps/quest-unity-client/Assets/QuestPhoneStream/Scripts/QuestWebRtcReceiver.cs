@@ -174,7 +174,19 @@ namespace QuestPhoneStream
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
             _selectedMediaDeviceId = deviceId;
             EnsureSettingsUI();
-            _settingsUI.SetMediaBaseUrl(device.BaseUrl);
+            // Screen-only publishers (e.g. the macOS sender) advertise no media
+            // capability; never point the catalog/probe at their NSD port, which is
+            // not an HTTP server. Only media-capable devices get a catalog base URL.
+            var mediaCapable = device.HasCapability("media");
+            if (mediaCapable)
+            {
+                _settingsUI.SetMediaBaseUrl(device.BaseUrl);
+                _mediaProbeReady = false;
+                _mediaProbeChecking = false;
+                _mediaProbeFailed = false;
+                _mediaProbeAt = -Mathf.Infinity;
+                _mediaProbeUrl = null;
+            }
             _settingsUI.ApplyDiscoveredSignaling(device.signalingUrl, device.streamId);
             // Persist discovered endpoint so restart keeps the same peer.
             if (!string.IsNullOrWhiteSpace(device.signalingUrl))
@@ -189,12 +201,7 @@ namespace QuestPhoneStream
                 Debug.Log($"[QuestPhoneStream] Auto-connect signaling after device select url={device.signalingUrl} android={device.streamId}");
                 _ = signaling.ReconnectAsync();
             }
-            _mediaProbeReady = false;
-            _mediaProbeChecking = false;
-            _mediaProbeFailed = false;
-            _mediaProbeAt = -Mathf.Infinity;
-            _mediaProbeUrl = null;
-            Debug.Log($"[QuestPhoneStream] Selected discovered media device name={device.name} id={device.deviceId} baseUrl={device.BaseUrl}");
+            Debug.Log($"[QuestPhoneStream] Selected discovered media device name={device.name} id={device.deviceId} baseUrl={(mediaCapable ? device.BaseUrl : "(none, screen-only)")} mediaCapable={mediaCapable}");
             _homeUI?.RefreshStatus();
             return true;
         }
