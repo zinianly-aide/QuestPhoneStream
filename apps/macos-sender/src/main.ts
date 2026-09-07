@@ -1,23 +1,17 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
 import path from "node:path";
-import fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
-import { randomUUID } from "node:crypto";
 import { Bonjour } from "bonjour-service";
-
-interface SenderConfig {
-  signalingUrl: string;
-  token: string;
-  deviceId: string;
-  questDeviceId: string;
-  sessionId: string;
-  platform: "macos";
-  sourceType: "screen";
-  width: number;
-  height: number;
-  fps: number;
-}
+import {
+  type SenderConfig,
+  type PersistedConfig,
+  loadPersisted,
+  savePersisted,
+  resolveConfig,
+  persistentDeviceId,
+  hostname
+} from "./config";
+import { SignalingDiscovery } from "./discovery";
 
 class UnifiedDeviceAdvertisement {
   private readonly bonjour = new Bonjour();
@@ -25,6 +19,8 @@ class UnifiedDeviceAdvertisement {
   private service: ReturnType<Bonjour["publish"]> | null = null;
   private port = 0;
   private spatialReady = false;
+  private signalingUrl = "";
+  private publishSeq = 0;
 
   constructor(private readonly config: SenderConfig) {}
 
@@ -46,6 +42,13 @@ class UnifiedDeviceAdvertisement {
     this.refresh();
   }
 
+  setSignalingUrl(url: string): void {
+    const next = url.trim();
+    if (this.signalingUrl === next) return;
+    this.signalingUrl = next;
+    this.refresh();
+  }
+
   private refresh(): void {
     const previous = this.service;
     this.service = null;
@@ -58,21 +61,32 @@ class UnifiedDeviceAdvertisement {
     const txt: Record<string, string> = {
       v: "1",
       id: this.config.deviceId,
-      name: os.hostname(),
+      name: hostname(),
       caps: "screen",
       capv: "1",
       streamId: this.config.deviceId,
-      signalingUrl: this.config.signalingUrl,
       platform: this.config.platform,
       sourceType: this.config.sourceType
     };
+    if (this.signalingUrl) txt.signalingUrl = this.signalingUrl;
     if (this.spatialReady) txt.spatial = "1";
+    // Unique per-publish name: mDNS caches stale same-name services from
+    // abnormally-exited instances for TTL seconds, which would otherwise
+    // trigger "Service name is already in use". Discovery keys by TXT.id,
+    // so a unique name is safe.
+    const uniqueName = `QuestPhoneStream Mac ${this.config.deviceId.slice(-8)}-${++this.publishSeq}-${Math.random().toString(36).slice(2, 6)}`;
     this.service = this.bonjour.publish({
-      name: "QuestPhoneStream Mac",
+      name: uniqueName,
       type: "qps-device",
       protocol: "tcp",
       port: this.port,
-      txt
+      txt,
+      // Names are unique per publish; the probe is unnecessary and
+      // mis-detects other LAN qps-device broadcasts as name collisions.
+      probe: false
+    });
+    this.service.on("error", (err: unknown) => {
+      log("bonjour publish error:", err instanceof Error ? err.message : err);
     });
   }
 
@@ -84,55 +98,103 @@ class UnifiedDeviceAdvertisement {
   }
 }
 
-function persistentDeviceId(): string {
-  const file = path.join(app.getPath("userData"), "device-id.txt");
-  try {
-    const existing = fs.readFileSync(file, "utf8").trim();
-    if (existing) return existing;
-  } catch {}
-  const id = `mac-${randomUUID()}`;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, id, "utf8");
-  return id;
+let advertisement: UnifiedDeviceAdvertisement | null = null;
+let discovery: SignalingDiscovery | null = null;
+let mainWindow: BrowserWindow | null = null;
+let currentConfig: SenderConfig;
+let pendingDiscoveredUrl = "";
+
+function log(...parts: unknown[]): void {
+  console.log(`[macos-sender]`, ...parts);
 }
 
-let advertisement: UnifiedDeviceAdvertisement | null = null;
+function applyDiscoveredSignaling(url: string): void {
+  const persisted = loadPersisted();
+  if (persisted.manualSignaling && persisted.signalingUrl?.trim()) return; // user choice wins
+  const next = resolveConfig(url);
+  currentConfig = next;
+  advertisement?.setSignalingUrl(next.signalingUrl);
+  log("signaling endpoint discovered:", next.signalingUrl);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("qps:signaling-changed", {
+      url: next.signalingUrl,
+      source: "discovered"
+    });
+  } else {
+    pendingDiscoveredUrl = next.signalingUrl; // window not ready yet; deliver after load
+  }
+}
+
+function broadcastConfigState(): void {
+  const persisted = loadPersisted();
+  mainWindow?.webContents.send("qps:config-state", {
+    config: currentConfig,
+    persisted,
+    source: currentConfig.signalingUrl
+      ? (persisted.manualSignaling && persisted.signalingUrl?.trim() ? "persisted" : "discovered-or-env")
+      : "none"
+  });
+}
 
 app.whenReady().then(async () => {
-  const config: SenderConfig = {
-    signalingUrl: process.env.QPS_SIGNALING_URL ?? "ws://192.168.1.9:8787",
-    token: process.env.QPS_SIGNALING_TOKEN ?? "dev-token",
-    deviceId: process.env.QPS_DEVICE_ID ?? persistentDeviceId(),
-    questDeviceId: process.env.QPS_QUEST_DEVICE_ID ?? "quest-3s-001",
-    sessionId: process.env.QPS_SESSION_ID ?? "local-session-001",
-    platform: "macos",
-    sourceType: "screen",
-    width: 1920,
-    height: 1080,
-    fps: 30
-  };
+  currentConfig = resolveConfig();
+  log("deviceId:", currentConfig.deviceId);
+  log("signaling endpoint:", currentConfig.signalingUrl || "(none - waiting for discovery/manual config)");
 
-  advertisement = new UnifiedDeviceAdvertisement(config);
+  advertisement = new UnifiedDeviceAdvertisement(currentConfig);
   await advertisement.start();
+  advertisement.setSignalingUrl(currentConfig.signalingUrl);
+  log("advertisement started; port:", advertisement["port"]);
 
-  ipcMain.handle("qps:get-config", () => config);
+  discovery = new SignalingDiscovery();
+  discovery.onCandidate = applyDiscoveredSignaling;
+  discovery.start();
+  log("discovery started");
+
+  ipcMain.handle("qps:get-config", () => currentConfig);
   ipcMain.handle("qps:list-sources", async () => {
     const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 320, height: 180 } });
     return sources.map(source => ({ id: source.id, name: source.name, thumbnail: source.thumbnail.toDataURL() }));
   });
+  ipcMain.handle("qps:save-config", (_event, patch: Partial<PersistedConfig>) => {
+    const persisted = savePersisted(patch ?? {});
+    currentConfig = resolveConfig();
+    advertisement?.setSignalingUrl(currentConfig.signalingUrl);
+    log("config applied:", JSON.stringify({ manualSignaling: persisted.manualSignaling, signalingUrl: currentConfig.signalingUrl }));
+    broadcastConfigState();
+    return { config: currentConfig, persisted };
+  });
   ipcMain.on("qps:spatial-ready", (_event, ready: boolean) => advertisement?.setSpatialReady(Boolean(ready)));
 
-  const window = new BrowserWindow({
-    width: 720,
-    height: 640,
+  mainWindow = new BrowserWindow({
+    width: 760,
+    height: 780,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
-  await window.loadFile(path.join(__dirname, "index.html"));
+  mainWindow.on("closed", () => { mainWindow = null; });
+  await mainWindow.loadFile(path.join(__dirname, "index.html"));
+  log("window loaded");
+  if (pendingDiscoveredUrl) {
+    mainWindow.webContents.send("qps:signaling-changed", {
+      url: pendingDiscoveredUrl,
+      source: "discovered"
+    });
+    pendingDiscoveredUrl = "";
+  }
+  broadcastConfigState();
 });
 
-app.on("before-quit", () => advertisement?.stop());
+app.on("before-quit", () => {
+  advertisement?.stop();
+  discovery?.stop();
+});
 app.on("window-all-closed", () => app.quit());
+
+// Graceful teardown on SIGTERM/SIGINT so Bonjour goodbye packets are sent
+// and no stale service lingers on the LAN.
+process.on("SIGTERM", () => app.quit());
+process.on("SIGINT", () => app.quit());

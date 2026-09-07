@@ -3,26 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src ws: wss: http: https:;" />
   <title>QuestPhoneStream Mac Sender</title>
   <style>
     body { font: 14px -apple-system, BlinkMacSystemFont, sans-serif; margin: 28px; background: #111; color: #eee; }
     .card { background: #1c1c1e; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
-    select, button { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px; border-radius: 8px; }
+    select, button, input { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 14px; }
+    input { background: #2c2c2e; color: #eee; border: 1px solid #3a3a3c; }
     button { border: 0; font-weight: 600; }
-    #status { margin-top: 12px; color: #9ad; }
+    #start { background: #2e7d32; color: #fff; }
+    #stop { background: #b71c1c; color: #fff; }
+    #save { background: #1565c0; color: #fff; }
+    #status { margin-top: 12px; color: #9ad; font-weight: 600; }
+    #detail { margin-top: 10px; }
     .muted { color: #999; font-size: 12px; word-break: break-all; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row > * { flex: 1; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-left: 6px; }
+    .badge.ok { background: #2e7d32; color: #fff; }
+    .badge.warn { background: #b26a00; color: #fff; }
+    .badge.err { background: #b71c1c; color: #fff; }
+    .badge.idle { background: #444; color: #ccc; }
   </style>
 </head>
 <body>
-  <h2>QuestPhoneStream · Mac</h2>
+  <h2>QuestPhoneStream · Mac Sender</h2>
   <div class="card">
-    <div id="identity" class="muted">Loading…</div>
+    <div class="row">
+      <div id="identity" class="muted">Loading…</div>
+      <span id="state-badge" class="badge idle">…</span>
+    </div>
+    <div id="signaling-info" class="muted">Signaling: —</div>
+    <label style="display:block;margin-top:12px;font-size:12px;color:#999;">Signaling endpoint (manual override, optional)</label>
+    <input id="signaling-input" type="text" placeholder="ws://192.168.1.16:8787" />
+    <button id="save">Apply signaling endpoint</button>
+  </div>
+  <div class="card">
     <select id="sources"></select>
     <button id="start">Start screen stream</button>
     <button id="stop">Stop</button>
-    <div id="status">Starting…</div>
   </div>
-  <div class="muted">Video only · WebRTC · 1080p/30fps baseline</div>
+  <div class="card">
+    <div id="status">Starting…</div>
+    <div id="detail" class="muted"></div>
+  </div>
+  <div class="muted">Screen publish · NSD · Spatial telemetry consumer · WebRTC 1080p/30fps baseline</div>
   <script src="renderer.js"></script>
 </body>
 </html>
