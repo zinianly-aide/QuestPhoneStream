@@ -10,6 +10,7 @@ namespace QuestPhoneStream
         public Canvas canvas;
         public InputField signalingUrlInput, tokenInput, questDeviceIdInput, androidDeviceIdInput, sessionIdInput, mediaBaseUrlInput;
         public Button saveButton, connectButton, phoneScreenButton, videoLibraryButton;
+        public Button aiVisionButton;
         public Button developerToolsButton;
         public Button backButton;
         public Text statusText;
@@ -18,6 +19,7 @@ namespace QuestPhoneStream
         public MediaCatalogClient mediaCatalogClient;
         public WirelessAdbHelper wirelessAdbHelper;
         public DeveloperHud developerHud;
+        public AiVisionUI aiVisionUi;
         public Action onBackToHome;
         public bool IsVisible => canvas != null && canvas.gameObject.activeInHierarchy;
 
@@ -37,9 +39,11 @@ namespace QuestPhoneStream
             saveButton.onClick.AddListener(OnSave);
             connectButton.onClick.AddListener(OnConnect);
             backButton?.onClick.AddListener(OnBack);
+            aiVisionButton?.onClick.AddListener(ShowAiVision);
             developerToolsButton?.onClick.AddListener(ShowDeveloperTools);
             phoneScreenButton?.onClick.AddListener(() => { mediaLibrary?.Close(); mediaPlayback?.SetPhoneScreenMode(); });
             videoLibraryButton?.onClick.AddListener(() => {
+                aiVisionUi?.Hide();
                 SetAdvancedVisible(false);
                 mediaLibrary?.Open();
             });
@@ -73,8 +77,26 @@ namespace QuestPhoneStream
 
         public void ShowAdvanced()
         {
+            aiVisionUi?.Hide();
             developerHud?.Hide();
             wirelessAdbHelper?.Hide();
+            SetAdvancedVisible(true);
+            Show();
+        }
+
+        public void ShowAiVision()
+        {
+            if (!_initialized) throw new InvalidOperationException("Initialize Settings UI before showing AI Vision");
+            developerHud?.Hide();
+            wirelessAdbHelper?.Hide();
+            SetAdvancedVisible(false);
+            Show();
+            aiVisionUi?.Show();
+        }
+
+        public void HideAiVision()
+        {
+            aiVisionUi?.Hide();
             SetAdvancedVisible(true);
             Show();
         }
@@ -82,6 +104,7 @@ namespace QuestPhoneStream
         public void ShowDeveloperTools()
         {
             if (!_initialized) throw new InvalidOperationException("Initialize Settings UI before showing developer tools");
+            aiVisionUi?.Hide();
             SetAdvancedVisible(false);
             Show();
             wirelessAdbHelper?.Hide();
@@ -105,6 +128,7 @@ namespace QuestPhoneStream
 
         private void OnBack()
         {
+            aiVisionUi?.Hide();
             developerHud?.Hide();
             wirelessAdbHelper?.Hide();
             SetAdvancedVisible(true);
