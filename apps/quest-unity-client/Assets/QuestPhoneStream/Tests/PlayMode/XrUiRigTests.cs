@@ -47,6 +47,11 @@ namespace QuestPhoneStream.Tests
                 Assert.AreEqual("QuestPhoneStream/UnlitVideo", renderer.sharedMaterial.shader.name);
                 Assert.AreEqual(0f, renderer.sharedMaterial.GetFloat("_Cull"));
                 Assert.AreEqual(Quaternion.identity, panel.transform.localRotation);
+                var panelRoot = GameObject.Find("PhonePanelRoot");
+                Assert.IsNotNull(panelRoot);
+                Assert.AreSame(origin.transform.Find("SpatialPanels"), panelRoot.transform.parent);
+                Assert.AreNotSame(camera.transform, panelRoot.transform.parent);
+                Assert.AreNotSame(panel.GetComponent<Collider>(), panelRoot.GetComponent<PhonePanelSpatialInteraction>().grabCollider);
                 yield return null;
             }
             finally

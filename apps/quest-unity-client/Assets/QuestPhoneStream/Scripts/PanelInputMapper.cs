@@ -18,13 +18,16 @@ namespace QuestPhoneStream
         [Header("Ray Source")]
         public Camera rayCamera; // fallback: head gaze when no controller is wired
         public XRRayInteractor controllerInteractor; // right-hand controller ray (set at runtime)
+        public XRRayInteractor secondaryControllerInteractor; // left-hand/controller-or-hand ray
 
         [Header("Targets")]
         public Collider panelCollider;
         public ControlChannel controlChannel;
 
         [Header("Input")]
-        public InputAction clickAction; // trigger press (set at runtime)
+        public InputAction clickAction; // right trigger press (set at runtime)
+        public InputAction secondaryClickAction; // left trigger / hand-ray select
+        public PhonePanelSpatialInteraction spatialInteraction;
 
         [Header("Gate")]
         public SettingsUI settingsUI; // blocks panel clicks while settings panel is visible
@@ -45,6 +48,8 @@ namespace QuestPhoneStream
 
         // Gesture state
         private bool _gestureActive;
+        private string _gestureSource;
+        private XRRayInteractor _gestureRay;
         private Vector2 _gestureStartUv;
         private Vector2 _lastUv;
         private float _gestureStartTime;
@@ -71,47 +76,53 @@ namespace QuestPhoneStream
             {
                 // Cancel any in-progress gesture so we don't send a stale swipe later.
                 _gestureActive = false;
+                _gestureSource = null;
+                _gestureRay = null;
+                spatialInteraction?.EndScreenTouch();
                 return;
             }
 
-            if (clickAction == null) return;
-
-            if (clickAction.WasPressedThisFrame())
-                BeginGesture();
-
-            if (!_gestureActive) return;
-
-            // Track the latest ray hit UV while the trigger is held down.
-            // If the ray leaves the panel, keep the last valid position (so a
-            // swipe that briefly goes off-panel still completes sensibly).
-            if (TryGetPanelUv(out var currentUv))
-                _lastUv = currentUv;
-
-            if (clickAction.WasReleasedThisFrame())
-                EndGesture();
+            ProcessRayInput("right-ray", controllerInteractor, clickAction);
+            ProcessRayInput("left-ray", secondaryControllerInteractor, secondaryClickAction);
         }
 
         // ── Gesture lifecycle ─────────────────────────────────────────────
 
-        private void BeginGesture()
+        private void ProcessRayInput(string source, XRRayInteractor interactor, InputAction action)
         {
-            if (!TryGetPanelUv(out var uv))
+            if (action == null) return;
+            if (action.WasPressedThisFrame()) BeginGesture(source, interactor);
+            if (!_gestureActive || _gestureSource != source) return;
+            if (TryGetPanelUv(interactor, out var currentUv)) _lastUv = currentUv;
+            if (action.WasReleasedThisFrame()) EndGesture(source);
+        }
+
+        private void BeginGesture(string source, XRRayInteractor interactor)
+        {
+            if (_gestureActive || (spatialInteraction != null && !spatialInteraction.TryBeginScreenTouch())) return;
+            if (!TryGetPanelUv(interactor, out var uv))
             {
+                spatialInteraction?.EndScreenTouch();
                 Debug.Log("[QuestPhoneStream] Gesture begin: ray missed panel, ignoring press");
                 return;
             }
 
             _gestureActive = true;
+            _gestureSource = source;
+            _gestureRay = interactor;
             _gestureStartUv = uv;
             _lastUv = uv;
             _gestureStartTime = Time.unscaledTime;
             Debug.Log($"[QuestPhoneStream] Gesture begin uv=({uv.x:F3},{uv.y:F3})");
         }
 
-        private void EndGesture()
+        private void EndGesture(string source)
         {
-            if (!_gestureActive) return;
+            if (!_gestureActive || _gestureSource != source) return;
             _gestureActive = false;
+            _gestureSource = null;
+            _gestureRay = null;
+            spatialInteraction?.EndScreenTouch();
 
             var start = ToAndroidPixels(_gestureStartUv);
             var end = ToAndroidPixels(_lastUv);
@@ -142,33 +153,46 @@ namespace QuestPhoneStream
         // ── Ray / UV helpers ──────────────────────────────────────────────
 
         /// <summary>Cast the active ray (controller, fallback head gaze) and return the panel UV at the hit point.</summary>
-        private bool TryGetPanelUv(out Vector2 uv)
+        public bool TryMapHitToUv(Ray ray, out Vector2 uv)
         {
             uv = default;
             if (panelCollider == null) return false;
-
-            Ray ray;
-            if (controllerInteractor != null)
-            {
-                var origin = controllerInteractor.rayOriginTransform != null
-                    ? controllerInteractor.rayOriginTransform
-                    : controllerInteractor.transform;
-                ray = new Ray(origin.position, origin.forward);
-            }
-            else if (rayCamera != null)
-            {
-                ray = new Ray(rayCamera.transform.position, rayCamera.transform.forward);
-            }
-            else
-            {
-                return false;
-            }
-
             if (!panelCollider.Raycast(ray, out RaycastHit hit, 20f))
                 return false;
-
             uv = hit.textureCoord;
             return true;
+        }
+
+        private bool TryGetPanelUv(XRRayInteractor interactor, out Vector2 uv)
+        {
+            if (interactor != null)
+            {
+                var origin = interactor.rayOriginTransform != null ? interactor.rayOriginTransform : interactor.transform;
+                return TryMapHitToUv(new Ray(origin.position, origin.forward), out uv);
+            }
+            if (rayCamera != null) return TryMapHitToUv(new Ray(rayCamera.transform.position, rayCamera.transform.forward), out uv);
+            uv = default;
+            return false;
+        }
+
+        public bool TryBeginExternalTouch(string source, Vector2 uv)
+        {
+            if (_gestureActive || (spatialInteraction != null && !spatialInteraction.TryBeginScreenTouch())) return false;
+            _gestureActive = true;
+            _gestureSource = source;
+            _gestureStartUv = _lastUv = uv;
+            _gestureStartTime = Time.unscaledTime;
+            return true;
+        }
+
+        public void UpdateExternalTouch(string source, Vector2 uv)
+        {
+            if (_gestureActive && _gestureSource == source) _lastUv = uv;
+        }
+
+        public void EndExternalTouch(string source)
+        {
+            EndGesture(source);
         }
 
         /// <summary>Convert panel UV (0-1, origin bottom-left) to Android pixel coordinates (origin top-left).</summary>
@@ -228,11 +252,10 @@ namespace QuestPhoneStream
             if (cursorGo == null) return;
 
             Ray ray;
-            if (controllerInteractor != null)
+            var activeRay = _gestureRay != null ? _gestureRay : controllerInteractor;
+            if (activeRay != null)
             {
-                var origin = controllerInteractor.rayOriginTransform != null
-                    ? controllerInteractor.rayOriginTransform
-                    : controllerInteractor.transform;
+                var origin = activeRay.rayOriginTransform != null ? activeRay.rayOriginTransform : activeRay.transform;
                 ray = new Ray(origin.position, origin.forward);
             }
             else if (rayCamera != null)
@@ -258,6 +281,9 @@ namespace QuestPhoneStream
         private void OnDisable()
         {
             _gestureActive = false;
+            _gestureSource = null;
+            _gestureRay = null;
+            spatialInteraction?.EndScreenTouch();
         }
 
         private void OnDestroy()

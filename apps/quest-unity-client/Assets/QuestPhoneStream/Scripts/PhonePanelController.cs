@@ -43,14 +43,31 @@ namespace QuestPhoneStream
 
         public void ResetScale()
         {
-            transform.localScale = _initialLocalScale;
+            var spatial = GetComponent<PhonePanelSpatialInteraction>();
+            if (spatial != null) spatial.SetUniformScale(1f);
+            else transform.localScale = _initialLocalScale;
         }
+
+        public void ResetPose()
+        {
+            var spatial = GetComponent<PhonePanelSpatialInteraction>();
+            if (spatial == null) return;
+            var camera = Camera.main ?? FindFirstObjectByType<Camera>();
+            spatial.ResetPose(camera);
+        }
+
+        public void Recenter() => ResetPose();
 
         private void SetUniformScale(float scale)
         {
+            var spatial = GetComponent<PhonePanelSpatialInteraction>();
+            if (spatial != null)
+            {
+                spatial.SetUniformScale(scale);
+                return;
+            }
             float clamped = Mathf.Clamp(scale, minScale, maxScale);
             transform.localScale = new Vector3(clamped, clamped, clamped);
         }
     }
 }
-

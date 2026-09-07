@@ -50,23 +50,37 @@ namespace QuestPhoneStream.Editor
             var material = EnsurePanelMaterial();
             var panoramicMaterial = EnsureUnityPanoramicMaterial();
 
+            var spatialPanels = new GameObject("SpatialPanels");
+            var panelRoot = new GameObject("PhonePanelRoot");
+            panelRoot.transform.SetParent(spatialPanels.transform, false);
+            panelRoot.transform.position = new Vector3(0f, 1.45f, 1.2f);
             var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            panel.name = "PhonePanel";
-            panel.transform.position = new Vector3(0f, 1.45f, 1.2f);
-            panel.transform.rotation = Quaternion.identity;
+            panel.name = "PhoneScreen";
+            panel.transform.SetParent(panelRoot.transform, false);
             panel.transform.localScale = new Vector3(0.72f, 1.6f, 1f);
             panel.GetComponent<MeshRenderer>().sharedMaterial = material;
-            if (panel.GetComponent<Collider>() == null)
-            {
-                panel.AddComponent<MeshCollider>();
-            }
+
+            var frame = new GameObject("Frame");
+            frame.transform.SetParent(panelRoot.transform, false);
+            var grabHandle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            grabHandle.name = "GrabHandle";
+            grabHandle.transform.SetParent(frame.transform, false);
+            grabHandle.transform.localPosition = new Vector3(0f, -0.88f, 0.025f);
+            grabHandle.transform.localScale = new Vector3(0.78f, 0.06f, 0.04f);
 
             var app = new GameObject("QuestPhoneStreamApp");
             var signaling = app.AddComponent<QuestSignalingClient>();
             var control = app.AddComponent<ControlChannel>();
             var receiver = app.AddComponent<QuestWebRtcReceiver>();
             var mapper = panel.AddComponent<PanelInputMapper>();
-            panel.AddComponent<PhonePanelController>();
+            panelRoot.AddComponent<PhonePanelController>();
+            var spatial = panelRoot.AddComponent<PhonePanelSpatialInteraction>();
+            spatial.screenCollider = panel.GetComponent<Collider>();
+            spatial.grabCollider = grabHandle.GetComponent<Collider>();
+            spatial.frameRenderer = grabHandle.GetComponent<Renderer>();
+            var handInteraction = panelRoot.AddComponent<PhonePanelHandInteraction>();
+            handInteraction.panel = spatial;
+            handInteraction.inputMapper = mapper;
 
             control.signaling = signaling;
             receiver.signaling = signaling;
@@ -80,6 +94,7 @@ namespace QuestPhoneStream.Editor
             mapper.rayCamera = camera;
             mapper.panelCollider = panel.GetComponent<Collider>();
             mapper.controlChannel = control;
+            mapper.spatialInteraction = spatial;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
 
