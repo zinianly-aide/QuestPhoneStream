@@ -53,7 +53,11 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
             _pressed[source] = false;
             Raise(source, PointerModality.Poke, InteractionPhase.PressEnd, Vector3.zero, Vector3.forward);
         }
-        private bool TryHit(Ray ray, float distance, out RaycastHit hit) => _screen != null && _screen.Raycast(ray, out hit, distance);
+        private bool TryHit(Ray ray, float distance, out RaycastHit hit)
+        {
+            hit = default;
+            return _screen != null && _screen.Raycast(ray, out hit, distance);
+        }
         private void Raise(InteractionSourceType source, PointerModality modality, InteractionPhase phase, Vector3 position, Vector3 normal) =>
             PointerEventRaised?.Invoke(new PointerEvent(source, modality, phase, position, normal, _screen, "PhoneScreen"));
         private XRHandSubsystem ResolveHands()
