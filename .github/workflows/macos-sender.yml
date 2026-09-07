@@ -1,0 +1,51 @@
+name: macOS Sender CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/p3-spatial
+    paths:
+      - "apps/macos-sender/**"
+      - ".github/workflows/macos-sender.yml"
+  pull_request:
+    paths:
+      - "apps/macos-sender/**"
+      - ".github/workflows/macos-sender.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-sender-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: apps/macos-sender
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/macos-sender/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build sender
+        run: npm run build

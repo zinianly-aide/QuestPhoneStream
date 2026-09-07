@@ -14,6 +14,7 @@ namespace QuestPhoneStream.Tests
         [UnityTest]
         public IEnumerator BootstrapCreatesOneInputChainWithTwoRays()
         {
+            DestroyExistingPhonePanels();
             var root = new GameObject("XR test");
             var cameraObject = new GameObject("Camera without tag");
             var camera = cameraObject.AddComponent<Camera>();
@@ -41,28 +42,44 @@ namespace QuestPhoneStream.Tests
                 Assert.IsTrue(rig.Actions.FindAction("Open Settings").enabled);
                 Assert.Greater(rig.Actions.FindAction("LeftHand UI Click").bindings.Count, 0);
                 Assert.Greater(rig.Actions.FindAction("RightHand UI Point Position").bindings.Count, 0);
-                Assert.IsNotNull(panel);
-                var renderer = panel.GetComponent<Renderer>();
-                Assert.IsNotNull(renderer);
-                Assert.AreSame(renderer.sharedMaterial, receiver.targetMaterial);
-                Assert.AreEqual("QuestPhoneStream/UnlitVideo", renderer.sharedMaterial.shader.name);
-                Assert.AreEqual(0f, renderer.sharedMaterial.GetFloat("_Cull"));
-                Assert.AreEqual(Quaternion.identity, panel.transform.localRotation);
+
                 var panelRoot = GameObject.Find("PhonePanelRoot");
                 Assert.IsNotNull(panelRoot);
                 Assert.AreSame(origin.transform.Find("SpatialPanels"), panelRoot.transform.parent);
                 Assert.AreNotSame(camera.transform, panelRoot.transform.parent);
+                var screen = panelRoot.transform.Find("PhoneScreen");
+                Assert.IsNotNull(screen);
+                Assert.AreSame(panel, screen.gameObject);
+                var renderer = screen.GetComponent<Renderer>();
+                Assert.IsNotNull(renderer);
+                Assert.AreSame(renderer, receiver.phoneScreenRenderer);
+                Assert.AreSame(renderer.sharedMaterial, receiver.targetMaterial);
+                Assert.AreEqual("QuestPhoneStream/UnlitVideo", renderer.sharedMaterial.shader.name);
+                Assert.AreEqual(0f, renderer.sharedMaterial.GetFloat("_Cull"));
+                Assert.AreEqual(Quaternion.identity, screen.localRotation);
                 var router = panelRoot.GetComponent<PhonePanelInteractionRouter>();
                 Assert.IsNotNull(router);
-                Assert.AreNotSame(panel.GetComponent<Collider>(), router.grabCollider);
+                Assert.AreNotSame(screen.GetComponent<Collider>(), router.grabCollider);
                 yield return null;
             }
             finally
             {
-                Object.Destroy(root);
-                Object.Destroy(panelMaterial);
+                Object.DestroyImmediate(root);
+                DestroyExistingPhonePanels();
+                Object.DestroyImmediate(panelMaterial);
             }
             yield return null;
+        }
+
+        private static void DestroyExistingPhonePanels()
+        {
+            var transforms = Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var transform in transforms)
+            {
+                if (transform == null) continue;
+                if (transform.name != "PhonePanelRoot" && transform.name != "PhonePanel") continue;
+                Object.DestroyImmediate(transform.gameObject);
+            }
         }
     }
 }

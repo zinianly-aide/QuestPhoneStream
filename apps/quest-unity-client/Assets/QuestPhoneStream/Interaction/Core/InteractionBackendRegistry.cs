@@ -32,5 +32,16 @@ namespace QuestPhoneStream.Interaction
             }
             return null;
         }
+
+        /// <summary>
+        /// Clears registered factories and fallback order. This keeps test setup deterministic
+        /// and also provides an explicit reset point before a controlled backend bootstrap.
+        /// Runtime callers should normally rely on each backend's EnsureRegistered method.
+        /// </summary>
+        public static void Clear()
+        {
+            Factories.Clear();
+            FallbackOrder.Clear();
+        }
     }
 }

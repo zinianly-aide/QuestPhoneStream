@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using NUnit.Framework;
 using QuestPhoneStream.Interaction;
+using QuestPhoneStream.Interaction.Backends.XRI;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -57,13 +58,24 @@ namespace QuestPhoneStream.Tests
         [Test]
         public void RegistryFallsBackWhenPreferredBackendIsUnavailable()
         {
-            InteractionBackendRegistry.Register("UnavailableTest", () => new FakeBackend(false));
-            InteractionBackendRegistry.Register("FallbackTest", () => new FakeBackend(true), true);
-            var root = new GameObject("PhonePanelRoot"); var manager = root.AddComponent<InteractionBackendManager>();
-            manager.preferredBackend = "UnavailableTest";
-            Assert.IsTrue(manager.InitializeBackend(new InteractionBackendContext { panelRoot = root }));
-            Assert.AreEqual("FallbackTest", manager.ActiveBackend.Name);
-            Object.DestroyImmediate(root);
+            InteractionBackendRegistry.Clear();
+            GameObject root = null;
+            try
+            {
+                InteractionBackendRegistry.Register("UnavailableTest", () => new FakeBackend(false));
+                InteractionBackendRegistry.Register("FallbackTest", () => new FakeBackend(true), true);
+                root = new GameObject("PhonePanelRoot");
+                var manager = root.AddComponent<InteractionBackendManager>();
+                manager.preferredBackend = "UnavailableTest";
+                Assert.IsTrue(manager.InitializeBackend(new InteractionBackendContext { panelRoot = root }));
+                Assert.AreEqual("FallbackTest", manager.ActiveBackend.Name);
+            }
+            finally
+            {
+                if (root != null) Object.DestroyImmediate(root);
+                InteractionBackendRegistry.Clear();
+                XriInteractionBackend.EnsureRegistered();
+            }
         }
 
         [Test]
