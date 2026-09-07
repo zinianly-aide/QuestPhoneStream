@@ -105,6 +105,42 @@ jobs:
           buildsPath: build
           allowDirtyBuild: true
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install build-tools
+        run: sdkmanager "build-tools;36.1.0"
+
+      - name: Sign Quest APK (release keystore)
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::warning::Signing secrets missing - skipping release signing (APK keeps Unity debug signature)."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          APK=$(find build -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found under build/"
+            exit 1
+          fi
+          BT="$ANDROID_HOME"/build-tools/36.1.0
+          "$BT/zipalign" -f 4 "$APK" aligned.apk
+          "$BT/apksigner" sign \
+            --ks release.keystore \
+            --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass "pass:${KEY_PASSWORD}" \
+            --out signed.apk aligned.apk
+          mv signed.apk "$APK"
+          "$BT/apksigner" verify --print-certs "$APK"
+
       - name: Upload Quest APK
         uses: actions/upload-artifact@v4
         with:

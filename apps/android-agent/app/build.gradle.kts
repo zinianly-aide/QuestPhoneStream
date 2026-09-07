@@ -24,6 +24,34 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Release signing: inject keystore via CI env vars (KEYSTORE_BASE64 etc).
+    // Locally without these vars, release falls back to unsigned.
+    signingConfigs {
+        create("release") {
+            val b64 = System.getenv("KEYSTORE_BASE64")
+            if (!b64.isNullOrBlank()) {
+                val ksFile = file("${rootDir}/release.keystore")
+                if (!ksFile.exists()) {
+                    ksFile.writeBytes(java.util.Base64.getDecoder().decode(b64))
+                }
+                storeFile = ksFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = if (System.getenv("KEYSTORE_BASE64").isNullOrBlank())
+                null
+            else
+                signingConfigs.getByName("release")
+        }
+    }
 }
 
 dependencies {
