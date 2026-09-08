@@ -6,15 +6,30 @@ using UnityEngine.TestTools;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using QuestPhoneStream.Interaction;
+using QuestPhoneStream.Interaction.Backends.XRI;
 
 namespace QuestPhoneStream.Tests
 {
     public class XrUiRigTests
     {
+        [SetUp]
+        public void Setup()
+        {
+            InteractionBackendRegistry.Clear();
+            XriInteractionBackend.EnsureRegistered();
+            DestroyExistingPhonePanels();
+        }
+
+        [TearDown]
+        public void CleanupRegistry()
+        {
+            InteractionBackendRegistry.Clear();
+            XriInteractionBackend.EnsureRegistered();
+        }
+
         [UnityTest]
         public IEnumerator BootstrapCreatesOneInputChainWithTwoRays()
         {
-            DestroyExistingPhonePanels();
             var root = new GameObject("XR test");
             var cameraObject = new GameObject("Camera without tag");
             var camera = cameraObject.AddComponent<Camera>();
@@ -57,13 +72,16 @@ namespace QuestPhoneStream.Tests
                 Assert.AreEqual("QuestPhoneStream/UnlitVideo", renderer.sharedMaterial.shader.name);
                 Assert.AreEqual(0f, renderer.sharedMaterial.GetFloat("_Cull"));
                 Assert.AreEqual(Quaternion.identity, screen.localRotation);
-                var router = panelRoot.GetComponent<PhonePanelInteractionRouter>();
+                var router = panelRoot.GetComponent<SpatialPanelInteractionRouter>();
                 Assert.IsNotNull(router);
                 Assert.AreNotSame(screen.GetComponent<Collider>(), router.grabCollider);
+                Assert.AreSame(router, panelRoot.GetComponent<SpatialPanelShell>().Router);
                 yield return null;
             }
             finally
             {
+                var panelRoot = GameObject.Find("PhonePanelRoot");
+                panelRoot?.GetComponent<InteractionBackendManager>()?.ShutdownBackend();
                 Object.DestroyImmediate(root);
                 DestroyExistingPhonePanels();
                 Object.DestroyImmediate(panelMaterial);
@@ -73,11 +91,13 @@ namespace QuestPhoneStream.Tests
 
         private static void DestroyExistingPhonePanels()
         {
-            var transforms = Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var transforms = Object.FindObjectsByType<Transform>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
             foreach (var transform in transforms)
             {
                 if (transform == null) continue;
                 if (transform.name != "PhonePanelRoot" && transform.name != "PhonePanel") continue;
+                transform.GetComponent<InteractionBackendManager>()?.ShutdownBackend();
                 Object.DestroyImmediate(transform.gameObject);
             }
         }

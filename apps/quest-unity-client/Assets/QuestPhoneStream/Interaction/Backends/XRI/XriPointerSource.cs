@@ -10,87 +10,176 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
     {
         public event Action<PointerEvent> PointerEventRaised;
         private readonly List<XRHandSubsystem> _subsystems = new List<XRHandSubsystem>();
-        private readonly Dictionary<InteractionSourceType, bool> _pressed = new Dictionary<InteractionSourceType, bool>();
+        private readonly Dictionary<InteractionSourceType, PointerModality> _active =
+            new Dictionary<InteractionSourceType, PointerModality>();
         private Collider _screen;
         private XriRuntimeDependencies _dependencies;
         private XRHandSubsystem _handSubsystem;
-        private readonly Dictionary<InteractionSourceType, Vector3> _last = new Dictionary<InteractionSourceType, Vector3>();
+        private readonly Dictionary<InteractionSourceType, Vector3> _last =
+            new Dictionary<InteractionSourceType, Vector3>();
         [SerializeField] private float pressThreshold = .008f;
         [SerializeField] private float releaseThreshold = .025f;
 
-        public void Configure(Collider screen, XriRuntimeDependencies dependencies) { _screen = screen; _dependencies = dependencies; }
+        public void Configure(Collider screen, XriRuntimeDependencies dependencies)
+        {
+            _screen = screen;
+            _dependencies = dependencies;
+        }
+
         private void Update()
         {
             ProcessRay(InteractionSourceType.LeftController, _dependencies?.leftRay, _dependencies?.leftClick);
             ProcessRay(InteractionSourceType.RightController, _dependencies?.rightRay, _dependencies?.rightClick);
             var hands = ResolveHands();
-            if (hands != null) { ProcessHand(InteractionSourceType.LeftHand, hands.leftHand); ProcessHand(InteractionSourceType.RightHand, hands.rightHand); }
-            else { EndHand(InteractionSourceType.LeftHand, true); EndHand(InteractionSourceType.RightHand, true); }
+            if (hands != null)
+            {
+                ProcessHand(InteractionSourceType.LeftHand, hands.leftHand);
+                ProcessHand(InteractionSourceType.RightHand, hands.rightHand);
+            }
+            else
+            {
+                EndGesture(InteractionSourceType.LeftHand, PointerModality.Poke, true);
+                EndGesture(InteractionSourceType.RightHand, PointerModality.Poke, true);
+            }
         }
 
         private void ProcessRay(InteractionSourceType source, XRRayInteractor ray, UnityEngine.InputSystem.InputAction action)
         {
-            if (ray == null || action == null || !ray.isActiveAndEnabled) { EndHand(source, true); return; }
+            if (ray == null || action == null || !ray.isActiveAndEnabled)
+            {
+                EndGesture(source, PointerModality.Ray, true);
+                return;
+            }
+
             var origin = ray.rayOriginTransform != null ? ray.rayOriginTransform : ray.transform;
             if (!TryHit(new Ray(origin.position, origin.forward), ray.maxRaycastDistance, out var hit))
             {
-                if (_pressed.TryGetValue(source, out var pressed) && pressed && !action.IsPressed())
-                {
-                    _pressed[source] = false;
-                    Raise(source, PointerModality.Ray, InteractionPhase.PressEnd,
-                        _last.TryGetValue(source, out var last) ? last : origin.position, -_screen.transform.forward);
-                }
+                if (IsActive(source, PointerModality.Ray) && !action.IsPressed())
+                    EndGesture(source, PointerModality.Ray, false);
                 return;
             }
-            _last[source] = hit.point;
-            var phase = action.WasPressedThisFrame() ? InteractionPhase.PressBegin : action.IsPressed() ? InteractionPhase.PressMove : InteractionPhase.HoverMove;
-            Raise(source, PointerModality.Ray, phase, hit.point, hit.normal);
-            _pressed[source] = action.IsPressed();
-            if (action.WasReleasedThisFrame()) Raise(source, PointerModality.Ray, InteractionPhase.PressEnd, hit.point, hit.normal);
+
+            if (action.WasPressedThisFrame())
+            {
+                BeginGesture(source, PointerModality.Ray, hit.point, hit.normal);
+                return;
+            }
+
+            if (IsActive(source, PointerModality.Ray))
+            {
+                if (action.WasReleasedThisFrame() || !action.IsPressed())
+                {
+                    EndGesture(source, PointerModality.Ray, false, hit.point, hit.normal);
+                    return;
+                }
+
+                MoveGesture(source, PointerModality.Ray, hit.point, hit.normal);
+                return;
+            }
+
+            Raise(source, PointerModality.Ray, InteractionPhase.HoverMove, hit.point, hit.normal);
         }
 
         private void ProcessHand(InteractionSourceType source, XRHand hand)
         {
             if (!hand.isTracked || !hand.GetJoint(XRHandJointID.IndexTip).TryGetPose(out var tip))
-            { EndHand(source, true); return; }
-            if (_screen == null || !_screen.enabled) { EndHand(source, true); return; }
+            {
+                EndGesture(source, PointerModality.Poke, true);
+                return;
+            }
+
+            if (_screen == null || !_screen.enabled)
+            {
+                EndGesture(source, PointerModality.Poke, true);
+                return;
+            }
+
             var tracking = _dependencies?.trackingOrigin;
             var point = tracking != null ? tracking.TransformPoint(tip.position) : tip.position;
-            var pressed = _pressed.TryGetValue(source, out var active) && active;
+            var pressed = IsActive(source, PointerModality.Poke);
             var nearest = _screen.ClosestPoint(point);
             var distance = Vector3.Distance(nearest, point);
-            if (!PokeHysteresis.IsPressed(pressed, distance, pressThreshold, releaseThreshold)) { EndHand(source); return; }
-            _last[source] = nearest;
-            Raise(source, PointerModality.Poke, pressed ? InteractionPhase.PressMove : InteractionPhase.PressBegin, nearest, -_screen.transform.forward);
-            _pressed[source] = true;
+            if (!PokeHysteresis.IsPressed(pressed, distance, pressThreshold, releaseThreshold))
+            {
+                EndGesture(source, PointerModality.Poke, false, nearest, -_screen.transform.forward);
+                return;
+            }
+
+            if (pressed)
+                MoveGesture(source, PointerModality.Poke, nearest, -_screen.transform.forward);
+            else
+                BeginGesture(source, PointerModality.Poke, nearest, -_screen.transform.forward);
         }
-        private void EndHand(InteractionSourceType source, bool cancel = false)
+
+        private bool IsActive(InteractionSourceType source, PointerModality modality) =>
+            _active.TryGetValue(source, out var activeModality) && activeModality == modality;
+
+        private void BeginGesture(InteractionSourceType source, PointerModality modality, Vector3 position, Vector3 normal)
         {
-            if (!_pressed.TryGetValue(source, out var pressed) || !pressed) return;
-            _pressed[source] = false;
-            Raise(source, PointerModality.Poke, cancel ? InteractionPhase.PressCancel : InteractionPhase.PressEnd,
-                _last.TryGetValue(source, out var point) ? point : Vector3.zero, _screen != null ? -_screen.transform.forward : Vector3.forward);
+            if (_active.TryGetValue(source, out var activeModality))
+            {
+                if (activeModality == modality) return;
+                EndGesture(source, activeModality, true);
+            }
+
+            _active[source] = modality;
+            _last[source] = position;
+            Raise(source, modality, InteractionPhase.PressBegin, position, normal);
         }
+
+        private void MoveGesture(InteractionSourceType source, PointerModality modality, Vector3 position, Vector3 normal)
+        {
+            if (!IsActive(source, modality)) return;
+            _last[source] = position;
+            Raise(source, modality, InteractionPhase.PressMove, position, normal);
+        }
+
+        private void EndGesture(InteractionSourceType source, PointerModality modality, bool cancel)
+        {
+            var point = _last.TryGetValue(source, out var last) ? last : Vector3.zero;
+            var normal = _screen != null ? -_screen.transform.forward : Vector3.forward;
+            EndGesture(source, modality, cancel, point, normal);
+        }
+
+        private void EndGesture(InteractionSourceType source, PointerModality modality, bool cancel,
+            Vector3 position, Vector3 normal)
+        {
+            if (!IsActive(source, modality)) return;
+            _active.Remove(source);
+            _last.Remove(source);
+            Raise(source, modality, cancel ? InteractionPhase.PressCancel : InteractionPhase.PressEnd, position, normal);
+        }
+
         private bool TryHit(Ray ray, float distance, out RaycastHit hit)
         {
             hit = default;
             return _screen != null && _screen.Raycast(ray, out hit, distance);
         }
-        private void Raise(InteractionSourceType source, PointerModality modality, InteractionPhase phase, Vector3 position, Vector3 normal) =>
+
+        private void Raise(InteractionSourceType source, PointerModality modality, InteractionPhase phase,
+            Vector3 position, Vector3 normal) =>
             PointerEventRaised?.Invoke(new PointerEvent(source, modality, phase, position, normal, _screen, "PhoneScreen"));
+
         private XRHandSubsystem ResolveHands()
         {
             if (_handSubsystem != null && _handSubsystem.running) return _handSubsystem;
-            _subsystems.Clear(); SubsystemManager.GetSubsystems(_subsystems);
-            foreach (var candidate in _subsystems) if (candidate != null && candidate.running) return _handSubsystem = candidate;
+            _subsystems.Clear();
+            SubsystemManager.GetSubsystems(_subsystems);
+            foreach (var candidate in _subsystems)
+                if (candidate != null && candidate.running)
+                    return _handSubsystem = candidate;
             return null;
         }
+
         public void Cancel()
         {
-            foreach (InteractionSourceType source in Enum.GetValues(typeof(InteractionSourceType)))
-                EndHand(source, true);
-            _pressed.Clear(); _last.Clear();
+            var active = new List<KeyValuePair<InteractionSourceType, PointerModality>>(_active);
+            foreach (var gesture in active)
+                EndGesture(gesture.Key, gesture.Value, true);
+            _active.Clear();
+            _last.Clear();
         }
+
         private void OnDisable() => Cancel();
     }
 }

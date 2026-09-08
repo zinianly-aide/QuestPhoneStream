@@ -10,6 +10,7 @@ namespace QuestPhoneStream.Interaction
         public SpatialPanelManipulator manipulator;
         public InteractionBackendManager backendManager;
         private IInteractionBackend _attached;
+        private bool _suppressManipulationUntilRelease;
 
         public void Attach(IInteractionBackend backend)
         {
@@ -19,6 +20,7 @@ namespace QuestPhoneStream.Interaction
             backend.Pointer.PointerEventRaised += RoutePointer;
             backend.Manipulation.TransformEventRaised += RouteTransform;
         }
+
         public void Detach()
         {
             var backend = _attached;
@@ -27,18 +29,42 @@ namespace QuestPhoneStream.Interaction
             backend.Pointer.PointerEventRaised -= RoutePointer;
             backend.Manipulation.TransformEventRaised -= RouteTransform;
         }
+
         public void RoutePointer(PointerEvent pointer)
         {
             if (screenCollider == null || pointer.target != screenCollider) return;
             if (manipulator != null && manipulator.IsGrabActive) return;
             touchController?.Process(pointer);
         }
+
         public void RouteTransform(TransformEvent transformEvent)
         {
-            if (transformEvent.activeGrabCount > 0) touchController?.Clear();
+            if (_suppressManipulationUntilRelease)
+            {
+                if (transformEvent.activeGrabCount == 0)
+                    _suppressManipulationUntilRelease = false;
+                return;
+            }
+
+            // A Surface press that already owns the gesture wins over a later Grip/pinch.
+            // Suppress the whole manipulation gesture until every grab is released so it
+            // cannot suddenly start after the Surface gesture ends while Grip is still held.
+            if (transformEvent.activeGrabCount > 0 && touchController != null && touchController.IsActive)
+            {
+                _suppressManipulationUntilRelease = true;
+                return;
+            }
+
             manipulator?.Apply(transformEvent);
         }
-        public void ClearInteractionState() { touchController?.Clear(); manipulator?.ClearInteractionState(); }
+
+        public void ClearInteractionState()
+        {
+            _suppressManipulationUntilRelease = false;
+            touchController?.Clear();
+            manipulator?.ClearInteractionState();
+        }
+
         protected virtual void OnDisable() => ClearInteractionState();
     }
 }
