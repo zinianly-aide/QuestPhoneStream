@@ -375,38 +375,20 @@ test("UnityPanoramic backend is an explicit skybox POC and does not create a sph
   assert.match(read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/MediaPlaybackTests.cs"), /PanoramicFailureKeepsFlatRendererAndOriginalSkybox/);
 });
 
-test("Flat playback preserves aspect ratio and gates XRI interaction by projection", () => {
-  assert.match(flatPanel, /XRGrabInteractable/);
+test("Flat playback delegates manipulation to the shared shell", () => {
+  assert.doesNotMatch(flatPanel, /XRGrabInteractable|Rigidbody/);
+  assert.match(flatPanel, /new MediaSurfaceInput/);
+  assert.match(flatPanel, /projection == ProjectionMode.Flat/);
+  assert.match(flatPanel, /Shell\?\.SetInteractive/);
   assert.match(flatPanel, /_aspectRatio = width \/ \(float\)height/);
-  assert.match(flatPanel, /_baseLongSide = 1\.6f/);
-  assert.match(flatPanel, /minScale = 0\.5f/);
-  assert.match(flatPanel, /maxScale = 2\.5f/);
-  assert.match(flatPanel, /projection == ProjectionMode\.Flat/);
-  assert.match(flatPanel, /grabInteractable\.enabled = IsFlatActive/);
-  assert.match(flatPanel, /panelRenderer\.enabled = IsFlatActive/);
-  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
-  assert.match(mediaPlayback, /SetVideoDimensions\(\(int\)player\.width, \(int\)player\.height\)/);
-  assert.match(mediaPlayback, /flatPanelController\?\.SetProjection\(Profile\.projection\)/);
-  for (const label of ['"-"', '"Rotate"', '"Reset"'])
-    assert.match(mediaUi, new RegExp(`MakeButton\\(parent, ${label}`));
-  assert.match(mediaUi, /MakeButton\(parent, "\+"/);
-  assert.match(mediaUi, /flatPanelController\?\.ScaleDown\(\)/);
-  assert.match(mediaUi, /flatPanelController\?\.ScaleUp\(\)/);
-  assert.match(mediaUi, /flatPanelController\?\.RotateOrientation\(\)/);
-  assert.match(mediaUi, /flatPanelController\?\.ResetPose\(\)/);
-  assert.match(rig, /ray\.selectInput = new XRInputButtonReader/);
-  assert.match(rig, /Reference\(hand \+ " UI Click"\)/);
+  assert.match(mediaPlayback, /flatPanelController\?\.SetProjection\(Profile.projection\)/);
 });
 
-test("Flat panel reset is world-locked and orientation toggles exactly between 0 and 90 degrees", () => {
-  assert.doesNotMatch(flatPanel, /ResetPose\(\)[\s\S]*SetParent\(xrCamera/);
-  assert.match(flatPanel, /cameraTransform\.position \+ cameraForward\.normalized \* 1\.5f/);
-  assert.match(flatPanel, /transform\.SetPositionAndRotation\(worldPosition, _orientationBaseRotation\)/);
-  assert.match(flatPanel, /var angle = _rotated \? 90f : 0f/);
-  assert.match(flatPanel, /Quaternion\.AngleAxis\(angle/);
-  assert.doesNotMatch(flatPanel, /transform\.Rotate\(/);
-  assert.match(mediaRenderer, /_sphere\.transform\.SetParent\(transform\.parent, true\)/);
-  assert.doesNotMatch(flatPanel, /SetParent\(xrCamera\.transform/);
+test("Flat panel reset and orientation delegate spatial pose without moving VR renderers", () => {
+  assert.match(flatPanel, /Shell.Manipulator.ResetPose\(xrCamera\)/);
+  assert.match(flatPanel, /_rotated \? 90 : 0/);
+  assert.match(flatPanel, /transform.SetParent\(_contentParent, true\)/);
+  assert.doesNotMatch(flatPanel, /SetParent\(xrCamera.transform/);
 });
 
 test("Flat controls require active media mode and metadata yields until a manual profile override", () => {

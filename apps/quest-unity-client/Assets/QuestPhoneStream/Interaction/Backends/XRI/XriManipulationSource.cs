@@ -8,98 +8,84 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
 {
     public sealed class XriManipulationSource : MonoBehaviour, IManipulationSource
     {
-        private struct Grab { public Vector3 position; public Quaternion rotation; }
         public event Action<TransformEvent> TransformEventRaised;
-        private readonly Dictionary<InteractionSourceType, Grab> _grabs = new Dictionary<InteractionSourceType, Grab>();
-        private readonly List<XRHandSubsystem> _handSubsystems = new List<XRHandSubsystem>();
+        private readonly PanelGrabSolver _solver = new PanelGrabSolver();
+        private readonly List<XRHandSubsystem> _subsystems = new List<XRHandSubsystem>();
         private Transform _panel;
         private Collider _handle;
         private XriRuntimeDependencies _dependencies;
-        private Vector3 _lastPosition;
-        private Quaternion _lastRotation;
-        private Vector3 _baseMidpoint, _baseDirection, _basePanelPosition;
-        private Quaternion _basePanelRotation;
-        private float _baseDistance, _baseScale;
-        private XRHandSubsystem _hands;
-        [SerializeField, Min(.001f)] private float handPinchDistance = .028f;
-        [SerializeField, Min(.001f)] private float handHandleDistance = .04f;
-
+        private SpatialPanelManipulator _manipulator;
+        private Collider _surface;
         public void Configure(Transform panel, Collider handle, XriRuntimeDependencies dependencies)
-        { _panel = panel; _handle = handle; _dependencies = dependencies; }
+        {
+            _panel = panel; _handle = handle; _dependencies = dependencies;
+            _manipulator = panel.GetComponent<SpatialPanelManipulator>();
+            _surface = panel.GetComponent<SpatialPanelInteractionRouter>()?.screenCollider;
+        }
         private void Update()
         {
+            if (_panel == null || _handle == null || !_handle.enabled) { Cancel(); return; }
             Process(InteractionSourceType.LeftController, _dependencies?.leftRay, _dependencies?.leftGrab);
             Process(InteractionSourceType.RightController, _dependencies?.rightRay, _dependencies?.rightGrab);
-            var hands = ResolveHands();
-            if (hands != null) { ProcessHand(InteractionSourceType.LeftHand, hands.leftHand); ProcessHand(InteractionSourceType.RightHand, hands.rightHand); }
+            _subsystems.Clear(); SubsystemManager.GetSubsystems(_subsystems);
+            var tracked = false;
+            foreach (var hands in _subsystems)
+            {
+                if (!hands.running) continue;
+                ProcessHand(InteractionSourceType.LeftHand, hands.leftHand);
+                ProcessHand(InteractionSourceType.RightHand, hands.rightHand);
+                tracked = true; break;
+            }
+            if (!tracked) { End(InteractionSourceType.LeftHand); End(InteractionSourceType.RightHand); }
+            if (_solver.Count > 0) Emit(GrabPhase.Update);
         }
         private void Process(InteractionSourceType source, XRRayInteractor ray, UnityEngine.InputSystem.InputAction action)
         {
-            if (ray == null || action == null || _panel == null) return;
+            if (ray == null || action == null || !ray.isActiveAndEnabled) { End(source); return; }
             var origin = ray.rayOriginTransform != null ? ray.rayOriginTransform : ray.transform;
-            if (action.WasPressedThisFrame() && HitsHandle(origin)) Begin(source, origin.position, origin.rotation);
-            if (_grabs.ContainsKey(source) && action.IsPressed()) UpdateGrab(source, origin.position, origin.rotation);
-            if (action.WasReleasedThisFrame()) End(source);
-        }
-        private bool HitsHandle(Transform origin) => _handle != null && _handle.Raycast(new Ray(origin.position, origin.forward), out _, 5f);
-        private void Begin(InteractionSourceType source, Vector3 position, Quaternion rotation)
-        {
-            _grabs[source] = new Grab { position = position, rotation = rotation };
-            if (_grabs.Count == 1) { _lastPosition = position; _lastRotation = rotation; }
-            else CaptureTwoHandBaseline();
-            Emit(GrabPhase.Begin);
-        }
-        private void UpdateGrab(InteractionSourceType source, Vector3 position, Quaternion rotation)
-        {
-            _grabs[source] = new Grab { position = position, rotation = rotation };
-            if (_grabs.Count == 1)
+            var pose = new Pose(origin.position, origin.rotation);
+            if (action.WasPressedThisFrame() && _handle.Raycast(new Ray(origin.position, origin.forward), out var hit, ray.maxRaycastDistance))
             {
-                var pose = new TransformEvent(GrabPhase.Update, _panel.position + position - _lastPosition,
-                    rotation * Quaternion.Inverse(_lastRotation) * _panel.rotation, _panel.localScale.x, 1, source, source);
-                _lastPosition = position; _lastRotation = rotation; TransformEventRaised?.Invoke(pose); return;
+                // The visible surface wins over a frame behind it: Grip on content is not Grab.
+                if (_surface != null && _surface.enabled &&
+                    _surface.Raycast(new Ray(origin.position, origin.forward), out var surfaceHit, hit.distance)) return;
+                _solver.Begin(source, pose, hit.point, _panel);
+                Emit(GrabPhase.Begin);
             }
-            Emit(GrabPhase.Update);
-        }
-        private void End(InteractionSourceType source)
-        {
-            if (!_grabs.Remove(source)) return;
-            if (_grabs.Count == 1) foreach (var pair in _grabs) { _lastPosition = pair.Value.position; _lastRotation = pair.Value.rotation; break; }
-            Emit(GrabPhase.End);
+            if (!action.IsPressed()) { End(source); return; }
+            _solver.SetOrigin(source, pose);
         }
         private void ProcessHand(InteractionSourceType source, XRHand hand)
         {
             if (!hand.isTracked || !hand.GetJoint(XRHandJointID.IndexTip).TryGetPose(out var index) ||
                 !hand.GetJoint(XRHandJointID.ThumbTip).TryGetPose(out var thumb) ||
-                Vector3.Distance(index.position, thumb.position) > handPinchDistance || !NearHandle(index.position))
+                Vector3.Distance(index.position, thumb.position) > .035f)
             { End(source); return; }
-            if (!_grabs.ContainsKey(source)) Begin(source, index.position, index.rotation);
-            else UpdateGrab(source, index.position, index.rotation);
+            var tracking = _dependencies?.trackingOrigin;
+            var position = tracking != null ? tracking.TransformPoint(index.position) : index.position;
+            var rotation = tracking != null ? tracking.rotation * index.rotation : index.rotation;
+            var pose = new Pose(position, rotation);
+            var handleDistance = Vector3.Distance(position, _handle.ClosestPoint(position));
+            var overSurface = _surface != null && _surface.enabled &&
+                Vector3.Distance(position, _surface.ClosestPoint(position)) < handleDistance;
+            if (!_solver.Contains(source) && !overSurface && handleDistance <= .04f)
+            { _solver.Begin(source, pose, position, _panel); Emit(GrabPhase.Begin); }
+            _solver.SetOrigin(source, pose);
         }
-        private bool NearHandle(Vector3 point) => _handle != null && Vector3.Distance(_handle.ClosestPoint(point), point) <= handHandleDistance;
-        private XRHandSubsystem ResolveHands()
+        private void End(InteractionSourceType source)
         {
-            if (_hands != null && _hands.running) return _hands;
-            _handSubsystems.Clear(); SubsystemManager.GetSubsystems(_handSubsystems);
-            foreach (var candidate in _handSubsystems) if (candidate != null && candidate.running) return _hands = candidate;
-            return null;
-        }
-        private void CaptureTwoHandBaseline()
-        {
-            var values = new List<Grab>(_grabs.Values); var a = values[0]; var b = values[1];
-            _baseMidpoint = (a.position + b.position) * .5f; var delta = b.position - a.position;
-            _baseDistance = Mathf.Max(.001f, delta.magnitude); _baseDirection = delta / _baseDistance;
-            _basePanelPosition = _panel.position; _basePanelRotation = _panel.rotation; _baseScale = _panel.localScale.x;
+            if (!_solver.Contains(source)) return;
+            // Apply the most recent sampled poses before capturing the remaining-hand baseline.
+            Emit(GrabPhase.Update);
+            _solver.End(source, _panel);
+            Emit(GrabPhase.End);
         }
         private void Emit(GrabPhase phase)
         {
-            if (_grabs.Count == 0) { TransformEventRaised?.Invoke(new TransformEvent(phase, _panel.position, _panel.rotation, _panel.localScale.x, 0, default, default)); return; }
-            var values = new List<Grab>(_grabs.Values); var primary = default(InteractionSourceType); var secondary = default(InteractionSourceType);
-            foreach (var pair in _grabs) { if (values.IndexOf(pair.Value) == 0) primary = pair.Key; else secondary = pair.Key; }
-            if (_grabs.Count == 1) { TransformEventRaised?.Invoke(new TransformEvent(phase, _panel.position, _panel.rotation, _panel.localScale.x, 1, primary, primary)); return; }
-            var a = values[0]; var b = values[1]; var delta = b.position - a.position; var distance = Mathf.Max(.001f, delta.magnitude);
-            TransformEventRaised?.Invoke(new TransformEvent(phase, _basePanelPosition + ((a.position + b.position) * .5f - _baseMidpoint),
-                Quaternion.FromToRotation(_baseDirection, delta / distance) * _basePanelRotation, _baseScale * distance / _baseDistance, 2, primary, secondary));
+            if (_panel != null) TransformEventRaised?.Invoke(_solver.Evaluate(_panel, phase,
+                _manipulator != null ? _manipulator.minScale : .5f, _manipulator != null ? _manipulator.maxScale : 2.5f));
         }
-        private void OnDisable() { _grabs.Clear(); if (_panel != null) Emit(GrabPhase.End); }
+        public void Cancel() { _solver.Clear(); Emit(GrabPhase.End); }
+        private void OnDisable() => Cancel();
     }
 }

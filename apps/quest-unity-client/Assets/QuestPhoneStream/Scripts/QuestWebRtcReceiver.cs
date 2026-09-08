@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.WebRTC;
 using UnityEngine;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
 {
@@ -22,6 +23,35 @@ namespace QuestPhoneStream
         public Renderer phoneScreenRenderer;
         public int textureWidth = 1280, textureHeight = 720;
         public bool connectOnStart = true;
+        private SpatialPanelShell _screenShell;
+        private PanelInputMapper _screenMapper;
+        private string _screenPlatform;
+        public bool CanSendAndroidSurfaceInput => _screenPlatform == "android" &&
+            SupportsControl && IsControlConnected && ActiveDevice.Capabilities.IsAuthorized("display.control") &&
+            (mediaPlayback == null || !mediaPlayback.IsMediaMode) && phoneScreenRenderer != null && phoneScreenRenderer.enabled;
+        private bool _screenInteractive = true;
+        private void LateUpdate()
+        {
+            var interactive = phoneScreenRenderer != null && phoneScreenRenderer.enabled &&
+                (mediaPlayback == null || !mediaPlayback.IsMediaMode);
+            if (_screenShell == null || interactive == _screenInteractive) return;
+            _screenInteractive = interactive;
+            _screenShell.Router.screenCollider.enabled = interactive;
+            _screenShell.SetInteractive(interactive);
+        }
+        public void BindScreenSurface(SpatialPanelShell shell, PanelInputMapper mapper)
+        { _screenShell = shell; _screenMapper = mapper; RefreshScreenHandler(); }
+        private void RefreshScreenHandler()
+        {
+            if (_screenShell == null) return;
+            _screenShell.Input.SetHandler(PanelSurfaceInputFactory.Screen(_screenPlatform, _screenMapper, () => CanSendAndroidSurfaceInput));
+        }
+        private void OnPeerPlatform(string peer, string platform)
+        {
+            if (ActiveDevice == null || !ActiveDevice.MatchesPeer(peer)) return;
+            _screenPlatform = platform;
+            RefreshScreenHandler();
+        }
 
         private RTCPeerConnection _peer;
         private RenderTexture _renderTexture;
@@ -118,6 +148,7 @@ namespace QuestPhoneStream
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;
             signaling.PeerCapabilitiesReceived += OnPeerCapabilities;
+            signaling.PeerPlatformReceived += OnPeerPlatform;
             signaling.PeerCapabilitiesChanged += OnPeerCapabilities;
             mediaDiscovery.DevicesChanged += OnDiscoveredDevicesChanged;
             _webRtcUpdate = StartCoroutine(WebRTC.Update());
@@ -168,6 +199,7 @@ namespace QuestPhoneStream
                     mediaPlayback.gameObject.AddComponent<FlatMediaPanelController>();
             var target = mediaPlayback.renderer?.targetRenderer ?? mediaPlayback.gameObject.GetComponent<Renderer>();
             mediaPlayback.flatPanelController.Initialize(xrCamera, target);
+            mediaPlayback.flatPanelController.ConfigureBackend(xrUiRig != null ? xrUiRig.PanelDependencies : null);
         }
 
         private void EnsureMediaDiscovery()
@@ -181,6 +213,8 @@ namespace QuestPhoneStream
         {
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
             _activeDevice = ActiveDeviceContext.FromDiscovered(device);
+            _screenPlatform = null;
+            RefreshScreenHandler();
             EnsureSettingsUI();
             // Screen-only publishers (e.g. the macOS sender) advertise no media
             // capability; never point the catalog/probe at their NSD port, which is
@@ -293,6 +327,16 @@ namespace QuestPhoneStream
             // device identity check here so an A -> B switch cannot restore A's UI capability set.
             if (_activeDevice == null || !_activeDevice.MatchesPeer(peerId)) return;
             _activeDevice.Capabilities.ApplySpatial(capabilities);
+            // Older Android hello descriptors omit platform. Their formal, Android-specific
+            // accessibility permission identifies the existing control implementation.
+            if (string.IsNullOrEmpty(_screenPlatform))
+            {
+                foreach (var capability in capabilities ?? Array.Empty<SpatialCapabilityDescriptor>())
+                    if (capability?.name == "display.control" &&
+                        Array.IndexOf(capability.permissions ?? Array.Empty<string>(), "android.accessibility_service") >= 0)
+                        _screenPlatform = "android";
+                RefreshScreenHandler();
+            }
             ActiveDeviceChanged?.Invoke(_activeDevice);
             _homeUI?.RefreshStatus();
         }
@@ -501,6 +545,7 @@ namespace QuestPhoneStream
                 signaling.MessageReceived -= OnSignalMessage;
                 signaling.NegotiationInvalidated -= ResetPeer;
                 signaling.PeerCapabilitiesReceived -= OnPeerCapabilities;
+                signaling.PeerPlatformReceived -= OnPeerPlatform;
                 signaling.PeerCapabilitiesChanged -= OnPeerCapabilities;
             }
             if (mediaDiscovery != null) mediaDiscovery.DevicesChanged -= OnDiscoveredDevicesChanged;

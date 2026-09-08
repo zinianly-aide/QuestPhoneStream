@@ -6,6 +6,7 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
 {
     public sealed class XriRuntimeDependencies
     {
+        public Transform trackingOrigin;
         public XRRayInteractor leftRay;
         public XRRayInteractor rightRay;
         public InputAction leftClick;
@@ -23,7 +24,7 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
         public string Name => BackendName;
         public bool IsAvailable => true;
         public InteractionCapabilities Capabilities => InteractionCapabilities.Ray | InteractionCapabilities.Poke |
-            InteractionCapabilities.Grab | InteractionCapabilities.TwoHandTransform |
+            InteractionCapabilities.Grab | InteractionCapabilities.DistanceGrab | InteractionCapabilities.TwoHandTransform |
             InteractionCapabilities.HandTracking | InteractionCapabilities.Controller;
         public IPointerSource Pointer => _pointer;
         public IManipulationSource Manipulation => _manipulation;
@@ -44,6 +45,9 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
         }
         public void Shutdown()
         {
+            _pointer?.Cancel();
+            _manipulation?.Cancel();
+            if (_host != null) _host.SetActive(false);
             if (_host != null) Object.Destroy(_host);
             _host = null; _pointer = null; _manipulation = null;
         }

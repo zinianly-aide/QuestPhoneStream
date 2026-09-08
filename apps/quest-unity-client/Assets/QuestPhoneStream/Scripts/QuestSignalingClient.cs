@@ -32,6 +32,7 @@ namespace QuestPhoneStream
         }
         public event Action<ConnectionState> StateChanged;
         public event Action TargetChanged;
+        public event Action<string, string> PeerPlatformReceived;
         public event Action<SignalMessage> MessageReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesReceived;
         public event Action<SpatialCapabilityDescriptor[]> CapabilitiesChanged;
@@ -323,6 +324,7 @@ namespace QuestPhoneStream
             {
                 case "device.hello":
                 {
+                    PeerPlatformReceived?.Invoke(source, message.payload.device?.platform);
                     var selected = !string.IsNullOrEmpty(message.payload.selectedVersion)
                         ? (message.payload.selectedVersion == SpatialWire.Version ? SpatialWire.Version : null)
                         : SpatialWire.NegotiateVersion(message.payload.supportedVersions);

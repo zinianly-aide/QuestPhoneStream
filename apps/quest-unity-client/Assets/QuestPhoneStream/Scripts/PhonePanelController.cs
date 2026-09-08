@@ -44,14 +44,14 @@ namespace QuestPhoneStream
 
         public void ResetScale()
         {
-            var manipulator = GetComponent<PhonePanelManipulator>();
+            var manipulator = GetComponent<SpatialPanelManipulator>();
             if (manipulator != null) manipulator.SetUniformScale(1f);
             else transform.localScale = _initialLocalScale;
         }
 
         public void ResetPose()
         {
-            var manipulator = GetComponent<PhonePanelManipulator>();
+            var manipulator = GetComponent<SpatialPanelManipulator>();
             if (manipulator == null) return;
             var camera = Camera.main ?? FindFirstObjectByType<Camera>();
             manipulator.ResetPose(camera);
@@ -61,7 +61,7 @@ namespace QuestPhoneStream
 
         private void SetUniformScale(float scale)
         {
-            var manipulator = GetComponent<PhonePanelManipulator>();
+            var manipulator = GetComponent<SpatialPanelManipulator>();
             if (manipulator != null)
             {
                 manipulator.SetUniformScale(scale);

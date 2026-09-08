@@ -5,7 +5,7 @@ namespace QuestPhoneStream.Interaction
 {
     public enum InteractionSourceType { LeftHand, RightHand, LeftController, RightController }
     public enum PointerModality { Poke, Ray }
-    public enum InteractionPhase { HoverEnter, HoverMove, HoverExit, PressBegin, PressMove, PressEnd }
+    public enum InteractionPhase { HoverEnter, HoverMove, HoverExit, PressBegin, PressMove, PressEnd, PressCancel }
     public enum GrabPhase { Begin, Update, End }
 
     [Flags]

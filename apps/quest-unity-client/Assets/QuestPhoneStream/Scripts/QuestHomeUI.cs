@@ -316,7 +316,7 @@ namespace QuestPhoneStream
 
         private void OpenKeyboard()
         {
-            if (_receiver == null || !_receiver.SupportsControl)
+            if (_receiver == null || !_receiver.SupportsControl || !_receiver.CanSendAndroidSurfaceInput)
             {
                 SetNotice("Control is unavailable on this device", 3f);
                 return;
@@ -345,9 +345,11 @@ namespace QuestPhoneStream
                 yield break;
             }
             var keyboard = TouchScreenKeyboard.Open(string.Empty, TouchScreenKeyboardType.Default, false, false, false);
+            var keyboardDevice = _receiver.ActiveDevice;
             while (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Visible)
                 yield return null;
-            if (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Done && !string.IsNullOrEmpty(keyboard.text))
+            if (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Done && !string.IsNullOrEmpty(keyboard.text) &&
+                ReferenceEquals(keyboardDevice, _receiver.ActiveDevice) && _receiver.CanSendAndroidSurfaceInput)
                 _receiver?.controlChannel?.SendText(keyboard.text);
             _keyboardRoutine = null;
         }

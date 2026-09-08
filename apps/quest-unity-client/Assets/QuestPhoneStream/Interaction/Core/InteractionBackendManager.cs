@@ -20,6 +20,9 @@ namespace QuestPhoneStream.Interaction
 
         public void ShutdownBackend()
         {
+            var router = GetComponent<SpatialPanelInteractionRouter>();
+            router?.ClearInteractionState();
+            router?.Detach();
             ActiveBackend?.Shutdown();
             ActiveBackend = null;
         }

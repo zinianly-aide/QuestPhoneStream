@@ -19,6 +19,7 @@ namespace QuestPhoneStream
     public sealed class QuestXrUiRig : MonoBehaviour
     {
         public InputActionAsset actionAsset;
+        public object PanelDependencies { get; private set; }
         public XROrigin Origin { get; private set; }
         public EventSystem UiEvents { get; private set; }
         public InputActionMap Actions { get; private set; }
@@ -77,7 +78,7 @@ namespace QuestPhoneStream
         /// <summary>Provide XRI runtime dependencies to the SDK-neutral interaction backend.</summary>
         private void InitializePhonePanelBackend(Camera camera)
         {
-            var router = FindFirstObjectByType<PhonePanelInteractionRouter>();
+            var router = FindFirstObjectByType<SpatialPanelInteractionRouter>();
             var backendManager = FindFirstObjectByType<InteractionBackendManager>();
             if (router == null || backendManager == null)
             {
@@ -99,18 +100,15 @@ namespace QuestPhoneStream
             }
             XriInteractionBackend.EnsureRegistered();
             var dependencies = new XriRuntimeDependencies {
+                trackingOrigin = Origin.CameraFloorOffsetObject.transform,
                 leftRay = leftRay, rightRay = rightRay,
                 leftClick = Actions.FindAction("LeftHand UI Click", true),
                 rightClick = Actions.FindAction("RightHand UI Click", true),
                 leftGrab = Actions.FindAction("LeftHand Grab", true),
                 rightGrab = Actions.FindAction("RightHand Grab", true)
             };
-            var context = new InteractionBackendContext {
-                panelRoot = router.gameObject, screenCollider = router.screenCollider,
-                grabCollider = router.grabCollider, camera = camera, runtimeDependencies = dependencies
-            };
-            if (backendManager.InitializeBackend(context)) router.Attach(backendManager.ActiveBackend);
-            else Debug.LogWarning("[QuestPhoneStream] no PhonePanel interaction backend is available");
+            PanelDependencies = dependencies;
+            router.GetComponent<SpatialPanelShell>().ConfigureBackend(dependencies);
         }
 
         private void ConfigureSpatialPhonePanel(Camera camera)
@@ -133,29 +131,12 @@ namespace QuestPhoneStream
             root.transform.SetParent(spatialPanels, true);
             var screen = root.transform.Find("PhoneScreen")?.gameObject ?? panel;
             var screenCollider = screen.GetComponent<Collider>();
-            var handle = EnsureGrabHandle(root.transform);
-            var manipulator = root.GetComponent<PhonePanelManipulator>() ?? root.AddComponent<PhonePanelManipulator>();
-            manipulator.frameRenderer = handle.GetComponent<Renderer>();
-            manipulator.defaultDistance = 1.5f;
-            manipulator.minScale = 0.5f;
-            manipulator.maxScale = 2.5f;
-            manipulator.ResetPose(camera);
-
+            var shell = root.GetComponent<SpatialPanelShell>() ?? root.AddComponent<SpatialPanelShell>();
+            shell.Initialize(screen.transform, screenCollider, camera, new ViewOnlySurfaceInput());
+            shell.Manipulator.ResetPose(camera);
             var mapper = screen.GetComponent<PanelInputMapper>();
-            if (mapper != null)
-            {
-                mapper.panelCollider = screenCollider;
-            }
-            var touch = root.GetComponent<PhonePanelTouchController>() ?? root.AddComponent<PhonePanelTouchController>();
-            touch.mappingProvider = mapper;
-            touch.manipulator = manipulator;
-            var backendManager = root.GetComponent<InteractionBackendManager>() ?? root.AddComponent<InteractionBackendManager>();
-            var router = root.GetComponent<PhonePanelInteractionRouter>() ?? root.AddComponent<PhonePanelInteractionRouter>();
-            router.screenCollider = screenCollider;
-            router.grabCollider = handle.GetComponent<Collider>();
-            router.touchController = touch;
-            router.manipulator = manipulator;
-            router.backendManager = backendManager;
+            if (mapper != null) mapper.panelCollider = screenCollider;
+            _receiver.BindScreenSurface(shell, mapper);
 
             // Ensure the receiver writes video to the SAME material the renderer uses.
             // Use sharedMaterial to avoid creating a per-renderer instance that would
@@ -194,19 +175,6 @@ namespace QuestPhoneStream
             return root;
         }
 
-        private static GameObject EnsureGrabHandle(Transform root)
-        {
-            var existing = root.Find("Frame/GrabHandle");
-            if (existing != null) return existing.gameObject;
-            var frame = new GameObject("Frame");
-            frame.transform.SetParent(root, false);
-            var handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            handle.name = "GrabHandle";
-            handle.transform.SetParent(frame.transform, false);
-            handle.transform.localPosition = new Vector3(0f, -0.88f, 0.025f);
-            handle.transform.localScale = new Vector3(0.78f, 0.06f, 0.04f);
-            return handle;
-        }
 
         private InputActionReference Reference(string name)
         {
