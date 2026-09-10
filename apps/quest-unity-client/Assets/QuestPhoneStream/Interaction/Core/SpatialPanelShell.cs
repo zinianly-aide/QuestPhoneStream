@@ -29,10 +29,11 @@ namespace QuestPhoneStream.Interaction
                 _handle = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
                 _handle.name = "GrabHandle"; _handle.SetParent(frame, false);
             }
-            _handle.localScale = new Vector3(.78f, .06f, .04f);
-            // Larger interaction volume, independent of the narrow visual. Kept below Surface.
+            _handle.localScale = new Vector3(.9f, .08f, .05f);
+            // Generous grab volume so a controller ray or bare-hand pinch near the
+            // bar still hits, independent of the narrow visual cube.
             var hit = _handle.GetComponent<BoxCollider>();
-            hit.size = new Vector3(1.15f, 2.5f, 3f);
+            hit.size = new Vector3(1.25f, 3f, 4f);
             Manipulator.frameRenderer = _handle.GetComponent<Renderer>();
             Router.screenCollider = collider; Router.grabCollider = hit;
             Router.touchController = Input; Router.manipulator = Manipulator; Router.backendManager = _manager;
@@ -64,7 +65,9 @@ namespace QuestPhoneStream.Interaction
             var horizontal = Surface.localRotation * new Vector3(Surface.localScale.x, 0, 0);
             var vertical = Surface.localRotation * new Vector3(0, Surface.localScale.y, 0);
             var halfHeight = (Mathf.Abs(horizontal.y) + Mathf.Abs(vertical.y)) * .5f;
-            _handle.localPosition = new Vector3(Surface.localPosition.x, Surface.localPosition.y - halfHeight - .1f, .025f);
+            // User-facing side is -Z (see XriPointerSource poke normal). +Z puts the
+            // handle behind the panel where the ray can never hit it from the front.
+            _handle.localPosition = new Vector3(Surface.localPosition.x, Surface.localPosition.y - halfHeight - .06f, -.04f);
         }
         private void OnEnable() => RestartBackend();
         private void OnDisable() => _manager?.ShutdownBackend();

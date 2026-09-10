@@ -27,7 +27,8 @@ namespace QuestPhoneStream
         private PanelInputMapper _screenMapper;
         private string _screenPlatform;
         public bool CanSendAndroidSurfaceInput => _screenPlatform == "android" &&
-            SupportsControl && IsControlConnected && ActiveDevice.Capabilities.IsAuthorized("display.control") &&
+            IsControlConnected && ActiveDevice != null &&
+            ActiveDevice.Capabilities.Allows("display.control") &&
             (mediaPlayback == null || !mediaPlayback.IsMediaMode) && phoneScreenRenderer != null && phoneScreenRenderer.enabled;
         private bool _screenInteractive = true;
         private void LateUpdate()
@@ -98,7 +99,8 @@ namespace QuestPhoneStream
         public bool SupportsMedia => HasSelectedDevice &&
             (_activeDevice.Capabilities.Supports("media.list") || _activeDevice.Capabilities.Supports("media.open"));
         public bool SupportsControl => HasSelectedDevice && _activeDevice.Capabilities.Supports("display.control");
-        public bool HasMediaUrl => SupportsMedia && !string.IsNullOrWhiteSpace(CurrentMediaUrl);
+        public bool HasMediaUrl => !string.IsNullOrWhiteSpace(EffectiveMediaBaseUrl) &&
+            (SupportsMedia || _activeDevice == null);
         public bool IsMediaStale => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl &&
             Time.unscaledTime - _mediaProbeAt > MediaProbeTtlSeconds;
         public bool IsMediaReady => HasMediaUrl && _mediaProbeReady && _mediaProbeUrl == CurrentMediaUrl && !IsMediaStale;
@@ -107,7 +109,34 @@ namespace QuestPhoneStream
         public bool IsMediaFailed => HasMediaUrl && _mediaProbeFailed && _mediaProbeUrl == CurrentMediaUrl;
         public bool HasReadyMediaDevice => mediaDiscovery != null && mediaDiscovery.HasReadyDevice;
 
-        private string CurrentMediaUrl => _activeDevice != null ? _activeDevice.MediaBaseUrl.Trim() : string.Empty;
+        /// <summary>
+        /// Single source of truth for media HTTP base. A selected media-capable device
+        /// wins; otherwise fall back to the manual settings URL so Advanced Settings
+        /// still works when discovery did not provide a media endpoint.
+        /// </summary>
+        public string EffectiveMediaBaseUrl
+        {
+            get
+            {
+                if (SupportsMedia && _activeDevice != null && !string.IsNullOrWhiteSpace(_activeDevice.MediaBaseUrl))
+                    return _activeDevice.MediaBaseUrl.Trim();
+                if (_activeDevice != null) return string.Empty;
+                return _settingsUI != null && _settingsUI.mediaBaseUrlInput != null
+                    ? _settingsUI.mediaBaseUrlInput.text.Trim()
+                    : PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", string.Empty).Trim();
+            }
+        }
+
+        private string CurrentMediaUrl => EffectiveMediaBaseUrl;
+
+        public void ResetMediaProbeState()
+        {
+            _mediaProbeReady = false;
+            _mediaProbeChecking = false;
+            _mediaProbeFailed = false;
+            _mediaProbeAt = -Mathf.Infinity;
+            _mediaProbeUrl = null;
+        }
 
         /// <summary>
         /// Creates the dedicated unreliable/unordered Spatial data channel on the
@@ -223,11 +252,7 @@ namespace QuestPhoneStream
             if (mediaCapable)
             {
                 _settingsUI.SetMediaBaseUrl(_activeDevice.MediaBaseUrl);
-                _mediaProbeReady = false;
-                _mediaProbeChecking = false;
-                _mediaProbeFailed = false;
-                _mediaProbeAt = -Mathf.Infinity;
-                _mediaProbeUrl = null;
+                ResetMediaProbeState();
             }
             _settingsUI.ApplyDiscoveredSignaling(_activeDevice.SignalingUrl, _activeDevice.StreamId);
             // Persist discovered endpoint so restart keeps the same peer.

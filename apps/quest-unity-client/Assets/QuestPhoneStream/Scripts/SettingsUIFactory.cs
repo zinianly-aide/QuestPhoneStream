@@ -101,7 +101,8 @@ namespace QuestPhoneStream
             var catalogClient = gameObject.AddComponent<MediaCatalogClient>();
             catalogClient.SetPairingTokenProvider(() => _settingsUI.tokenInput.text);
             _mediaLibrary = gameObject.AddComponent<MediaLibraryUI>();
-            _mediaLibrary.Initialize(_canvas, catalogClient, playback, () => _settingsUI.mediaBaseUrlInput.text);
+            _mediaLibrary.Initialize(_canvas, catalogClient, playback, () =>
+                receiver != null ? receiver.EffectiveMediaBaseUrl : _settingsUI.mediaBaseUrlInput.text);
             _settingsUI.mediaCatalogClient = catalogClient;
             _mediaLibrary.SetOnClose(() => {
                 _settingsUI.SetAdvancedVisible(true);

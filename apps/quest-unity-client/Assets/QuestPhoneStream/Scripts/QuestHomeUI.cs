@@ -316,7 +316,7 @@ namespace QuestPhoneStream
 
         private void OpenKeyboard()
         {
-            if (_receiver == null || !_receiver.SupportsControl || !_receiver.CanSendAndroidSurfaceInput)
+            if (_receiver == null || !_receiver.SupportsControl)
             {
                 SetNotice("Control is unavailable on this device", 3f);
                 return;
@@ -330,6 +330,11 @@ namespace QuestPhoneStream
             if (!_receiver.IsControlConnected)
             {
                 SetNotice("Control is connecting in background…", 3f);
+                return;
+            }
+            if (!_receiver.CanSendAndroidSurfaceInput)
+            {
+                SetNotice("Screen control is not ready", 3f);
                 return;
             }
             if (_keyboardRoutine != null) StopCoroutine(_keyboardRoutine);
@@ -486,7 +491,7 @@ namespace QuestPhoneStream
         {
             if (!_receiver.SupportsControl) return "Unavailable";
             var capabilities = _receiver.ActiveDevice.Capabilities;
-            if (capabilities.HasSpatialCapabilities && !capabilities.IsAuthorized("display.control")) return "Needs permission";
+            if (!capabilities.Allows("display.control")) return "Needs permission";
             return _receiver.IsControlConnected ? "Ready" : "Connecting";
         }
 

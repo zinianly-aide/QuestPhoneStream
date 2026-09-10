@@ -92,6 +92,13 @@ namespace QuestPhoneStream
         public bool IsAuthorized(string name) =>
             _values.TryGetValue(name ?? string.Empty, out var descriptor) && descriptor.state != null && descriptor.state.authorized;
 
+        /// <summary>
+        /// Usable for input. NSD bootstrap marks a capability available but not yet
+        /// authorized; treat that as provisional until Spatial results take over.
+        /// </summary>
+        public bool Allows(string name) =>
+            Supports(name) && (!HasSpatialCapabilities || IsAuthorized(name));
+
         private void AddBootstrap(string name) => _values[name] = new SpatialCapabilityDescriptor
         {
             name = name,

@@ -17,8 +17,9 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
         private XRHandSubsystem _handSubsystem;
         private readonly Dictionary<InteractionSourceType, Vector3> _last =
             new Dictionary<InteractionSourceType, Vector3>();
-        [SerializeField] private float pressThreshold = .008f;
-        [SerializeField] private float releaseThreshold = .025f;
+        [SerializeField] private float pressThreshold = .015f;
+        [SerializeField] private float releaseThreshold = .04f;
+        private bool _loggedHands;
 
         public void Configure(Collider screen, XriRuntimeDependencies dependencies)
         {
@@ -31,6 +32,12 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
             ProcessRay(InteractionSourceType.LeftController, _dependencies?.leftRay, _dependencies?.leftClick);
             ProcessRay(InteractionSourceType.RightController, _dependencies?.rightRay, _dependencies?.rightClick);
             var hands = ResolveHands();
+            if (!_loggedHands)
+            {
+                _loggedHands = true;
+                Debug.Log($"[QPS-Hands] subsystem={(hands != null ? (hands.running ? "running" : "stopped") : "null")} " +
+                          $"leftRay={_dependencies?.leftRay != null} leftClick={_dependencies?.leftClick != null}");
+            }
             if (hands != null)
             {
                 ProcessHand(InteractionSourceType.LeftHand, hands.leftHand);

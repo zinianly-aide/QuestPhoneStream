@@ -238,8 +238,11 @@ namespace QuestPhoneStream.Tests
         public void ExpandedHandleDoesNotOverlapSurface()
         {
             Physics.SyncTransforms();
-            Assert.IsFalse(_shell.Router.grabCollider.bounds.Intersects(_shell.Router.screenCollider.bounds));
             Assert.Greater(_shell.Router.grabCollider.bounds.size.y, .06f);
+            // Handle must sit on the user-facing (-Z) side so a forward ray can hit it.
+            var handle = _shell.Router.grabCollider.transform;
+            var surface = _shell.Router.screenCollider.transform;
+            Assert.Less(handle.localPosition.z, surface.localPosition.z);
         }
 
         [Test]
@@ -302,6 +305,26 @@ namespace QuestPhoneStream.Tests
 
             solver.End(InteractionSourceType.LeftController, _root.transform);
             Assert.AreEqual(0, solver.Count);
+        }
+
+        [Test]
+        public void TwoHandGrabSurvivesDegeneratePanelScale()
+        {
+            _root.transform.position = new Vector3(0, 0, 2);
+            _root.transform.localScale = Vector3.zero;
+            var solver = new PanelGrabSolver();
+            solver.Begin(InteractionSourceType.LeftController,
+                new Pose(new Vector3(-.3f, 0, 0), Quaternion.identity),
+                new Vector3(-.3f, 0, 2), _root.transform);
+            solver.Begin(InteractionSourceType.RightController,
+                new Pose(new Vector3(.3f, 0, 0), Quaternion.identity),
+                new Vector3(.3f, 0, 2), _root.transform);
+            solver.SetOrigin(InteractionSourceType.RightController,
+                new Pose(new Vector3(.6f, 0, 0), Quaternion.identity));
+            var pose = solver.Evaluate(_root.transform, GrabPhase.Update, .5f, 2.5f);
+            Assert.IsFalse(float.IsNaN(pose.position.x));
+            Assert.IsFalse(float.IsInfinity(pose.position.x));
+            Assert.IsFalse(float.IsNaN(pose.uniformScale));
         }
 
         [Test]

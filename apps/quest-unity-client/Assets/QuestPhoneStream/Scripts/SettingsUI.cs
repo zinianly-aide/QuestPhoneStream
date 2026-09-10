@@ -180,6 +180,7 @@ namespace QuestPhoneStream
         {
             if (_isConnecting || signalingClient.IsConnecting || !ValidateSettings()) return;
             SaveSettings();
+            receiver?.ResetMediaProbeState();
             statusText.text = "Settings saved. Connect to apply.";
         }
 

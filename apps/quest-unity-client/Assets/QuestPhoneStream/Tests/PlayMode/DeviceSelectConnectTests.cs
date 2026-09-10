@@ -134,6 +134,29 @@ namespace QuestPhoneStream.Tests
             Assert.IsFalse(context.Capabilities.HasSpatialCapabilities);
             Assert.IsTrue(context.Capabilities.Supports("display.publish"));
             Assert.IsFalse(context.Capabilities.Supports("media.open"));
+            // Bootstrap is provisionally usable for input until Spatial takes over.
+            Assert.IsTrue(context.Capabilities.Allows("display.control"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_SpatialUnauthorizedBlocksInput()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(capabilities: "screen,control", isReady: true));
+            context.Capabilities.ApplySpatial(new[] {
+                Capability("display.control", available: true, authorized: false)
+            });
+            Assert.IsTrue(context.Capabilities.Supports("display.control"));
+            Assert.IsFalse(context.Capabilities.Allows("display.control"));
+        }
+
+        [Test]
+        public void ActiveDeviceContext_SpatialAuthorizedAllowsInput()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(capabilities: "screen,control", isReady: true));
+            context.Capabilities.ApplySpatial(new[] {
+                Capability("display.control", available: true, authorized: true)
+            });
+            Assert.IsTrue(context.Capabilities.Allows("display.control"));
         }
 
         [Test]

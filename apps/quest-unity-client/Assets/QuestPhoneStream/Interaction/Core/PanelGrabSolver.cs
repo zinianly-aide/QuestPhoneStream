@@ -40,7 +40,8 @@ namespace QuestPhoneStream.Interaction
         private void Capture(Transform panel)
         {
             if (Count == 0) return;
-            _basePosition = panel.position; _baseRotation = panel.rotation; _baseScale = panel.localScale.x;
+            _basePosition = panel.position; _baseRotation = panel.rotation;
+            _baseScale = Mathf.Max(1e-4f, Mathf.Abs(panel.localScale.x));
             _originRotation = _grabs[0].origin.rotation;
             _localOffset = Quaternion.Inverse(_baseRotation) * (panel.position - _grabs[0].Point);
             if (Count == 2)
@@ -54,16 +55,17 @@ namespace QuestPhoneStream.Interaction
         {
             if (Count == 0) return new TransformEvent(phase, panel.position, panel.rotation, panel.localScale.x, 0, default, default);
             var a = _grabs[0];
+            var safeBaseScale = Mathf.Max(1e-4f, _baseScale);
             if (Count == 1)
             {
                 var rotation = a.origin.rotation * Quaternion.Inverse(_originRotation) * _baseRotation;
                 return new TransformEvent(phase, a.Point + rotation * _localOffset, rotation, _baseScale, 1, a.source, a.source);
             }
             var b = _grabs[1]; var direction = b.Point - a.Point;
-            var scale = Mathf.Clamp(_baseScale * Mathf.Max(.01f, direction.magnitude) / _baseDistance, minScale, maxScale);
+            var scale = Mathf.Clamp(safeBaseScale * Mathf.Max(.01f, direction.magnitude) / _baseDistance, minScale, maxScale);
             var delta = direction.sqrMagnitude < .0001f || _baseDirection.sqrMagnitude < .0001f
                 ? Quaternion.identity : Quaternion.FromToRotation(_baseDirection, direction);
-            var position = (a.Point + b.Point) * .5f + delta * (_basePosition - _baseMidpoint) * (scale / _baseScale);
+            var position = (a.Point + b.Point) * .5f + delta * (_basePosition - _baseMidpoint) * (scale / safeBaseScale);
             return new TransformEvent(phase, position, delta * _baseRotation, scale, 2, a.source, b.source);
         }
     }
