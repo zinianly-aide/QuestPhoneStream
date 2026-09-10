@@ -22,12 +22,14 @@ assert(signaling.includes('PlayerPrefs.GetString("QuestPhoneStream_SignalingUrl_
   "Quest signaling and SettingsUI must use the same persisted signaling URL key");
 
 const receiver = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestWebRtcReceiver.cs");
-assert(receiver.includes("_selectedMediaDeviceId = deviceId;"),
-  "Selecting a discovered device must retain its selected device identity");
-assert(receiver.includes("ApplyDiscoveredSignaling(device.signalingUrl, device.streamId)"),
+assert(receiver.includes("_activeDevice = ActiveDeviceContext.FromDiscovered(device);"),
+  "Selecting a discovered device must retain a device-scoped ActiveDeviceContext");
+assert(receiver.includes("_settingsUI.ApplyDiscoveredSignaling(_activeDevice.SignalingUrl, _activeDevice.StreamId);"),
   "Selecting a discovered device must apply its signaling endpoint and stream identity");
 assert(receiver.includes("_ = signaling.ReconnectAsync();"),
   "Selecting a discovered device must enter the signaling/session connection flow");
+assert(receiver.includes("public ActiveDeviceContext ActiveDevice => _activeDevice;"),
+  "Selected device identity must remain available to capability/input routing");
 
 const home = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestHomeUI.cs");
 const deviceClick = home.slice(home.indexOf("private void OnMediaDeviceSelected"), home.indexOf("private void OpenSettings"));
@@ -61,8 +63,10 @@ assert(androidNsd.includes('setAttribute("streamId"') && androidNsd.includes('se
   "Unified NSD advertisement must carry stream identity and signaling endpoint bootstrap metadata");
 
 const tests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/DeviceSelectConnectTests.cs");
-assert(!tests.includes("MediaNsdRegistration.UNIFIED_SERVICE_TYPE is"),
-  "Unity tests must not compare expected service types against descriptive placeholder strings");
+assert(tests.includes("ActiveDeviceContext_StoresEveryEndpointForTheSelectedDevice"),
+  "Selected-device context regression coverage is missing");
+assert(tests.includes("ActiveDeviceContext_RejectsOldPeerAfterQuickDeviceSwitch"),
+  "Quick device switch must retain stale-peer isolation coverage");
 assert(!tests.includes("GetMethodBody()"),
   "Unity tests must not pretend method existence proves the reconnect call contract");
 
