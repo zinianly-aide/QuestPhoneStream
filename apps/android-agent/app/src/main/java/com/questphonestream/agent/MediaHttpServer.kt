@@ -195,11 +195,16 @@ class MediaHttpServer(
         val item = catalog.get(id)?.takeIf { it.shared } ?: run { sendError(output, 404, "Not Found"); return }
         val token = uri.getQueryParameter("cap")
         val capability = token?.let { capabilities[it] }
-        if (capability == null || capability.mediaId != id || capability.expiresAt < SystemClock.elapsedRealtime()) {
+        val now = SystemClock.elapsedRealtime()
+        if (capability == null || capability.mediaId != id || capability.expiresAt < now) {
             token?.let(capabilities::remove)
             sendError(output, 401, "Unauthorized")
             return
         }
+        // VideoPlayer may open fresh Range requests after a long playback or seek. Refresh
+        // this per-media capability on every valid request so an active playback session
+        // cannot die merely because the first URL was issued hours earlier.
+        if (token != null) capabilities[token] = capability.copy(expiresAt = now + TOKEN_TTL_MS)
         mediaLifecycle.markPairingAuthorized()
         if (!mediaLifecycle.beginRequest(MediaCapabilityLifecycle.MEDIA_PUBLISH)) {
             sendError(output, 503, "Service Unavailable")
@@ -321,7 +326,10 @@ class MediaHttpServer(
 
     companion object {
         const val DEFAULT_PORT = 8788
-        private const val TOKEN_TTL_MS = 5 * 60 * 1000L
+        // A play capability is scoped to one media item, cleared on server stop/token change,
+        // and refreshed on every valid content request. Keep the idle window long enough that
+        // a long local video can seek/rebuffer without needing a custom VideoPlayer 401 hook.
+        internal const val TOKEN_TTL_MS = 12L * 60 * 60 * 1000
         private const val TAG = "QuestPhoneMedia"
     }
 }

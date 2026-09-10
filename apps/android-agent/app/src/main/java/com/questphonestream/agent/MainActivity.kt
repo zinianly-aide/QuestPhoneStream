@@ -78,6 +78,34 @@ class MainActivity : AppCompatActivity() {
     private var isStreaming = false
     private var currentSignalingState = ConnectionState.IDLE
 
+    private val controlPlaneListener = object : SignalingClient.Listener {
+        override fun onStateChanged(state: ConnectionState) {
+            runOnUiThread { updateSignalingStatus(state) }
+        }
+
+        override fun onSessionCreated(session: StreamSession) {
+            runOnUiThread {
+                webrtcStatusView.setText("Session active", TextView.BufferType.NORMAL)
+                webrtcStatusView.setTextColor(color(R.color.status_ok))
+                currentSessionIdView.setText(session.sessionId, TextView.BufferType.NORMAL)
+                updateHomeStatus()
+            }
+        }
+
+        override fun onSessionEnded() {
+            runOnUiThread {
+                webrtcStatusView.setText("Idle", TextView.BufferType.NORMAL)
+                webrtcStatusView.setTextColor(color(R.color.status_idle))
+                currentSessionIdView.setText("—", TextView.BufferType.NORMAL)
+                updateHomeStatus()
+            }
+        }
+
+        override fun onError(message: String) {
+            runOnUiThread { addLog("Signaling: $message") }
+        }
+    }
+
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -128,6 +156,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mediaCatalog = MediaCatalog(applicationContext)
+        isStreaming = ScreenStreamService.isCaptureRunning
         maybeRequestNotificationPermission()
 
         val root = ScrollView(this).apply {
@@ -155,9 +184,11 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(container)
         setContentView(root)
+        DeviceControlPlane.addListener(controlPlaneListener, replay = true)
 
         updateUrlModeIndicator()
         updateMediaList()
+        updateScreenCaptureStatus()
         updateHomeStatus()
         addLog("App started")
     }
@@ -176,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         homeCard.addView(homeControlActionButton)
 
         homeScreenActionButton = actionButton("Start screen sharing", R.color.status_ok) {
-            if (isStreaming) stopStream() else startStream()
+            if (isStreaming || ScreenStreamService.isCaptureRunning) stopStream() else startStream()
         }
         homeCard.addView(homeScreenActionButton)
 
@@ -222,9 +253,10 @@ class MainActivity : AppCompatActivity() {
         advancedContainer.addView(helperText(
             "Normally no changes are needed here. Use these fields only when automatic discovery or pairing needs manual configuration."
         ))
+        val saved = getSharedPreferences("QuestPhoneStream", MODE_PRIVATE)
         val configCard = cardLayout()
-        signalingUrlField = configRow(configCard, "Signaling URL", "")
-        tokenField = configRow(configCard, "Pairing token", "dev-token")
+        signalingUrlField = configRow(configCard, "Signaling URL", saved.getString("signalingUrl", "").orEmpty())
+        tokenField = configRow(configCard, "Pairing token", saved.getString("token", "dev-token").orEmpty())
         mediaPairingToken = tokenField.text.toString().trim()
         tokenField.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -233,9 +265,9 @@ class MainActivity : AppCompatActivity() {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        deviceIdField = configRow(configCard, "Android device ID", "android-phone-001")
-        questDeviceIdField = configRow(configCard, "Quest device ID", "quest-3s-001")
-        sessionIdField = configRow(configCard, "Session ID", "local-session-001")
+        deviceIdField = configRow(configCard, "Android device ID", saved.getString("deviceId", "android-phone-001").orEmpty())
+        questDeviceIdField = configRow(configCard, "Quest device ID", saved.getString("questDeviceId", "quest-3s-001").orEmpty())
+        sessionIdField = configRow(configCard, "Session ID", saved.getString("sessionId", "local-session-001").orEmpty())
         configCard.addView(actionButton("Save & apply", R.color.colorPrimary) {
             saveConfigurationAndRefreshNsd()
         })
@@ -358,7 +390,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         addLog("ws connecting to $url ...")
-        signalingStatusView.setText("Connecting...", TextView.BufferType.NORMAL)
+        signalingStatusView.setText("Testing...", TextView.BufferType.NORMAL)
         signalingStatusView.setTextColor(color(R.color.status_warn))
 
         val testClient = SignalingClient(
@@ -375,14 +407,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                override fun onStateChanged(state: ConnectionState) {
-                    runOnUiThread { updateSignalingStatus(state) }
-                }
-
                 override fun onError(message: String) {
                     runOnUiThread {
                         addLog("ws failed: $message")
-                        signalingStatusView.setText("Failed", TextView.BufferType.NORMAL)
+                        signalingStatusView.setText("Failed (test)", TextView.BufferType.NORMAL)
                         signalingStatusView.setTextColor(color(R.color.status_error))
                     }
                 }
@@ -391,10 +419,7 @@ class MainActivity : AppCompatActivity() {
         testClient.connect()
         android.os.Handler(mainLooper).postDelayed({
             testClient.close()
-            if (currentSignalingState != ConnectionState.CONNECTED) {
-                signalingStatusView.setText("Idle", TextView.BufferType.NORMAL)
-                signalingStatusView.setTextColor(color(R.color.status_idle))
-            }
+            updateSignalingStatus(DeviceControlPlane.currentState)
         }, 5000)
     }
 
@@ -423,11 +448,6 @@ class MainActivity : AppCompatActivity() {
         stopService(serviceIntent)
         isStreaming = false
         updateScreenCaptureStatus()
-        signalingStatusView.setText("Idle", TextView.BufferType.NORMAL)
-        signalingStatusView.setTextColor(color(R.color.status_idle))
-        webrtcStatusView.setText("Idle", TextView.BufferType.NORMAL)
-        webrtcStatusView.setTextColor(color(R.color.status_idle))
-        currentSessionIdView.setText("—", TextView.BufferType.NORMAL)
         addLog("Streaming stopped")
     }
 
@@ -439,7 +459,7 @@ class MainActivity : AppCompatActivity() {
             .putString("questDeviceId", questDeviceIdField.text.toString().trim())
             .putString("sessionId", sessionIdField.text.toString().trim())
             .apply()
-        if (!isStreaming) AndroidSpatialControlPlane.start(currentStreamConfig())
+        if (!isStreaming && !ScreenStreamService.isCaptureRunning) AndroidSpatialControlPlane.start(currentStreamConfig())
         mediaServer?.refreshNsdMetadata()
         addLog("Settings saved; NSD metadata refresh requested")
         updateUrlModeIndicator()
@@ -547,6 +567,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        DeviceControlPlane.removeListener(controlPlaneListener)
         mediaServer?.stop()
         mediaServer = null
         super.onDestroy()
@@ -554,7 +575,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateHomeStatus()
+        isStreaming = ScreenStreamService.isCaptureRunning
+        updateScreenCaptureStatus()
     }
 
     // ─── Certificate help ───
@@ -644,12 +666,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateScreenCaptureStatus() {
-        if (isStreaming) {
-            screenCaptureStatusView.setText("Streaming", TextView.BufferType.NORMAL)
-            screenCaptureStatusView.setTextColor(color(R.color.status_ok))
-        } else {
-            screenCaptureStatusView.setText("Idle", TextView.BufferType.NORMAL)
-            screenCaptureStatusView.setTextColor(color(R.color.status_idle))
+        val captureRunning = isStreaming || ScreenStreamService.isCaptureRunning
+        val publishActive = CapabilityRuntime.snapshot().firstOrNull { it.name == "display.publish" }?.active == true
+        when {
+            !captureRunning -> {
+                screenCaptureStatusView.setText("Idle", TextView.BufferType.NORMAL)
+                screenCaptureStatusView.setTextColor(color(R.color.status_idle))
+            }
+            publishActive -> {
+                screenCaptureStatusView.setText("Streaming", TextView.BufferType.NORMAL)
+                screenCaptureStatusView.setTextColor(color(R.color.status_ok))
+            }
+            else -> {
+                screenCaptureStatusView.setText("Capture ready", TextView.BufferType.NORMAL)
+                screenCaptureStatusView.setTextColor(color(R.color.status_warn))
+            }
         }
         updateHomeStatus()
     }
@@ -679,12 +710,21 @@ class MainActivity : AppCompatActivity() {
         val control = runtime["display.control"]
         val media = runtime["media.catalog"]
 
-        val screenActive = publish?.active == true
-        homeScreenStatusView.text = if (screenActive) "Active" else "Off"
-        homeScreenStatusView.setTextColor(
-            color(if (screenActive) R.color.status_ok else R.color.status_idle)
-        )
-        homeScreenActionButton.text = if (screenActive) {
+        val captureRunning = isStreaming || ScreenStreamService.isCaptureRunning
+        val screenActive = captureRunning && publish?.active == true
+        homeScreenStatusView.text = when {
+            screenActive -> "Active"
+            captureRunning -> "Capture ready · waiting for Quest"
+            else -> "Off"
+        }
+        homeScreenStatusView.setTextColor(color(
+            when {
+                screenActive -> R.color.status_ok
+                captureRunning -> R.color.status_warn
+                else -> R.color.status_idle
+            }
+        ))
+        homeScreenActionButton.text = if (captureRunning) {
             "Stop screen sharing"
         } else {
             "Start screen sharing"

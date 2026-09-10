@@ -33,6 +33,7 @@ namespace QuestPhoneStream
         private bool _manualProfileOverride;
         private System.Action<bool, string> _onAvailabilityChanged;
         private Coroutine _probeRoutine;
+        private int _playGeneration;
 
         public MediaRouteKind CurrentRoute { get; private set; } = MediaRouteKind.Video;
 
@@ -75,6 +76,7 @@ namespace QuestPhoneStream
             if (_panel == null || _list == null) Build();
             if (_panel == null) return;
             ResolveSpatialRenderers();
+            ++_playGeneration;
             _selectedItem = null;
             _manualProfileOverride = false;
             SetPlayerControlsVisible(false);
@@ -87,6 +89,7 @@ namespace QuestPhoneStream
 
         public void Close()
         {
+            ++_playGeneration;
             if (_panel != null) _panel.SetActive(false);
             _onClose?.Invoke();
         }
@@ -413,21 +416,26 @@ namespace QuestPhoneStream
             var button = MakeListButton(_list, label);
             button.interactable = available;
             button.onClick.AddListener(() => {
+                var generation = ++_playGeneration;
                 _selectedItem = item;
                 CurrentRoute = item.Route;
                 if (!_manualProfileOverride && CurrentRoute == MediaRouteKind.Video) _selectedProfile = MediaVideoProfile.From(item);
                 SetPlayerControlsVisible(true);
                 UpdateProfileControls();
                 SetStatus("Opening " + item.name + " · " + item.RouteLabel);
-                StartCoroutine(Play(item, _selectedProfile));
+                StartCoroutine(Play(item, _selectedProfile, generation));
             });
         }
 
-        private IEnumerator Play(MediaItemDto item, MediaVideoProfile profile)
+        private IEnumerator Play(MediaItemDto item, MediaVideoProfile profile, int generation)
         {
             if (_catalog == null) yield break;
             ResolveSpatialRenderers();
             yield return _catalog.RequestPlayToken(item.id, (token, error) => {
+                // Token requests are independent coroutines. Only the newest selection owns
+                // playback; a slow A response must never replace a later B selection.
+                if (generation != _playGeneration || _selectedItem == null || _selectedItem.id != item.id)
+                    return;
                 if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(token))
                 {
                     SetStatus("Play failed: " + (error ?? "token unavailable"));
@@ -484,6 +492,7 @@ namespace QuestPhoneStream
 
         private void OnDestroy()
         {
+            ++_playGeneration;
             if (_probeRoutine != null) StopCoroutine(_probeRoutine);
         }
 

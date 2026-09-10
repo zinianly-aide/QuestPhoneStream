@@ -23,6 +23,7 @@ class ScreenStreamService : Service() {
             if (session.androidDeviceId == config.deviceId && session.questDeviceId == config.questDeviceId) {
                 streamer?.startSession(session)
                 DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = true)
+                CapabilityRuntime.setDisplayPublish(authorized = true, active = true)
             }
         }
 
@@ -37,11 +38,13 @@ class ScreenStreamService : Service() {
         override fun onRegistered() {
             val config = activeConfig ?: return
             DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
+            CapabilityRuntime.setDisplayPublish(authorized = true, active = false)
             DeviceControlPlane.requestSession(config.sessionId, config.deviceId, config.questDeviceId)
         }
 
         override fun onSessionEnded() {
             DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
+            CapabilityRuntime.setDisplayPublish(authorized = true, active = false)
             streamer?.resetPeer()
         }
     }
@@ -65,6 +68,7 @@ class ScreenStreamService : Service() {
         activeConfig = config
         DeviceControlPlane.configure(config.signalingUrl, config.token, config.deviceId)
         DeviceControlPlane.updateCapabilityState("display.publish", authorized = true, active = false)
+        CapabilityRuntime.setDisplayPublish(authorized = true, active = false)
 
         streamer = WebRtcStreamer(
             context = applicationContext,
@@ -73,6 +77,7 @@ class ScreenStreamService : Service() {
             projectionData = projectionData,
             signaling = DeviceControlPlane
         )
+        isCaptureRunning = true
 
         if (!listenerAttached) {
             DeviceControlPlane.addListener(controlPlaneListener, replay = true)
@@ -84,7 +89,9 @@ class ScreenStreamService : Service() {
     }
 
     override fun onDestroy() {
+        isCaptureRunning = false
         DeviceControlPlane.updateCapabilityState("display.publish", authorized = false, active = false)
+        CapabilityRuntime.setDisplayPublish(authorized = false, active = false)
         DeviceControlPlane.setControlTransportActive(false)
         if (listenerAttached) {
             DeviceControlPlane.removeListener(controlPlaneListener)
@@ -119,6 +126,8 @@ class ScreenStreamService : Service() {
     companion object {
         private const val CHANNEL_ID = "screen_stream"
         private const val NOTIFICATION_ID = 41
+        @Volatile var isCaptureRunning: Boolean = false
+            private set
 
         fun start(context: Context, resultCode: Int, data: Intent, config: StreamConfig) {
             // MediaProjection may be granted after the user has edited the fields again.

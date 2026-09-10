@@ -13,12 +13,12 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
         private readonly List<XRHandSubsystem> _subsystems = new List<XRHandSubsystem>();
         private Transform _panel;
         private Collider _handle;
+        private Renderer _handleVisual;
         private XriRuntimeDependencies _dependencies;
         private SpatialPanelManipulator _manipulator;
         private Collider _surface;
-        // Bare-hand grab must feel intentional: a real pinch, on the user-facing
-        // side of the video, close to the surface. The inflated handle collider
-        // is far too large for ClosestPoint and was latching grabs while waving.
+        // Bare-hand manipulation deliberately uses the visible handle only. A pinch
+        // on the content surface belongs to Poke/touch and must never race window grab.
         [SerializeField, Min(.01f)] private float handPinchDistance = .028f;
         [SerializeField, Min(.01f)] private float handGrabDistance = .045f;
         private bool _loggedDiagnostics;
@@ -27,6 +27,7 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
         public void Configure(Transform panel, Collider handle, XriRuntimeDependencies dependencies)
         {
             _panel = panel; _handle = handle; _dependencies = dependencies;
+            _handleVisual = handle != null ? handle.GetComponent<Renderer>() : null;
             _manipulator = panel.GetComponent<SpatialPanelManipulator>();
             _surface = panel.GetComponent<SpatialPanelInteractionRouter>()?.screenCollider;
         }
@@ -139,40 +140,13 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
                 return;
             }
 
-            if (!TryGetSurfaceTouch(position, out var closest, out var surfaceDistance)) return;
-            if (surfaceDistance > handGrabDistance) return;
+            if (!HandGrabPolicy.TryGetVisibleHandlePoint(_handleVisual, position, handGrabDistance,
+                    out var closest, out _))
+                return;
 
             _solver.Begin(source, pose, closest, _panel);
             Emit(GrabPhase.Begin);
             _solver.SetOrigin(source, pose);
-        }
-
-        /// <summary>
-        /// True when the fingertip is on the user-facing side of the video plane
-        /// and projects onto the surface collider (not merely near the fat handle).
-        /// </summary>
-        private bool TryGetSurfaceTouch(Vector3 position, out Vector3 closest, out float distance)
-        {
-            closest = default;
-            distance = float.MaxValue;
-            if (_surface == null || !_surface.enabled) return false;
-
-            closest = _surface.ClosestPoint(position);
-            // ClosestPoint returns the query point itself when already inside the collider.
-            if (closest == position) closest = _surface.bounds.ClosestPoint(position);
-            distance = Vector3.Distance(position, closest);
-            if (distance <= float.Epsilon) return false;
-
-            // User-facing side is -forward (see XriPointerSource poke normal).
-            var inward = Vector3.Dot(position - closest, -_surface.transform.forward);
-            if (inward <= 0f) return false;
-
-            // Reject edge grazes: the touch point must lie inside the surface bounds
-            // (slightly padded) so waving beside the panel cannot start a grab.
-            var bounds = _surface.bounds;
-            bounds.Expand(handGrabDistance * 2f);
-            if (!bounds.Contains(closest)) return false;
-            return true;
         }
 
         private void End(InteractionSourceType source)

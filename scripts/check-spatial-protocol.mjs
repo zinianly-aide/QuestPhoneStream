@@ -43,10 +43,11 @@ for (const forbidden of ["camera.", "ai.", "xr.hand", "hand.pose"])
 const questRegistry = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/CapabilityRegistry.cs");
 for (const name of [
   "display.consume", "display.control", "media.consume", "media.render",
-  "xr.head.pose", "xr.controller.pose", "xr.hand.pose", "camera.rgb", "ai.vision"
+  "media.6dof.render", "media.gaussian-splat.render",
+  "xr.head.pose", "xr.controller.pose", "xr.hand.pose",
+  "spatial.anchor", "spatial.environment.depth", "spatial.object.interaction",
+  "camera.rgb", "ai.vision"
 ]) assert(questRegistry.includes(`"${name}"`), `Quest registry missing ${name}`);
-for (const forbidden of ["spatial.anchor", "environment.depth", "video.6dof", "gaussian.splatting"])
-  assert(!questRegistry.includes(`"${forbidden}"`), `P3 capability leaked into P2 registry: ${forbidden}`);
 assert(questRegistry.includes('"xr.head.pose", true, true, false, new[] { "local", "webrtc.datachannel" }'), "XR head pose must expose the Spatial DataChannel transport");
 assert(questRegistry.includes('"xr.controller.pose", true, true, false, new[] { "local", "webrtc.datachannel" }'), "XR controller pose must expose the Spatial DataChannel transport");
 assert(questRegistry.includes('"xr.hand.pose", false, false, false, new[] { "local", "webrtc.datachannel" }'), "Hand capability must start unavailable until the runtime subsystem exists");
@@ -66,18 +67,32 @@ assert(nsd.includes("refreshUnregisterPendingTypes") && nsd.includes("onServiceU
 const controlPlane = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/DeviceControlPlane.kt");
 const mediaServer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MediaHttpServer.kt");
 const screenService = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/ScreenStreamService.kt");
+const mainActivity = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/MainActivity.kt");
 assert(controlPlane.includes("object DeviceControlPlane : StreamSignaling"), "Android device-level Spatial control plane missing");
 assert(mediaServer.includes("DeviceControlPlane.acquire(DeviceControlPlane.Owner.MEDIA)"), "Spatial control plane is still tied to MediaProjection lifecycle");
-assert(mediaServer.includes("CONFIG_STABLE_MS") && mediaServer.includes("refreshUnifiedAdvertisement"), "NSD signaling metadata changes are not debounced/refreshed");
+assert(mediaServer.includes("AppliedConfigStore.apply") && mediaServer.includes("nsdRegistration.refreshUnifiedAdvertisement()"), "Save/apply must atomically refresh the applied endpoint and unified NSD metadata");
 assert(!screenService.includes("SignalingClient("), "Screen service must not create a second signaling client");
 assert(screenService.includes("DeviceControlPlane.release(DeviceControlPlane.Owner.STREAM)"), "Screen lifecycle must release only its control-plane ownership");
+assert(screenService.includes("CapabilityRuntime.setDisplayPublish") && screenService.includes("isCaptureRunning"), "Screen capture and peer-active state must be independently observable");
+assert(mainActivity.includes('getSharedPreferences("QuestPhoneStream", MODE_PRIVATE)') && mainActivity.includes('saved.getString("signalingUrl"'), "Android saved connection settings must be restored on startup");
+assert(mainActivity.includes("DeviceControlPlane.addListener(controlPlaneListener, replay = true)"), "Android home status must subscribe to the live process control plane");
+assert(mainActivity.includes("captureRunning") && mainActivity.includes('"Capture ready · waiting for Quest"'), "Screen action/status must distinguish capture-running from peer-active");
 
 const controlCommand = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/ControlCommand.kt");
 const streamer = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/WebRtcStreamer.kt");
 assert(controlCommand.includes("DeviceControlPlane.setControlAuthorized(true)") && controlCommand.includes("DeviceControlPlane.setControlAuthorized(false)"),
   "Accessibility authorization is not wired to display.control");
-assert(streamer.includes("DeviceControlPlane.setControlTransportActive(open)") && streamer.includes("DeviceControlPlane.setControlTransportActive(false)"),
+assert(streamer.includes("DeviceControlPlane.setControlTransportActive(state == DataChannel.State.OPEN)") && streamer.includes("DeviceControlPlane.setControlTransportActive(false)"),
   "Android DataChannel state is not wired to display.control.active");
+
+const mediaLibrary = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/MediaLibraryUI.cs");
+assert(mediaLibrary.includes("_playGeneration") && mediaLibrary.includes("generation != _playGeneration"), "Media selection must reject stale play-token callbacks");
+assert(mediaServer.includes("capability.copy(expiresAt = now + TOKEN_TTL_MS)") && mediaServer.includes("12L * 60 * 60 * 1000"), "Long-running media playback must renew a sufficiently long play capability");
+
+const manipulation = read("apps/quest-unity-client/Assets/QuestPhoneStream/Interaction/Backends/XRI/XriManipulationSource.cs");
+const handGrabPolicy = read("apps/quest-unity-client/Assets/QuestPhoneStream/Interaction/Backends/XRI/HandGrabPolicy.cs");
+assert(manipulation.includes("HandGrabPolicy.TryGetVisibleHandlePoint") && !manipulation.includes("TryGetSurfaceTouch"), "Bare-hand window grabs must not compete with Surface Poke ownership");
+assert(handGrabPolicy.includes("handleRenderer.bounds.ClosestPoint"), "Bare-hand grab must use the visible handle rather than the inflated grab collider");
 
 const serverProtocol = read("apps/signaling-server/src/protocol.ts");
 const serverIndex = read("apps/signaling-server/src/index.ts");
@@ -133,4 +148,4 @@ const hud = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestD
 for (const metric of ["PoseStreamHz", "DroppedFrames", "LastSequence", "CameraState", "LastLatencyMs", "HandTrackingState"])
   assert(hud.includes(metric), `Developer HUD missing ${metric}`);
 
-console.log("Spatial Protocol v1 + P2 source checks passed");
+console.log("Spatial Protocol v1 + P3 source checks passed");
