@@ -144,8 +144,8 @@ assert(macSender.includes('createDataChannel("spatial-bootstrap"') && macSender.
 assert(macSender.includes('"subscription.create"') && macSender.includes('"xr.head.pose"') && macSender.includes('"xr.controller.pose"'), "Mac telemetry subscription consumer missing");
 assert(macSender.includes("sequence <= previous") && macSender.includes("telemetryDropped"), "Mac stale telemetry handling missing");
 
-const hud = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestDeveloperHud.cs");
+const diagnostics = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestDiagnostics.cs");
 for (const metric of ["PoseStreamHz", "DroppedFrames", "LastSequence", "CameraState", "LastLatencyMs", "HandTrackingState"])
-  assert(hud.includes(metric), `Developer HUD missing ${metric}`);
+  assert(diagnostics.includes(metric), `Developer diagnostics missing ${metric}`);
 
 console.log("Spatial Protocol v1 + P3 source checks passed");
