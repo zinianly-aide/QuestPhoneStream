@@ -7,6 +7,8 @@ on:
     paths:
       - "apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScan*.cs"
       - "apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs"
+      - "apps/quest-unity-client/Packages/manifest.json"
       - "scripts/check-object-scan-poc.mjs"
       - "docs/object-scan-poc.md"
       - ".github/workflows/object-scan-poc.yml"
@@ -14,6 +16,8 @@ on:
     paths:
       - "apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScan*.cs"
       - "apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs"
+      - "apps/quest-unity-client/Packages/manifest.json"
       - "scripts/check-object-scan-poc.mjs"
       - "docs/object-scan-poc.md"
       - ".github/workflows/object-scan-poc.yml"
@@ -34,5 +38,5 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check object scan G0 contract
+      - name: Check object scan G0/G1 contract
         run: node scripts/check-object-scan-poc.mjs

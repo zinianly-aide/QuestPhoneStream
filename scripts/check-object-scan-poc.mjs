@@ -9,6 +9,8 @@ const models = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/Obj
 const calibration = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanCalibrationProvider.cs");
 const recorder = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanRecorder.cs");
 const tests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs");
+const manifest = JSON.parse(read("apps/quest-unity-client/Packages/manifest.json"));
+const androidManifestPostProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
 
 assert(models.includes('qps-object-scan-poc-v1'), "Object scan manifest must be versioned");
 assert(models.includes("fx") && models.includes("fy") && models.includes("cameraPosition") && models.includes("cameraRotation"),
@@ -28,4 +30,12 @@ assert(!recorder.includes("SpatialEnvelope") && !recorder.includes("SendSpatial"
 assert(tests.includes("SamplingPolicy_RejectsNearlyDuplicatePose") && tests.includes("Manifest_SerializesReconstructionInputs"),
   "Object scan regression tests are incomplete");
 
-console.log("Object scan POC G0 source checks passed");
+assert(manifest.dependencies?.["com.meta.xr.mrutilitykit"] === "85.0.0",
+  "Object scan G1 must pin MRUK 85.0.0 instead of floating/latest");
+assert(androidManifestPostProcessor.includes('"horizonos.permission.HEADSET_CAMERA"'),
+  "Quest build must declare HEADSET_CAMERA through the generated manifest postprocessor");
+assert(androidManifestPostProcessor.includes('"com.oculus.feature.PASSTHROUGH"') &&
+       androidManifestPostProcessor.includes('AppendAndroidAttribute(doc, passthroughElement, "required", "true")'),
+  "Quest build must declare required passthrough support for PCA");
+
+console.log("Object scan POC G0/G1 source checks passed");

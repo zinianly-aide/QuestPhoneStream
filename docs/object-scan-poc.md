@@ -6,7 +6,7 @@ Goal: prove that Quest 3/3S can produce reconstruction-ready multi-view datasets
 
 ## G0 — Reconstruction dataset capture
 
-Current scope:
+Implemented:
 - reuse `QuestVisionService` / `PassthroughCameraAccess` for RGB frames;
 - require camera timestamp, world-space camera pose, and camera intrinsics for every accepted frame;
 - save JPEG frames plus a versioned `manifest.json` under `Application.persistentDataPath/ObjectScans/<session>/`;
@@ -24,7 +24,12 @@ Acceptance:
 
 ## G1 — Pin the Quest camera runtime
 
-Pin a Meta XR / MRUK version compatible with the repository's Unity 2022.3 baseline. Do not use a floating/latest dependency. Validate the headset-camera permission, `PassthroughCameraAccess`, `GetCameraPose()`, `Intrinsics`, and RGB capture on Quest 3S.
+Configuration implemented:
+- pin `com.meta.xr.mrutilitykit` to `85.0.0`, matching Meta's Passthrough Camera API sample instead of using a floating/latest dependency;
+- retain the existing generated-manifest postprocessor for `horizonos.permission.HEADSET_CAMERA`;
+- add required `com.oculus.feature.PASSTHROUGH` through that postprocessor instead of replacing Unity's main Android manifest.
+
+Still requires hardware validation on Quest 3S for camera permission, `PassthroughCameraAccess`, `GetCameraPose()`, intrinsics, RGB frames, and the chosen camera resolution. CI proves package/project compilation only.
 
 ## G2 — LAN dataset transfer
 
