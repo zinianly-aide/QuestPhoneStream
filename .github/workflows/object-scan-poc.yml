@@ -40,7 +40,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check object scan G0/G1/G2 contract
+      - name: Check object scan G0-G4 contract
         run: node scripts/check-object-scan-poc.mjs
 
       - name: Test desktop scan worker

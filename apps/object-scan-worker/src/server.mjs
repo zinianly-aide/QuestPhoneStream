@@ -5,12 +5,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_RESULT_BYTES = 32 * 1024 * 1024;
 const SESSION_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const FRAME_RE = /^frames\/[0-9]{6}\.jpg$/;
 
 export function createScanWorker(options = {}) {
   const root = resolve(options.root ?? process.env.QPS_SCAN_ROOT ?? join(process.cwd(), "object-scans"));
   const maxUploadBytes = Number(options.maxUploadBytes ?? process.env.QPS_SCAN_MAX_UPLOAD_BYTES ?? DEFAULT_MAX_UPLOAD_BYTES);
+  const maxResultBytes = Number(options.maxResultBytes ?? process.env.QPS_SCAN_MAX_RESULT_BYTES ?? DEFAULT_MAX_RESULT_BYTES);
 
   return createServer(async (req, res) => {
     try {
@@ -55,6 +57,19 @@ export function createScanWorker(options = {}) {
         return json(res, 200, ready);
       }
 
+      if (route.kind === "result" && req.method === "GET") {
+        const result = await readReconstructionResult(sessionPath);
+        return json(res, 200, result);
+      }
+
+      if (route.kind === "preview" && req.method === "GET") {
+        const result = await readReconstructionResult(sessionPath);
+        if (result.status !== "completed") throw httpError(409, `reconstruction_not_completed:${result.status ?? "unknown"}`);
+        const target = join(sessionPath, "reconstruction", "colmap", "sparse-preview.ply");
+        if (!existsSync(target)) throw httpError(404, "preview_missing");
+        return sendFile(res, target, maxResultBytes, "application/octet-stream");
+      }
+
       return json(res, 405, { error: "method_not_allowed" });
     } catch (error) {
       const status = Number(error?.statusCode) || 500;
@@ -76,6 +91,8 @@ function parseRoute(rawUrl) {
   const tail = rest.slice(slash + 1);
   if (tail === "finalize") return { kind: "finalize", sessionId };
   if (tail === "status") return { kind: "status", sessionId };
+  if (tail === "result") return { kind: "result", sessionId };
+  if (tail === "result/sparse-preview.ply") return { kind: "preview", sessionId };
   if (!tail.startsWith("files/")) return null;
   const relativePath = safeDecode(tail.slice("files/".length));
   return { kind: "file", sessionId, relativePath };
@@ -142,6 +159,31 @@ async function inspectSession(sessionPath, sessionId, requireComplete = false) {
     missingFrames: missing,
     bytes
   };
+}
+
+async function readReconstructionResult(sessionPath) {
+  const resultPath = join(sessionPath, "reconstruction", "colmap", "result.json");
+  let result;
+  try { result = JSON.parse(await readFile(resultPath, "utf8")); }
+  catch { throw httpError(404, "reconstruction_result_missing_or_invalid"); }
+  if (result?.version !== "qps-object-scan-result-v1") throw httpError(409, "unsupported_reconstruction_result");
+  return result;
+}
+
+async function sendFile(res, target, maxBytes, contentType) {
+  const info = await stat(target);
+  if (!info.isFile()) throw httpError(404, "result_file_missing");
+  if (info.size > maxBytes) throw httpError(413, "result_too_large");
+  res.statusCode = 200;
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Length", String(info.size));
+  await new Promise((resolvePromise, reject) => {
+    const input = createReadStream(target);
+    input.on("error", reject);
+    res.on("error", reject);
+    res.on("finish", resolvePromise);
+    input.pipe(res);
+  });
 }
 
 function httpError(statusCode, message) {

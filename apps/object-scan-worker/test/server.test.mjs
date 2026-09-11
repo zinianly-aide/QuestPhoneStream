@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -87,5 +87,56 @@ test("rejects file paths outside the scan dataset contract", async () => {
       body: "nope"
     });
     assert.equal(response.status, 400);
+  });
+});
+
+test("serves only the fixed completed reconstruction result and sparse preview", async () => {
+  await withWorker(async ({ root, base }) => {
+    const session = "scan-result";
+    const reconstruction = join(root, session, "reconstruction", "colmap");
+    await mkdir(reconstruction, { recursive: true });
+    const result = {
+      version: "qps-object-scan-result-v1",
+      sessionId: session,
+      backend: "colmap",
+      status: "completed",
+      inputFrames: 12,
+      outputs: { sparsePreviewPly: "reconstruction/colmap/sparse-preview.ply" }
+    };
+    const ply = "ply\nformat ascii 1.0\nelement vertex 0\nend_header\n";
+    await writeFile(join(reconstruction, "result.json"), JSON.stringify(result));
+    await writeFile(join(reconstruction, "sparse-preview.ply"), ply);
+
+    let response = await fetch(`${base}/v1/scans/${session}/result`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), result);
+
+    response = await fetch(`${base}/v1/scans/${session}/result/sparse-preview.ply`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), ply);
+
+    response = await fetch(`${base}/v1/scans/${session}/result/%2e%2e%2fquest-poses.json`);
+    assert.equal(response.status, 404);
+  });
+});
+
+test("does not expose preview while reconstruction is blocked", async () => {
+  await withWorker(async ({ root, base }) => {
+    const session = "scan-blocked";
+    const reconstruction = join(root, session, "reconstruction", "colmap");
+    await mkdir(reconstruction, { recursive: true });
+    await writeFile(join(reconstruction, "result.json"), JSON.stringify({
+      version: "qps-object-scan-result-v1",
+      sessionId: session,
+      backend: "colmap",
+      status: "blocked",
+      warnings: ["colmap_not_found"]
+    }));
+    await writeFile(join(reconstruction, "sparse-preview.ply"), "stale");
+
+    const response = await fetch(`${base}/v1/scans/${session}/result/sparse-preview.ply`);
+    assert.equal(response.status, 409);
+    const result = await response.json();
+    assert.match(result.error, /reconstruction_not_completed/);
   });
 });

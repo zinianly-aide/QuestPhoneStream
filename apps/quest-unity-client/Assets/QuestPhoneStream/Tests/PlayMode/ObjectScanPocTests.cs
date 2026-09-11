@@ -83,5 +83,29 @@ namespace QuestPhoneStream.Tests
                 "http://192.168.1.2:8848/v1/scans/scan-01/finalize",
                 ObjectScanTransferPaths.FinalizeUrl("http://192.168.1.2:8848/", "scan-01"));
         }
+
+        [Test]
+        public void ResultPaths_UseFixedWorkerEndpoints()
+        {
+            Assert.AreEqual(
+                "http://192.168.1.2:8848/v1/scans/scan-01/result",
+                ObjectScanResultPaths.ResultUrl("http://192.168.1.2:8848/", "scan-01"));
+            Assert.AreEqual(
+                "http://192.168.1.2:8848/v1/scans/scan-01/result/sparse-preview.ply",
+                ObjectScanResultPaths.PreviewUrl("http://192.168.1.2:8848/", "scan-01"));
+        }
+
+        [Test]
+        public void ReconstructionResult_ParsesCompletedSparsePreview()
+        {
+            var result = JsonUtility.FromJson<ObjectScanReconstructionResult>(
+                "{\"version\":\"qps-object-scan-result-v1\",\"sessionId\":\"scan-01\",\"backend\":\"colmap\",\"status\":\"completed\",\"inputFrames\":42,\"outputs\":{\"sparsePreviewPly\":\"reconstruction/colmap/sparse-preview.ply\"}}");
+
+            Assert.AreEqual("qps-object-scan-result-v1", result.version);
+            Assert.AreEqual("scan-01", result.sessionId);
+            Assert.AreEqual("completed", result.status);
+            Assert.AreEqual(42, result.inputFrames);
+            Assert.AreEqual("reconstruction/colmap/sparse-preview.ply", result.outputs.sparsePreviewPly);
+        }
     }
 }

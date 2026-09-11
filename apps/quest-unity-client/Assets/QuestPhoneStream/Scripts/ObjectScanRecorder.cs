@@ -6,8 +6,7 @@ namespace QuestPhoneStream
 {
     /// <summary>
     /// G0 object-scan recorder: saves RGB JPEG frames plus timestamp, exact PCA camera
-    /// pose and intrinsics. It intentionally stays local to the Quest filesystem; LAN
-    /// upload/reconstruction is a later gate.
+    /// pose and intrinsics. Transfer/reconstruction remain separate higher-stage services.
     /// </summary>
     public sealed class ObjectScanRecorder : MonoBehaviour
     {
@@ -31,6 +30,7 @@ namespace QuestPhoneStream
 
         public bool IsScanning => _scanning;
         public int FrameCount => _manifest?.frameCount ?? 0;
+        public string SessionId => _manifest?.sessionId;
         public string SessionPath => _sessionPath;
         public string StateText { get; private set; } = "Idle";
 

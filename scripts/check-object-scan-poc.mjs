@@ -9,6 +9,8 @@ const models = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/Obj
 const calibration = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanCalibrationProvider.cs");
 const recorder = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanRecorder.cs");
 const uploader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanUploader.cs");
+const resultClient = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanResultClient.cs");
+const gaussianRenderer = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/GaussianSplatPocRenderer.cs");
 const tests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs");
 const manifest = JSON.parse(read("apps/quest-unity-client/Packages/manifest.json"));
 const androidManifestPostProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
@@ -72,4 +74,22 @@ assert(reconstruct.includes('warnings: ["colmap_not_found"]'),
 assert(reconstructTests.includes("preserving Quest poses") && reconstructTests.includes("ASCII PLY supported by Quest preview"),
   "G3 reconstruction regression tests are missing");
 
-console.log("Object scan POC G0/G1/G2/G3 source checks passed");
+assert(worker.includes('tail === "result"') && worker.includes('tail === "result/sparse-preview.ply"'),
+  "G4 worker must expose only fixed result/preview endpoints");
+assert(worker.includes('result.status !== "completed"') && worker.includes('"sparse-preview.ply"'),
+  "G4 worker must not expose stale preview files before a completed reconstruction");
+assert(workerTests.includes("serves only the fixed completed reconstruction result") &&
+       workerTests.includes("does not expose preview while reconstruction is blocked"),
+  "G4 worker result-serving regressions are missing");
+assert(resultClient.includes("ObjectScanResultPaths.PreviewUrl") && resultClient.includes("previewRenderer.LoadUrl(url)"),
+  "G4 Quest client must feed the fixed worker preview URL into the existing Gaussian renderer");
+assert(resultClient.includes("not world-aligned"),
+  "G4 UI state must not claim sparse preview world registration");
+assert(!resultClient.includes("GaussianSplatPlyParser.Parse") && gaussianRenderer.includes("GaussianSplatPlyParser"),
+  "G4 must reuse the existing Gaussian PLY renderer instead of adding a duplicate parser");
+assert(!resultClient.includes("SpatialEnvelope") && !resultClient.includes("SendSpatial"),
+  "G4 result return must stay outside Spatial Protocol v1");
+assert(tests.includes("ResultPaths_UseFixedWorkerEndpoints") && tests.includes("ReconstructionResult_ParsesCompletedSparsePreview"),
+  "G4 Quest result regression tests are missing");
+
+console.log("Object scan POC G0/G1/G2/G3/G4 source checks passed");

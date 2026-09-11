@@ -2,7 +2,7 @@
 
 Branch: `feat/object-scan-poc`
 
-Goal: prove that Quest 3/3S can produce reconstruction-ready multi-view datasets and move them to a desktop reconstruction worker without changing the existing signaling, control, Spatial Protocol, media, or specialized 3DGS architecture.
+Goal: prove that Quest 3/3S can produce reconstruction-ready multi-view datasets, move them to a desktop reconstruction worker, and return a safe preview without changing the existing signaling, control, Spatial Protocol, media, or specialized 3DGS architecture.
 
 ## G0 — Reconstruction dataset capture
 
@@ -14,11 +14,7 @@ Implemented:
 - default target: up to 60 views;
 - rewrite the manifest after each accepted frame so an interrupted scan retains usable metadata.
 
-Acceptance:
-- 30–60 useful views can be captured around one static object;
-- every frame has non-zero focal lengths/sensor resolution and a world pose;
-- nearby duplicate viewpoints are suppressed;
-- dataset remains readable after an interrupted scan.
+Hardware acceptance remains pending: capture 30–60 useful Quest 3S views around one static object and verify all frames have stable pose/intrinsics.
 
 ## G1 — Pin the Quest camera runtime
 
@@ -40,23 +36,37 @@ Implemented as a separate bulk-data path, not Spatial Protocol:
 - `POST /finalize` verifies every manifest-referenced frame exists before writing `READY.json`;
 - worker accepts only `manifest.json` and `frames/NNNNNN.jpg` to prevent arbitrary path writes.
 
-G2 intentionally does not change NSD, pairing, signaling, or Spatial Protocol. Device discovery for the reconstruction worker can be considered after the POC proves useful.
+G2 intentionally does not change NSD, pairing, signaling, or Spatial Protocol.
 
 ## G3 — Mac reconstruction worker
 
-Next implementation gate: consume a finalized G2 session and convert Unity camera conventions as needed for the selected reconstruction backend. First support a reproducible offline path that emits both backend-ready metadata and one real reconstruction output. Preserve original Quest poses as priors/evidence rather than discarding them.
+Implemented:
+- finalized datasets are validated before reconstruction;
+- G3 currently requires one stable image resolution/intrinsics set and fails explicitly when the camera model changes;
+- original Quest camera-to-world poses are retained in `quest-poses.json` as priors/evidence rather than force-converted into uncertain COLMAP extrinsics;
+- a deterministic COLMAP PINHOLE plan runs `feature_extractor -> exhaustive_matcher -> mapper -> model_converter(TXT)` when COLMAP is installed;
+- missing COLMAP produces `status: blocked` / `colmap_not_found`, never a false PASS;
+- COLMAP `points3D.txt` is converted into `sparse-preview.ply`, a deterministic ASCII x/y/z+RGB format supported by the existing Quest POC renderer;
+- `result.json` records version, backend, status, inputs, outputs, timings, and warnings.
 
-Candidate first path:
-1. validate dataset and camera intrinsics;
-2. export COLMAP-compatible cameras/images text or database inputs;
-3. run feature matching / pose refinement where available;
-4. produce a 3DGS/PLY or mesh/GLB result;
-5. write `result.json` with backend, input session, output files, timings, and warnings.
+This is a sparse reconstruction/preview gate, not yet a trained full 3D Gaussian Splat or textured mesh pipeline.
 
 ## G4 — Result return and Quest preview
 
-Return GLB/PLY/splat results to Quest. Reuse existing 3D/3DGS rendering entry points where appropriate; do not rewrite their specialized rendering architecture for this POC.
+Implemented:
+- worker exposes only fixed `GET /v1/scans/:session/result` and `GET /v1/scans/:session/result/sparse-preview.ply` endpoints;
+- arbitrary reconstruction files are not exposed;
+- preview is served only when the current `result.json` reports `status=completed`, preventing stale PLY reuse after a failed/blocked run;
+- Quest `ObjectScanResultClient` checks the version/session identity and feeds the fixed preview URL into the existing `GaussianSplatPocRenderer`;
+- no duplicate PLY parser and no Spatial Protocol extension were introduced.
+
+The G4 sparse preview is reconstruction-local and is explicitly **not world-aligned** to the scanned physical object. World registration needs a separately verified Quest/COLMAP coordinate transform and scale strategy.
 
 ## G5 — Scan UX and quality guidance
 
-Add `Scan Object`, capture progress, view-coverage guidance, missing-angle hints, transfer status, and optional environment-depth use for masking/scale priors. Depth is auxiliary evidence, not the primary reconstruction source.
+Next gate:
+- add a minimal `Scan Object` controller/state model rather than restructuring Home;
+- show capture count, coverage, missing-angle hints, upload/result status, and preview state;
+- use camera viewpoints around a user-selected target to compute coverage bins;
+- keep optional Environment Depth as auxiliary target/mask/scale evidence, not the primary reconstruction source;
+- no device discovery/protocol expansion until the POC has real Quest 3S evidence.
