@@ -14,6 +14,8 @@ const manifest = JSON.parse(read("apps/quest-unity-client/Packages/manifest.json
 const androidManifestPostProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
 const worker = read("apps/object-scan-worker/src/server.mjs");
 const workerTests = read("apps/object-scan-worker/test/server.test.mjs");
+const reconstruct = read("apps/object-scan-worker/src/reconstruct.mjs");
+const reconstructTests = read("apps/object-scan-worker/test/reconstruct.test.mjs");
 
 assert(models.includes('qps-object-scan-poc-v1'), "Object scan manifest must be versioned");
 assert(models.includes("fx") && models.includes("fy") && models.includes("cameraPosition") && models.includes("cameraRotation"),
@@ -56,4 +58,18 @@ assert(workerTests.includes("uploads frames idempotently") && workerTests.includ
 assert(tests.includes("TransferPaths_AcceptOnlyDatasetFrames"),
   "Quest transfer path validation regression test is missing");
 
-console.log("Object scan POC G0/G1/G2 source checks passed");
+assert(reconstruct.includes('cameraModel: "PINHOLE"') && reconstruct.includes('"feature_extractor"') &&
+       reconstruct.includes('"exhaustive_matcher"') && reconstruct.includes('"mapper"'),
+  "G3 must build a deterministic COLMAP sparse reconstruction plan");
+assert(reconstruct.includes('qps-object-scan-quest-poses-v1') && reconstruct.includes("cameraToWorldUnity"),
+  "G3 must preserve original Quest poses as reconstruction evidence");
+assert(reconstruct.includes("mixed_intrinsics_not_supported_g3"),
+  "G3 must reject sessions whose camera model changes instead of silently corrupting reconstruction");
+assert(reconstruct.includes("colmapPointsTextToAsciiPly") && reconstruct.includes('format ascii 1.0'),
+  "G3 must export a Quest-preview-compatible ASCII PLY from COLMAP sparse points");
+assert(reconstruct.includes('warnings: ["colmap_not_found"]'),
+  "G3 must report missing COLMAP as BLOCKED rather than pretending reconstruction succeeded");
+assert(reconstructTests.includes("preserving Quest poses") && reconstructTests.includes("ASCII PLY supported by Quest preview"),
+  "G3 reconstruction regression tests are missing");
+
+console.log("Object scan POC G0/G1/G2/G3 source checks passed");
