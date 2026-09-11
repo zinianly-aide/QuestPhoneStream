@@ -10,6 +10,11 @@ const ai = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestAi
 const runtimeAsmdef = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestPhoneStream.Runtime.asmdef");
 const visionTests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/QuestVisionTests.cs");
 const webRtc = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/WebRtcStreamer.kt");
+const displayGeometry = read("apps/android-agent/app/src/main/java/com/questphonestream/agent/DisplayGeometry.kt");
+const displayGeometryTests = read("apps/android-agent/app/src/test/java/com/questphonestream/agent/DisplayGeometryCalculatorTest.kt");
+const panelShell = read("apps/quest-unity-client/Assets/QuestPhoneStream/Interaction/Core/SpatialPanelShell.cs");
+const phonePanel = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/PhonePanelController.cs");
+const screenGeometryTests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ScreenGeometryTests.cs");
 const depth = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestEnvironmentDepthService.cs");
 const depthTests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/EnvironmentDepthTests.cs");
 const sixDof = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SixDofMediaService.cs");
@@ -21,6 +26,14 @@ assert(visionTests.includes("0xFF") && visionTests.includes("0xD8") && visionTes
 assert(webRtc.includes("DeviceControlPlane.setControlTransportActive(state == DataChannel.State.OPEN)"), "DataChannel OPEN must drive display.control.active");
 assert(webRtc.includes("DeviceControlPlane.setControlTransportActive(false)"), "DataChannel teardown must clear display.control.active");
 
+assert(displayGeometry.includes("maxCaptureEdge") && displayGeometry.includes("captureWidth") && displayGeometry.includes("captureHeight"), "Android capture geometry must preserve the real display aspect instead of a fixed canvas");
+assert(webRtc.includes("registerDisplayListener") && webRtc.includes("changeCaptureFormat"), "Screen capture must react to runtime display geometry changes without rebuilding the peer");
+assert(webRtc.includes("VideoResolutionHolder.update(next.captureWidth, next.captureHeight)"), "Control-space resolution must follow capture geometry changes");
+assert(displayGeometryTests.includes("rotationSwapsCaptureOrientationWithoutChangingLongEdgeBudget"), "Android orientation geometry regression coverage missing");
+assert(panelShell.includes("SetSurfaceAspect(int pixelWidth, int pixelHeight)"), "SpatialPanel shell must support video-driven surface aspect updates");
+assert(phonePanel.includes("_shell.SetSurfaceAspect(width, height)"), "Phone panel must apply decoded video dimensions to the spatial surface");
+assert(screenGeometryTests.includes("SurfaceAspect_SwapsPortraitAndLandscapeWithoutRotatingPanelRoot"), "Quest portrait/landscape surface regression coverage missing");
+
 assert(depth.includes("type == typeof(QuestEnvironmentDepthService)") && depth.includes("type.Assembly == typeof(QuestEnvironmentDepthService).Assembly"), "Environment depth discovery must reject self/runtime assembly providers");
 assert(!depth.includes("AddComponent(_componentType)"), "Environment depth reflection discovery must not auto-add unknown provider components");
 assert(depth.includes("private IEnvironmentDepthProvider EnsureProvider()") && !depth.includes("_provider = new MetaEnvironmentDepthProvider(gameObject)"), "Environment depth provider discovery must be lazy at startup");
@@ -28,4 +41,4 @@ assert(depthTests.includes("DepthServiceCannotBeDiscoveredAsItsOwnProvider") && 
 assert(!sixDof.includes("AddComponent(_componentType)"), "6DoF reflection discovery must not auto-add unknown provider components");
 assert(sixDof.includes("type.Assembly == typeof(SixDofMediaService).Assembly"), "6DoF provider discovery should reject QuestPhoneStream runtime types");
 
-console.log("P3 startup/vision/control regression source checks passed");
+console.log("P3 startup/vision/control/screen-geometry regression source checks passed");

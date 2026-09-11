@@ -2,9 +2,13 @@ package com.questphonestream.agent
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.display.DisplayManager
+import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Display
 import org.webrtc.*
 
 class WebRtcStreamer(
@@ -15,6 +19,8 @@ class WebRtcStreamer(
     private val signaling: StreamSignaling
 ) {
     private val main = Handler(Looper.getMainLooper())
+    private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    private val maxCaptureEdge = maxOf(config.width, config.height).coerceAtLeast(2)
     private val eglBase = EglBase.create()
     private val factory: PeerConnectionFactory
     private val videoCapturer: VideoCapturer
@@ -23,6 +29,8 @@ class WebRtcStreamer(
     private val audioSource: AudioSource
     private val audioTrack: AudioTrack
     private val surfaceTextureHelper: SurfaceTextureHelper
+    private var captureGeometry: DisplayGeometry? = null
+    private var displayListenerRegistered = false
     private var peerConnection: PeerConnection? = null
     private var controlChannel: DataChannel? = null
     private var activeSession: StreamSession? = null
@@ -41,6 +49,14 @@ class WebRtcStreamer(
         onDrained = ::disposeCaptureResources
     )
 
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) refreshCaptureGeometry("display-changed")
+        }
+    }
+
     // Session switches are coalesced through a short debounce: during a Quest
     // reconnect storm the server may emit several session_created messages in a
     // row. Tearing down and recreating the PeerConnection for each one aborts the
@@ -57,18 +73,26 @@ class WebRtcStreamer(
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
         // Capture belongs to the user-authorized projection, not an individual peer negotiation.
-        videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
+        videoCapturer = ScreenCapturerAndroid(projectionData, object : MediaProjection.Callback() {
             override fun onStop() { main.post { dispose() } }
         })
         videoSource = factory.createVideoSource(true)
         surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
         videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
-        videoCapturer.startCapture(config.width, config.height, config.fps)
-        // Publish the encoding resolution so the accessibility service can scale
-        // incoming touch coordinates from video-space to the real screen resolution.
-        VideoResolutionHolder.width = config.width
-        VideoResolutionHolder.height = config.height
-        Log.i(TAG, "Video capture started at ${config.width}x${config.height}@${config.fps}fps")
+
+        val initialGeometry = resolveDisplayGeometry()
+        videoCapturer.startCapture(initialGeometry.captureWidth, initialGeometry.captureHeight, config.fps)
+        captureGeometry = initialGeometry
+        VideoResolutionHolder.update(initialGeometry.captureWidth, initialGeometry.captureHeight)
+        Log.i(
+            TAG,
+            "Video capture started display=${initialGeometry.displayWidth}x${initialGeometry.displayHeight} " +
+                "capture=${initialGeometry.captureWidth}x${initialGeometry.captureHeight}@${config.fps}fps"
+        )
+
+        displayManager.registerDisplayListener(displayListener, main)
+        displayListenerRegistered = true
+
         videoTrack = factory.createVideoTrack("screen-video", videoSource)
         audioSource = factory.createAudioSource(MediaConstraints())
         audioTrack = factory.createAudioTrack("silent-audio", audioSource)
@@ -227,12 +251,59 @@ class WebRtcStreamer(
         return oldPeer
     }
 
+    @Suppress("DEPRECATION")
+    private fun resolveDisplayGeometry(): DisplayGeometry {
+        val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
+        if (display == null) {
+            return DisplayGeometryCalculator.fit(config.width, config.height, maxCaptureEdge)
+        }
+        val metrics = DisplayMetrics()
+        display.getRealMetrics(metrics)
+        val width = metrics.widthPixels.takeIf { it > 0 } ?: config.width
+        val height = metrics.heightPixels.takeIf { it > 0 } ?: config.height
+        return DisplayGeometryCalculator.fit(width, height, maxCaptureEdge)
+    }
+
+    private fun refreshCaptureGeometry(reason: String) {
+        if (disposed) return
+        val next = runCatching { resolveDisplayGeometry() }
+            .onFailure { Log.w(TAG, "Unable to resolve display geometry", it) }
+            .getOrNull() ?: return
+        val current = captureGeometry
+        if (current != null &&
+            current.captureWidth == next.captureWidth && current.captureHeight == next.captureHeight) return
+
+        runCatching {
+            videoCapturer.changeCaptureFormat(next.captureWidth, next.captureHeight, config.fps)
+        }.onSuccess {
+            captureGeometry = next
+            // Publish the same dimensions requested from ScreenCapturerAndroid so
+            // incoming control coordinates stay aligned with the current video frame.
+            VideoResolutionHolder.update(next.captureWidth, next.captureHeight)
+            Log.i(
+                TAG,
+                "Video capture resized reason=$reason display=${next.displayWidth}x${next.displayHeight} " +
+                    "capture=${next.captureWidth}x${next.captureHeight}@${config.fps}fps"
+            )
+        }.onFailure {
+            Log.e(
+                TAG,
+                "Video capture resize failed reason=$reason target=${next.captureWidth}x${next.captureHeight}",
+                it
+            )
+        }
+    }
+
     fun dispose() {
         if (disposed) return
         disposed = true
         restartDebounce = true
         pendingSession = null
         DeviceControlPlane.setControlTransportActive(false)
+        if (displayListenerRegistered) {
+            displayManager.unregisterDisplayListener(displayListener)
+            displayListenerRegistered = false
+        }
         runCatching { videoCapturer.stopCapture() }
         peerDisposals.defer(detachCurrentPeer())
         peerDisposals.finishWhenDrained()

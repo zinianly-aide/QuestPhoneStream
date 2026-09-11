@@ -12,10 +12,12 @@ namespace QuestPhoneStream.Interaction
         private InteractionBackendContext _context;
         private Transform _handle;
         private bool _interactive = true;
+        private float _surfaceLongEdge;
 
         public void Initialize(Transform surface, Collider collider, Camera camera, IPanelSurfaceInputHandler handler)
         {
             Surface = surface;
+            _surfaceLongEdge = Mathf.Max(Mathf.Abs(surface.localScale.x), Mathf.Abs(surface.localScale.y));
             Manipulator = GetComponent<SpatialPanelManipulator>() ?? gameObject.AddComponent<SpatialPanelManipulator>();
             Input = GetComponent<SurfaceInputController>() ?? gameObject.AddComponent<SurfaceInputController>();
             Input.manipulator = Manipulator; Input.SetHandler(handler);
@@ -59,6 +61,43 @@ namespace QuestPhoneStream.Interaction
             if (!_interactive || !isActiveAndEnabled || _context?.runtimeDependencies == null || _manager.ActiveBackend != null) return;
             if (_manager.InitializeBackend(_context)) Router.Attach(_manager.ActiveBackend);
         }
+
+        public void SetSurfaceAspect(int pixelWidth, int pixelHeight)
+        {
+            if (Surface == null || pixelWidth <= 0 || pixelHeight <= 0) return;
+            var aspect = pixelWidth / (float)pixelHeight;
+            if (aspect <= 0f || float.IsNaN(aspect) || float.IsInfinity(aspect)) return;
+
+            var current = Surface.localScale;
+            var longEdge = _surfaceLongEdge > 0.0001f
+                ? _surfaceLongEdge
+                : Mathf.Max(Mathf.Abs(current.x), Mathf.Abs(current.y));
+            if (longEdge <= 0.0001f) return;
+
+            float width;
+            float height;
+            if (aspect >= 1f)
+            {
+                width = longEdge;
+                height = longEdge / aspect;
+            }
+            else
+            {
+                height = longEdge;
+                width = longEdge * aspect;
+            }
+
+            var next = new Vector3(
+                current.x < 0f ? -width : width,
+                current.y < 0f ? -height : height,
+                current.z
+            );
+            if ((next - current).sqrMagnitude < 0.0000001f) return;
+
+            Surface.localScale = next;
+            RefreshFrame();
+        }
+
         public void RefreshFrame()
         {
             if (_handle == null || Surface == null) return;
