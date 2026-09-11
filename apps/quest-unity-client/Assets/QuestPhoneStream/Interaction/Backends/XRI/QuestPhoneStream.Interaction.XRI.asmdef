@@ -1,0 +1,5 @@
+{
+  "name": "QuestPhoneStream.Interaction.XRI",
+  "references": ["QuestPhoneStream.Interaction.Core", "Unity.InputSystem", "Unity.XR.Interaction.Toolkit", "Unity.XR.Hands"],
+  "autoReferenced": true
+}

@@ -59,7 +59,28 @@ object ControlCommandDispatcher {
         val command = runCatching { ControlCommand.fromJson(json) }
             .onFailure { Log.e(TAG, "Invalid control command: $json", it) }
             .getOrNull() ?: return
+        Log.i(TAG, "Dispatching command: type=${command.type} x=${command.x} y=${command.y} start=(${command.startX},${command.startY}) end=(${command.endX},${command.endY})")
         service?.execute(command) ?: Log.w(TAG, "Accessibility service is not enabled")
+    }
+}
+
+data class VideoResolution(val width: Int, val height: Int)
+
+/**
+ * Holds the current video encoding resolution so the accessibility service can
+ * scale incoming touch coordinates from video-space to real screen pixels.
+ * The immutable snapshot prevents a rotation from exposing mixed old/new axes.
+ */
+object VideoResolutionHolder {
+    @Volatile private var value = VideoResolution(720, 1280)
+
+    val current: VideoResolution get() = value
+    val width: Int get() = value.width
+    val height: Int get() = value.height
+
+    fun update(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        value = VideoResolution(width, height)
     }
 }
 
@@ -67,11 +88,14 @@ class ControlAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         ControlCommandDispatcher.attach(this)
+        DeviceControlPlane.setControlAuthorized(true)
         Log.i(TAG, "Control accessibility service connected")
     }
 
     override fun onDestroy() {
+        DeviceControlPlane.setControlAuthorized(false)
         ControlCommandDispatcher.detach(this)
+        CapabilityRuntime.setAccessibilityAvailable(false)
         super.onDestroy()
     }
 
@@ -79,10 +103,16 @@ class ControlAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     fun execute(command: ControlCommand) {
+        Log.i(TAG, "Execute command: type=${command.type}")
+        val video = VideoResolutionHolder.current
         when (command.type) {
-            "click" -> gesture(command.x, command.y, command.x, command.y, 1, 80)
-            "long_press" -> gesture(command.x, command.y, command.x, command.y, 1, command.durationMs.coerceAtLeast(500))
-            "swipe" -> gesture(command.startX, command.startY, command.endX, command.endY, 0, command.durationMs.coerceAtLeast(100))
+            "click" -> gesture(scaleX(command.x, video), scaleY(command.y, video), scaleX(command.x, video), scaleY(command.y, video), 1, 80, video)
+            "long_press" -> gesture(scaleX(command.x, video), scaleY(command.y, video), scaleX(command.x, video), scaleY(command.y, video), 1, command.durationMs.coerceAtLeast(500), video)
+            "swipe" -> gesture(
+                scaleX(command.startX, video), scaleY(command.startY, video),
+                scaleX(command.endX, video), scaleY(command.endY, video),
+                0, command.durationMs.coerceAtLeast(100), video
+            )
             "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
             "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
             "text_input" -> inputText(command.text)
@@ -90,7 +120,35 @@ class ControlAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun gesture(startX: Int, startY: Int, endX: Int, endY: Int, startTime: Long, durationMs: Long) {
+    /** Scale an x coordinate from video-resolution space to current real screen pixels. */
+    private fun scaleX(x: Int, video: VideoResolution): Int {
+        val screenWidth = resources.displayMetrics.widthPixels.coerceAtLeast(1)
+        return ((x.toLong() * screenWidth) / video.width.coerceAtLeast(1))
+            .toInt().coerceIn(0, screenWidth)
+    }
+
+    /** Scale a y coordinate from video-resolution space to current real screen pixels. */
+    private fun scaleY(y: Int, video: VideoResolution): Int {
+        val screenHeight = resources.displayMetrics.heightPixels.coerceAtLeast(1)
+        return ((y.toLong() * screenHeight) / video.height.coerceAtLeast(1))
+            .toInt().coerceIn(0, screenHeight)
+    }
+
+    private fun gesture(
+        startX: Int,
+        startY: Int,
+        endX: Int,
+        endY: Int,
+        startTime: Long,
+        durationMs: Long,
+        video: VideoResolution
+    ) {
+        Log.i(
+            TAG,
+            "Gesture: ($startX,$startY)→($endX,$endY) dur=${durationMs}ms " +
+                "screen=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels} " +
+                "video=${video.width}x${video.height}"
+        )
         val path = Path().apply {
             moveTo(startX.toFloat(), startY.toFloat())
             if (startX != endX || startY != endY) lineTo(endX.toFloat(), endY.toFloat())
@@ -115,4 +173,3 @@ class ControlAccessibilityService : AccessibilityService() {
         )
     }
 }
-

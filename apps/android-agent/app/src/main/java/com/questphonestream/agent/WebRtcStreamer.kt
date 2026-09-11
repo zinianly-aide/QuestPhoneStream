@@ -2,9 +2,13 @@ package com.questphonestream.agent
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.display.DisplayManager
+import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Display
 import org.webrtc.*
 
 class WebRtcStreamer(
@@ -12,9 +16,11 @@ class WebRtcStreamer(
     private val config: StreamConfig,
     private val resultCode: Int,
     private val projectionData: Intent,
-    private val signaling: SignalingClient
+    private val signaling: StreamSignaling
 ) {
     private val main = Handler(Looper.getMainLooper())
+    private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    private val maxCaptureEdge = maxOf(config.width, config.height).coerceAtLeast(2)
     private val eglBase = EglBase.create()
     private val factory: PeerConnectionFactory
     private val videoCapturer: VideoCapturer
@@ -23,13 +29,33 @@ class WebRtcStreamer(
     private val audioSource: AudioSource
     private val audioTrack: AudioTrack
     private val surfaceTextureHelper: SurfaceTextureHelper
+    private var captureGeometry: DisplayGeometry? = null
+    private var displayListenerRegistered = false
     private var peerConnection: PeerConnection? = null
     private var controlChannel: DataChannel? = null
     private var activeSession: StreamSession? = null
     private var generation = 0
     private var disposed = false
+    private var resourcesDisposed = false
     private var remoteReady = false
     private val pendingIce = ArrayDeque<IceCandidateMessage>()
+    private val peerDisposals = DeferredDisposalQueue(
+        delayMillis = 250L,
+        schedule = { delay, action -> main.postDelayed({ action() }, delay) },
+        dispose = { peer: PeerConnection ->
+            runCatching { peer.close() }
+            runCatching { peer.dispose() }
+        },
+        onDrained = ::disposeCaptureResources
+    )
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) refreshCaptureGeometry("display-changed")
+        }
+    }
 
     // Session switches are coalesced through a short debounce: during a Quest
     // reconnect storm the server may emit several session_created messages in a
@@ -47,13 +73,26 @@ class WebRtcStreamer(
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
         // Capture belongs to the user-authorized projection, not an individual peer negotiation.
-        videoCapturer = ScreenCapturerAndroid(projectionData, object : android.media.projection.MediaProjection.Callback() {
+        videoCapturer = ScreenCapturerAndroid(projectionData, object : MediaProjection.Callback() {
             override fun onStop() { main.post { dispose() } }
         })
         videoSource = factory.createVideoSource(true)
         surfaceTextureHelper = SurfaceTextureHelper.create("ScreenCaptureThread", eglBase.eglBaseContext)
         videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
-        videoCapturer.startCapture(config.width, config.height, config.fps)
+
+        val initialGeometry = resolveDisplayGeometry()
+        videoCapturer.startCapture(initialGeometry.captureWidth, initialGeometry.captureHeight, config.fps)
+        captureGeometry = initialGeometry
+        VideoResolutionHolder.update(initialGeometry.captureWidth, initialGeometry.captureHeight)
+        Log.i(
+            TAG,
+            "Video capture started display=${initialGeometry.displayWidth}x${initialGeometry.displayHeight} " +
+                "capture=${initialGeometry.captureWidth}x${initialGeometry.captureHeight}@${config.fps}fps"
+        )
+
+        displayManager.registerDisplayListener(displayListener, main)
+        displayListenerRegistered = true
+
         videoTrack = factory.createVideoTrack("screen-video", videoSource)
         audioSource = factory.createAudioSource(MediaConstraints())
         audioTrack = factory.createAudioTrack("silent-audio", audioSource)
@@ -91,7 +130,7 @@ class WebRtcStreamer(
                         IceCandidateMessage(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex))
                 }
             }
-            override fun onDataChannel(channel: DataChannel) { main.post { channel.close(); channel.dispose() } }
+            override fun onDataChannel(channel: DataChannel) { main.post { runCatching { channel.close() } } }
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
             override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Unit
@@ -103,20 +142,33 @@ class WebRtcStreamer(
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = Unit
         }) ?: error("Failed to create PeerConnection")
         peerConnection = peer
-        controlChannel = peer.createDataChannel("control", DataChannel.Init()).apply {
-            registerObserver(object : DataChannel.Observer {
-                override fun onBufferedAmountChange(previousAmount: Long) = Unit
-                override fun onStateChange() = Unit
-                override fun onMessage(buffer: DataChannel.Buffer) {
-                    if (buffer.binary || buffer.data.remaining() > 65536) return
-                    val bytes = ByteArray(buffer.data.remaining())
-                    buffer.data.get(bytes)
-                    main.post {
-                        if (isCurrent(epoch)) ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
+        val channel = peer.createDataChannel("control", DataChannel.Init())
+        controlChannel = channel
+        DeviceControlPlane.setControlTransportActive(false)
+        channel.registerObserver(object : DataChannel.Observer {
+            override fun onBufferedAmountChange(previousAmount: Long) = Unit
+            override fun onStateChange() {
+                val state = channel.state()
+                Log.i(TAG, "Control channel state: $state")
+                main.post {
+                    if (!isCurrent(epoch) || controlChannel !== channel) return@post
+                    DeviceControlPlane.setControlTransportActive(state == DataChannel.State.OPEN)
+                }
+            }
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                Log.i(TAG, "Control message received: binary=${buffer.binary} size=${buffer.data.remaining()}")
+                if (buffer.data.remaining() > 65536 || buffer.data.remaining() == 0) return
+                val bytes = ByteArray(buffer.data.remaining())
+                buffer.data.get(bytes)
+                main.post {
+                    if (isCurrent(epoch)) {
+                        ControlCommandDispatcher.dispatch(String(bytes, Charsets.UTF_8))
+                    } else {
+                        Log.w(TAG, "Control message dropped: stale epoch=$epoch current=$generation")
                     }
                 }
-            })
-        }
+            }
+        })
         peer.addTrack(videoTrack, listOf("screen"))
         peer.addTrack(audioTrack, listOf("screen"))
         createOffer(peer, session, epoch)
@@ -174,28 +226,71 @@ class WebRtcStreamer(
     fun resetPeer() {
         // Public session-end hook (e.g. peer_unavailable). Also crash-safe:
         // detaches immediately, destroys the native peer after its callbacks drain.
-        teardownPeer()
+        if (!disposed) teardownPeer()
     }
 
     private fun teardownPeer() {
+        peerDisposals.defer(detachCurrentPeer())
+    }
+
+    private fun detachCurrentPeer(): PeerConnection? {
         ++generation
         activeSession = null
         remoteReady = false
         pendingIce.clear()
+        DeviceControlPlane.setControlTransportActive(false)
         controlChannel?.unregisterObserver()
         val oldChannel = controlChannel
         controlChannel = null
+        CapabilityRuntime.setDisplayControl(authorized = false, active = false)
         val oldPeer = peerConnection
         peerConnection = null
-        // Detach immediately; destroy the native peer a moment later so any
-        // signaling-thread callback still in flight for this generation finishes
-        // before close()/dispose() runs. Never dispose synchronously here.
+        // DataChannel is owned by PeerConnection. Closing it is enough here;
+        // disposing it separately can race the peer/factory native teardown.
         runCatching { oldChannel?.close() }
-        if (oldPeer != null) {
-            main.postDelayed({
-                runCatching { oldChannel?.dispose() }
-                runCatching { oldPeer.close(); oldPeer.dispose() }
-            }, 250)
+        return oldPeer
+    }
+
+    @Suppress("DEPRECATION")
+    private fun resolveDisplayGeometry(): DisplayGeometry {
+        val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
+        if (display == null) {
+            return DisplayGeometryCalculator.fit(config.width, config.height, maxCaptureEdge)
+        }
+        val metrics = DisplayMetrics()
+        display.getRealMetrics(metrics)
+        val width = metrics.widthPixels.takeIf { it > 0 } ?: config.width
+        val height = metrics.heightPixels.takeIf { it > 0 } ?: config.height
+        return DisplayGeometryCalculator.fit(width, height, maxCaptureEdge)
+    }
+
+    private fun refreshCaptureGeometry(reason: String) {
+        if (disposed) return
+        val next = runCatching { resolveDisplayGeometry() }
+            .onFailure { Log.w(TAG, "Unable to resolve display geometry", it) }
+            .getOrNull() ?: return
+        val current = captureGeometry
+        if (current != null &&
+            current.captureWidth == next.captureWidth && current.captureHeight == next.captureHeight) return
+
+        runCatching {
+            videoCapturer.changeCaptureFormat(next.captureWidth, next.captureHeight, config.fps)
+        }.onSuccess {
+            captureGeometry = next
+            // Publish the same dimensions requested from ScreenCapturerAndroid so
+            // incoming control coordinates stay aligned with the current video frame.
+            VideoResolutionHolder.update(next.captureWidth, next.captureHeight)
+            Log.i(
+                TAG,
+                "Video capture resized reason=$reason display=${next.displayWidth}x${next.displayHeight} " +
+                    "capture=${next.captureWidth}x${next.captureHeight}@${config.fps}fps"
+            )
+        }.onFailure {
+            Log.e(
+                TAG,
+                "Video capture resize failed reason=$reason target=${next.captureWidth}x${next.captureHeight}",
+                it
+            )
         }
     }
 
@@ -204,24 +299,27 @@ class WebRtcStreamer(
         disposed = true
         restartDebounce = true
         pendingSession = null
-        ++generation
-        activeSession = null
-        remoteReady = false
-        pendingIce.clear()
-        runCatching { controlChannel?.unregisterObserver() }
-        runCatching { controlChannel?.close(); controlChannel?.dispose() }
-        controlChannel = null
-        runCatching { peerConnection?.close(); peerConnection?.dispose() }
-        peerConnection = null
+        DeviceControlPlane.setControlTransportActive(false)
+        if (displayListenerRegistered) {
+            displayManager.unregisterDisplayListener(displayListener)
+            displayListenerRegistered = false
+        }
         runCatching { videoCapturer.stopCapture() }
-        videoCapturer.dispose()
-        videoTrack.dispose()
-        audioTrack.dispose()
-        videoSource.dispose()
-        audioSource.dispose()
-        surfaceTextureHelper.dispose()
-        factory.dispose()
-        eglBase.release()
+        peerDisposals.defer(detachCurrentPeer())
+        peerDisposals.finishWhenDrained()
+    }
+
+    private fun disposeCaptureResources() {
+        if (resourcesDisposed) return
+        resourcesDisposed = true
+        runCatching { videoCapturer.dispose() }
+        runCatching { videoTrack.dispose() }
+        runCatching { audioTrack.dispose() }
+        runCatching { videoSource.dispose() }
+        runCatching { audioSource.dispose() }
+        runCatching { surfaceTextureHelper.dispose() }
+        runCatching { factory.dispose() }
+        runCatching { eglBase.release() }
     }
 }
 

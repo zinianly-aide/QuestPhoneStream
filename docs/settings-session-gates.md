@@ -183,3 +183,86 @@ node node_modules/typescript/bin/tsc --noEmit
 ## 验证后的代码交付
 
 用户随后授权将现有修改提交并推送到 fix/settings-session-gates；不合并 main。交付范围包括修复、测试、本报告和构建失败日志，不包含原有的无关 pnpm 文件或构建工具缓存。提交/推送不改变上述验收结论：GATE-1 与 GATE-2 仍为 NOT VERIFIED。
+## 2026-09-04 分支续审：最小 Android 稳定性修复
+
+分支仍为 `fix/settings-session-gates`，未切换、未 reset、未 clean。对比已抓取的远端分支后，保留当前分支的媒体 MVP；没有把 `origin/main` 的回滚式差异整体合并，也没有把 `fix/android16-mediaprojection` 中仅用于诊断的 SafeMainActivity 启动路径带入正式应用。
+
+本轮只修改三个 Android 文件：
+
+- `MainActivity.kt`：移除确认会造成启动时父容器重复添加的第二次 `logCard` 加入。
+- `ScreenStreamService.kt`：MediaProjection 前台服务启动、参数缺失和初始化异常统一走安全清理；停止时释放 streamer/signaling 并移除通知。
+- `WebRtcStreamer.kt`：初始化过程改为可回滚；若采集器、轨道、SurfaceTextureHelper、PeerConnectionFactory 或 EGL 在中途创建失败，已创建资源会按初始化状态释放。
+
+修复记录：failure 为 Android 启动的重复 View 加入及已确认的 WebRTC 初始化部分失败泄漏风险；root cause 分别是同一 View 被重复加入父容器、构造函数抛异常时服务层尚未拿到对象引用；修改保持在上述三个文件内，未改变信令协议或 Quest 业务流程。
+
+本轮复验：
+
+| 检查 | 结果 |
+| --- | --- |
+| Signaling Vitest | PASS，15/15 |
+| Source contract | PASS，8/8 |
+| `git diff --cached --check` | PASS |
+| Android `./gradlew tasks --stacktrace` | BLOCKED，插件解析阶段无法解析 AGP 8.7.3 |
+| Android `./gradlew assembleDebug --stacktrace` | BLOCKED，同一 AGP 解析错误；未进入 Kotlin 编译，无 APK |
+| Unity Editor / tests | NOT RUN；环境无 Unity 2022.3.62f3c1 |
+| ADB / Quest / Android phone | NOT RUN；`adb` 不存在 |
+| GATE-1 / GATE-2 | NOT VERIFIED |
+
+因此本轮仍不能将任何 Gate 标记为 PASS。两个原有未跟踪 pnpm 文件保持不变。
+
+## 2026-09-04 Quest 键盘问题：代码修复但未真机确认
+
+问题：Quest 射线可以定位设置输入框，但点击后没有可靠拉起系统键盘。
+
+代码检查确认，原实现使用 `UnityEngine.UI.InputField`，只有 `XRUIInputModule` 和 `TrackedDeviceGraphicRaycaster`，没有显式的 `TouchScreenKeyboard` 兜底。新增 `QuestKeyboardInputField` 保留 Unity 默认输入流程，并在焦点保持、键盘仍不可见时调用 `TouchScreenKeyboard.Open`；同时同步键盘文本、处理 Done/Canceled/LostFocus，并设置 `shouldHideMobileInput = false`。所有设置输入框改为该派生组件。
+
+本修复没有引入 Meta XR SDK 或自定义虚拟键盘。Meta 官方 Keyboard Overlay 文档要求 Meta XR Core SDK，并以 Unity 6.0.66f2 或更高版本为前提；本项目当前锁定 Unity 2022.3.62f3c1，因此必须在实际 Quest APK 上确认 `TouchScreenKeyboard` fallback 是否被当前 Horizon OS/OpenXR 组合接受。没有设备证据前，键盘问题不能标记为完全解决，GATE-1 仍为 NOT VERIFIED。
+
+新增验证：源码契约 `Quest input fields have a native keyboard fallback`，当前 source contract 为 9/9；signaling 仍为 15/15。Unity 编译、Quest APK 安装和控制器输入/键盘操作本轮仍未执行。
+
+## 2026-09-05 UX 收敛（未改变连接协议）
+
+本轮只针对用户可见流程做小步调整，没有新增自动发现协议或重构信令/WebRTC：
+
+- Quest 新增紧凑的 `QuestHomeCanvas`，默认入口显示 `Phone / Videos / Keyboard / Settings`，并汇总 `Phone / Screen / Control / Media` 状态；工程字段继续放在 `Advanced Settings`。
+- Quest 视频库增加进度条、当前时间/总时长、暂停/继续、前后 10 秒和音量控制；列表区域避开底部控制条，播放后不再自动关闭库页面。
+- Android 首页新增 `READY` 摘要，显示 Quest、Screen Sharing、Remote Control、Media；Accessibility 状态从系统设置回读，并提供直达设置按钮。URL、Token、Device/Session ID、日志和诊断按钮默认收进 `Advanced settings`。
+- 新增 source contract，检查 Quest 普通入口、Android readiness 摘要和视频播放控制存在；当前 source contract 13/13 PASS，signaling Vitest 15/15 PASS，`git diff --check` PASS。
+
+当前环境没有 Unity Editor、Android SDK/完整 Gradle 分发包或 adb，本轮没有运行 Unity、APK 或 Quest/手机真机验证；因此 UX 运行时效果和 GATE-1/GATE-2 仍不能标记为 PASS。
+
+## 2026-09-05 UX navigation polish
+
+- Video Library 和 Advanced Settings 都提供明确的 Back 路径；关闭视频库或设置页会回到 Quest 首页。
+- Quest 首页的 Phone 状态只有在 `PeerConnected` 后才显示 Connected；注册 signaling 只显示 Found/Connecting。
+- Media 状态改为基于最近一次 `/v1/media` 请求：未配置、Checking、Ready 或 Unreachable；URL 本身不再等同于 Ready。
+- Keyboard 仅在 Control DataChannel Ready 时可操作；未连接时提示先连接手机。Videos 未配置媒体地址时会引导进入 Settings。
+- Android 的视频管理从 Advanced settings 移出，单独显示 Media Manager；屏幕共享按钮根据状态在 Start/Stop 间切换，状态显示 Off/Active。
+- 本轮 source contract 14/14 PASS，signaling Vitest 15/15 PASS。Unity、APK 和真机仍未运行，Gate 结论保持 NOT VERIFIED。
+
+## 2026-09-05 UX navigation polish follow-up
+
+- Video Library Back、Settings Back 都回到 Quest 首页；视频库关闭回调不再留下空场景。
+- Phone Connected 改为严格依赖 `PeerConnected`；仅注册 signaling 时显示 Found/Connecting。
+- Media Ready 改为最近一次 `/v1/media` 成功探测，并区分 Not configured、Checking、Unreachable。
+- Keyboard 在 Control DataChannel 未打开时禁用并提示连接手机；未配置媒体时进入 Videos 会引导 Settings。
+- Android 将 Shared Videos 独立为 Media Manager；Screen Sharing 首页按钮根据状态切换 Start/Stop，状态显示 Off/Active。
+- 本轮静态契约 14/14、signaling 15/15、diff check 均通过；Gradle 仍因损坏的 Gradle 8.10.2 缓存在配置阶段阻塞，Unity/设备验证未执行。
+
+## 2026-09-05 readiness gaps follow-up
+
+- Settings 在 PeerConnected/MediaConnected 自动收起时统一走 `BackToHome()`，避免隐藏后丢失首页导航。
+- Quest 首页每次显示都会主动探测 `/v1/media`；Media Ready 增加 30 秒 TTL，过期显示 Stale 并要求重新探测。
+- Videos 入口按状态分流：未配置进入 Settings，不可达执行 Retry，探测成功才打开 Library；Keyboard 未连接 Control 时保持禁用并直接显示原因。
+- Android 首页将容易误解的 `Quest · Connected` 改为 `Signaling · Ready`，不再把 signaling 注册冒充 WebRTC peer 连接。
+
+验证：source contract 14/14 PASS，signaling Vitest 15/15 PASS，C# brace balance PASS，`git diff --check` PASS。Unity、Android APK 和 Quest/手机真机仍未执行，因此 GATE-1/GATE-2 继续保持 NOT VERIFIED。
+
+## 2026-09-05 VR media renderer
+
+- 保留 SAF → HTTP Range → play-token → VideoPlayer → RenderTexture 链路；新增 Quest 端 `VrMediaRenderer`，Flat 继续使用原 Quad。
+- 支持 `flat`、360/180 equirectangular、Mono/SBS 以及 LR/RL eye order。缺失 metadata 默认 Flat、360、Mono、LR；视频库可在播放后切换 Mode/Stereo/Eye，立即重新套用 renderer，不重复下载。
+- 360 使用 Cull Front 的 inside-out Sphere；180 使用同一 shader 对后半球输出黑色；Stop/Phone Screen 会隐藏 VR surface、释放视频资源并恢复 PhonePanel。
+- Android media metadata 仅扩展公开字段，不改变 Range、play-token 或 SAF 读取实现。
+
+本轮 source contract 15/15、signaling Vitest 15/15、C# brace balance 和 `git diff --check` 通过。Unity Editor、Quest APK 和真机仍未执行，因此 VR 播放效果与 GATE-1/GATE-2 仍不能标记为 PASS。

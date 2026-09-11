@@ -1,0 +1,47 @@
+name: P3 Contract Checks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "protocol/**"
+      - "scripts/**"
+      - "apps/android-agent/**"
+      - "apps/quest-unity-client/**"
+      - "apps/signaling-server/**"
+      - "apps/macos-sender/**"
+      - ".github/workflows/p3-contract.yml"
+  pull_request:
+    paths:
+      - "protocol/**"
+      - "scripts/**"
+      - "apps/android-agent/**"
+      - "apps/quest-unity-client/**"
+      - "apps/signaling-server/**"
+      - "apps/macos-sender/**"
+      - ".github/workflows/p3-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p3-contract-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Spatial protocol and P3 regressions
+        run: |
+          node scripts/check-spatial-protocol.mjs
+          node scripts/check-p3-spatial.mjs
+          node scripts/check-p3-lifecycle.mjs
+          node scripts/check-device-select-connect.mjs
+          node scripts/check-p3-regressions.mjs

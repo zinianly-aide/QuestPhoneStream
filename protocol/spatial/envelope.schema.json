@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/envelope.schema.json",
+  "title": "Spatial Protocol v1 Envelope",
+  "type": "object",
+  "required": ["v", "id", "type", "source", "target", "sessionId", "streamId", "correlationId", "timestamp", "payload"],
+  "properties": {
+    "v": { "const": "1.0" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "type": {
+      "type": "string",
+      "enum": [
+        "device.hello",
+        "device.capabilities.get",
+        "device.capabilities.result",
+        "device.capabilities.changed",
+        "subscription.create",
+        "subscription.created",
+        "subscription.cancel",
+        "subscription.closed",
+        "protocol.error"
+      ]
+    },
+    "source": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "target": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sessionId": { "type": "string", "maxLength": 128 },
+    "streamId": { "type": "string", "maxLength": 128 },
+    "correlationId": { "type": "string", "maxLength": 128 },
+    "timestamp": { "type": "integer", "minimum": 0 },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": true
+}

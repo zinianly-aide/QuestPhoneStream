@@ -1,16 +1,29 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
 {
-    public sealed class PanelInputMapper : MonoBehaviour
+    /// <summary>
+    /// SDK-neutral mapping only. Interaction backends provide pointer events to
+    /// PhonePanelTouchController; this component maps panel hit positions to Android pixels.
+    /// </summary>
+    public sealed class PanelInputMapper : MonoBehaviour, IPhonePanelTouchMapper
     {
         public Camera rayCamera;
         public Collider panelCollider;
         public ControlChannel controlChannel;
-        public InputActionProperty clickAction;
-        public int androidWidth = 1280;
-        public int androidHeight = 720;
+        public SettingsUI settingsUI;
+        [Tooltip("Minimum Android-pixel movement that is sent as a swipe.")]
+        public int swipeThresholdPixels = 24;
+        public bool showCursor = true;
+        public Transform cursorIndicator;
+
+        private int _androidWidth = 720;
+        private int _androidHeight = 1280;
+        public int AndroidWidth => _androidWidth;
+        public int AndroidHeight => _androidHeight;
+        public bool IsInputBlocked => settingsUI != null && settingsUI.IsVisible;
+        public int SwipeThresholdPixels => swipeThresholdPixels;
 
         private void Reset()
         {
@@ -18,29 +31,35 @@ namespace QuestPhoneStream
             controlChannel = FindFirstObjectByType<ControlChannel>();
         }
 
-        private void Update()
+        public bool TryMapHitToUv(Ray ray, out Vector2 uv)
         {
-            if (clickAction.action != null && clickAction.action.WasPressedThisFrame())
-            {
-                TryClickFromCenterRay();
-            }
-        }
-
-        public bool TryClickFromCenterRay()
-        {
-            if (rayCamera == null || panelCollider == null || controlChannel == null) return false;
-            var ray = new Ray(rayCamera.transform.position, rayCamera.transform.forward);
-            if (!panelCollider.Raycast(ray, out RaycastHit hit, 20f)) return false;
-            return SendClick(hit.textureCoord);
-        }
-
-        public bool SendClick(Vector2 uv)
-        {
-            int x = Mathf.RoundToInt(Mathf.Clamp01(uv.x) * androidWidth);
-            int y = Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * androidHeight);
-            controlChannel.SendClick(x, y);
+            uv = default;
+            if (panelCollider == null || !panelCollider.Raycast(ray, out RaycastHit hit, 20f)) return false;
+            uv = hit.textureCoord;
             return true;
         }
+
+        public bool TryMapWorldPointToUv(Vector3 worldPosition, Vector3 worldNormal, out Vector2 uv)
+        {
+            var normal = worldNormal.sqrMagnitude > 0.0001f ? worldNormal.normalized : -transform.forward;
+            return TryMapHitToUv(new Ray(worldPosition + normal * 0.04f, -normal), out uv);
+        }
+
+        public Vector2Int MapUvToAndroidPixels(Vector2 uv)
+        {
+            return new Vector2Int(
+                Mathf.RoundToInt(Mathf.Clamp01(uv.x) * _androidWidth),
+                Mathf.RoundToInt((1f - Mathf.Clamp01(uv.y)) * _androidHeight));
+        }
+
+        public void SetAndroidResolution(int width, int height)
+        {
+            if (width <= 0 || height <= 0) return;
+            _androidWidth = width;
+            _androidHeight = height;
+        }
+
+        public void SendClick(Vector2Int point) => controlChannel?.SendClick(point.x, point.y);
+        public void SendSwipe(Vector2Int start, Vector2Int end, int durationMs) => controlChannel?.SendSwipe(start.x, start.y, end.x, end.y, durationMs);
     }
 }
-

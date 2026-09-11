@@ -1,0 +1,5 @@
+{
+  "name": "QuestPhoneStream.Interaction.Meta",
+  "references": ["QuestPhoneStream.Interaction.Core"],
+  "autoReferenced": true
+}

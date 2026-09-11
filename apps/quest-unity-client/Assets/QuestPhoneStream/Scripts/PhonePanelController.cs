@@ -1,4 +1,5 @@
 using UnityEngine;
+using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
 {
@@ -11,10 +12,15 @@ namespace QuestPhoneStream
         public bool followAnchor;
 
         private Vector3 _initialLocalScale;
+        private QuestWebRtcReceiver _receiver;
+        private SpatialPanelShell _shell;
+        private int _lastVideoWidth;
+        private int _lastVideoHeight;
 
         private void Awake()
         {
             _initialLocalScale = transform.localScale;
+            _shell = GetComponent<SpatialPanelShell>();
         }
 
         private void LateUpdate()
@@ -24,6 +30,24 @@ namespace QuestPhoneStream
                 transform.position = anchor.position;
                 transform.rotation = anchor.rotation;
             }
+
+            RefreshVideoAspect();
+        }
+
+        private void RefreshVideoAspect()
+        {
+            if (_receiver == null) _receiver = FindFirstObjectByType<QuestWebRtcReceiver>();
+            if (_receiver == null) return;
+            if (_shell == null) _shell = GetComponent<SpatialPanelShell>();
+            if (_shell == null || _shell.Surface == null) return;
+
+            var width = _receiver.VideoWidth;
+            var height = _receiver.VideoHeight;
+            if (width <= 0 || height <= 0 || (width == _lastVideoWidth && height == _lastVideoHeight)) return;
+
+            _shell.SetSurfaceAspect(width, height);
+            _lastVideoWidth = width;
+            _lastVideoHeight = height;
         }
 
         public void SetFollowAnchor(bool enabled)
@@ -43,14 +67,31 @@ namespace QuestPhoneStream
 
         public void ResetScale()
         {
-            transform.localScale = _initialLocalScale;
+            var manipulator = GetComponent<SpatialPanelManipulator>();
+            if (manipulator != null) manipulator.SetUniformScale(1f);
+            else transform.localScale = _initialLocalScale;
         }
+
+        public void ResetPose()
+        {
+            var manipulator = GetComponent<SpatialPanelManipulator>();
+            if (manipulator == null) return;
+            var camera = Camera.main ?? FindFirstObjectByType<Camera>();
+            manipulator.ResetPose(camera);
+        }
+
+        public void Recenter() => ResetPose();
 
         private void SetUniformScale(float scale)
         {
+            var manipulator = GetComponent<SpatialPanelManipulator>();
+            if (manipulator != null)
+            {
+                manipulator.SetUniformScale(scale);
+                return;
+            }
             float clamped = Mathf.Clamp(scale, minScale, maxScale);
             transform.localScale = new Vector3(clamped, clamped, clamped);
         }
     }
 }
-

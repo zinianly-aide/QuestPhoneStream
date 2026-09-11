@@ -109,8 +109,17 @@ namespace QuestPhoneStream.Tests
         public void ConcurrentReconnectReturnsTheExistingAttempt()
         {
             var pending = new TaskCompletionSource<bool>();
+            _client.signalingUrl = "ws://localhost:8787";
+            _client.questDeviceId = "q";
+            _client.androidDeviceId = "a";
+            _client.sessionId = "s";
             Set("<IsConnecting>k__BackingField", true);
             Set("_attempt", pending.Task);
+            Set("_activeSignalingUrl", _client.signalingUrl);
+            Set("_activeSession", "s");
+            Set("_activeQuest", "q");
+            Set("_activeAndroid", "a");
+            Set("_activeToken", _client.token);
             Assert.AreSame(pending.Task, _client.ReconnectAsync());
             Assert.AreSame(pending.Task, _client.ReconnectAsync());
             pending.SetResult(false);

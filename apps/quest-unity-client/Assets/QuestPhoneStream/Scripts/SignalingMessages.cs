@@ -16,6 +16,8 @@ namespace QuestPhoneStream
         public string message;
         public string androidDeviceId;
         public string questDeviceId;
+        // Spatial messages use source; legacy signaling messages continue to use from.
+        public string source;
         public string from;
         public string to;
         public string sdp;

@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -39,6 +43,11 @@ jobs:
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Run Android unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Build debug APK
         run: |
