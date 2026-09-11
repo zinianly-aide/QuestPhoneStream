@@ -63,5 +63,25 @@ namespace QuestPhoneStream.Tests
             StringAssert.Contains("\"fx\":700", json);
             StringAssert.Contains("cameraPosition", json);
         }
+
+        [Test]
+        public void TransferPaths_AcceptOnlyDatasetFrames()
+        {
+            Assert.IsTrue(ObjectScanTransferPaths.IsFramePath("frames/000042.jpg"));
+            Assert.IsFalse(ObjectScanTransferPaths.IsFramePath("frames/42.jpg"));
+            Assert.IsFalse(ObjectScanTransferPaths.IsFramePath("../secret.jpg"));
+            Assert.IsFalse(ObjectScanTransferPaths.IsFramePath("frames/000042.png"));
+        }
+
+        [Test]
+        public void TransferPaths_BuildSessionScopedWorkerUrls()
+        {
+            Assert.AreEqual(
+                "http://192.168.1.2:8848/v1/scans/scan-01/files/frames/000042.jpg",
+                ObjectScanTransferPaths.FileUrl("http://192.168.1.2:8848/", "scan-01", "frames/000042.jpg"));
+            Assert.AreEqual(
+                "http://192.168.1.2:8848/v1/scans/scan-01/finalize",
+                ObjectScanTransferPaths.FinalizeUrl("http://192.168.1.2:8848/", "scan-01"));
+        }
     }
 }

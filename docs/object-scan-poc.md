@@ -2,7 +2,7 @@
 
 Branch: `feat/object-scan-poc`
 
-Goal: prove that Quest 3/3S can produce reconstruction-ready multi-view datasets without changing the existing signaling, control, Spatial Protocol, media, or specialized 3DGS architecture.
+Goal: prove that Quest 3/3S can produce reconstruction-ready multi-view datasets and move them to a desktop reconstruction worker without changing the existing signaling, control, Spatial Protocol, media, or specialized 3DGS architecture.
 
 ## G0 — Reconstruction dataset capture
 
@@ -13,8 +13,6 @@ Implemented:
 - reject redundant views using time, translation, and rotation thresholds;
 - default target: up to 60 views;
 - rewrite the manifest after each accepted frame so an interrupted scan retains usable metadata.
-
-G0 does not upload data, run reconstruction, add new Spatial Protocol messages, or claim real-device validation.
 
 Acceptance:
 - 30–60 useful views can be captured around one static object;
@@ -29,15 +27,31 @@ Configuration implemented:
 - retain the existing generated-manifest postprocessor for `horizonos.permission.HEADSET_CAMERA`;
 - add required `com.oculus.feature.PASSTHROUGH` through that postprocessor instead of replacing Unity's main Android manifest.
 
-Still requires hardware validation on Quest 3S for camera permission, `PassthroughCameraAccess`, `GetCameraPose()`, intrinsics, RGB frames, and the chosen camera resolution. CI proves package/project compilation only.
+Still requires hardware validation on Quest 3S for camera permission, `PassthroughCameraAccess`, `GetCameraPose()`, intrinsics, RGB frames, and actual camera resolution. CI proves package/project compilation only.
 
 ## G2 — LAN dataset transfer
 
-Add an object-scan export/upload path to a desktop reconstruction worker. Keep bulk JPEG transfer outside Spatial Protocol v1 initially. Include manifest integrity and resumable/session-scoped transfer.
+Implemented as a separate bulk-data path, not Spatial Protocol:
+- `apps/object-scan-worker` is a dependency-free Node.js desktop receiver (default port `8848`);
+- Quest `ObjectScanUploader` uses a manually configured worker base URL stored in PlayerPrefs;
+- frame uploads are session-scoped raw `PUT`s;
+- a `HEAD` probe skips a remote file when its byte size already matches, providing simple resumable retry behavior;
+- `manifest.json` is uploaded after JPEGs;
+- `POST /finalize` verifies every manifest-referenced frame exists before writing `READY.json`;
+- worker accepts only `manifest.json` and `frames/NNNNNN.jpg` to prevent arbitrary path writes.
+
+G2 intentionally does not change NSD, pairing, signaling, or Spatial Protocol. Device discovery for the reconstruction worker can be considered after the POC proves useful.
 
 ## G3 — Mac reconstruction worker
 
-Consume the G0 dataset and convert Unity camera conventions as needed for the selected backend. First support a reproducible offline reconstruction path (COLMAP/MASt3R-class pose refinement plus 3DGS or mesh output), preserving the original Quest poses as priors/evidence.
+Next implementation gate: consume a finalized G2 session and convert Unity camera conventions as needed for the selected reconstruction backend. First support a reproducible offline path that emits both backend-ready metadata and one real reconstruction output. Preserve original Quest poses as priors/evidence rather than discarding them.
+
+Candidate first path:
+1. validate dataset and camera intrinsics;
+2. export COLMAP-compatible cameras/images text or database inputs;
+3. run feature matching / pose refinement where available;
+4. produce a 3DGS/PLY or mesh/GLB result;
+5. write `result.json` with backend, input session, output files, timings, and warnings.
 
 ## G4 — Result return and Quest preview
 
@@ -45,4 +59,4 @@ Return GLB/PLY/splat results to Quest. Reuse existing 3D/3DGS rendering entry po
 
 ## G5 — Scan UX and quality guidance
 
-Add `Scan Object`, capture progress, view-coverage guidance, missing-angle hints, and optional environment-depth use for masking/scale priors. Depth is auxiliary evidence, not the primary reconstruction source.
+Add `Scan Object`, capture progress, view-coverage guidance, missing-angle hints, transfer status, and optional environment-depth use for masking/scale priors. Depth is auxiliary evidence, not the primary reconstruction source.

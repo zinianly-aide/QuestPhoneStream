@@ -8,9 +8,12 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 const models = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanModels.cs");
 const calibration = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanCalibrationProvider.cs");
 const recorder = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanRecorder.cs");
+const uploader = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScanUploader.cs");
 const tests = read("apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs");
 const manifest = JSON.parse(read("apps/quest-unity-client/Packages/manifest.json"));
 const androidManifestPostProcessor = read("apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs");
+const worker = read("apps/object-scan-worker/src/server.mjs");
+const workerTests = read("apps/object-scan-worker/test/server.test.mjs");
 
 assert(models.includes('qps-object-scan-poc-v1'), "Object scan manifest must be versioned");
 assert(models.includes("fx") && models.includes("fy") && models.includes("cameraPosition") && models.includes("cameraRotation"),
@@ -38,4 +41,19 @@ assert(androidManifestPostProcessor.includes('"com.oculus.feature.PASSTHROUGH"')
        androidManifestPostProcessor.includes('AppendAndroidAttribute(doc, passthroughElement, "required", "true")'),
   "Quest build must declare required passthrough support for PCA");
 
-console.log("Object scan POC G0/G1 source checks passed");
+assert(uploader.includes("UnityWebRequest.Head(url)") && uploader.includes("remoteBytes == localBytes"),
+  "G2 uploader must resume by skipping already complete remote frames");
+assert(uploader.includes("UnityWebRequest.Put(url, bytes)") && uploader.includes("FinalizeUrl"),
+  "G2 uploader must PUT raw dataset files and explicitly finalize the session");
+assert(!uploader.includes("SpatialEnvelope") && !uploader.includes("SendSpatial"),
+  "Bulk object scan transfer must stay outside Spatial Protocol v1");
+assert(worker.includes('FRAME_RE = /^frames\\/[0-9]{6}\\.jpg$/') && worker.includes("invalid_file"),
+  "Desktop worker must reject paths outside the dataset contract");
+assert(worker.includes('route.kind === "finalize"') && worker.includes("missing_frames"),
+  "Desktop worker must verify manifest completeness before marking a session ready");
+assert(workerTests.includes("uploads frames idempotently") && workerTests.includes("finalize rejects an incomplete dataset"),
+  "Desktop worker transfer regression tests are missing");
+assert(tests.includes("TransferPaths_AcceptOnlyDatasetFrames"),
+  "Quest transfer path validation regression test is missing");
+
+console.log("Object scan POC G0/G1/G2 source checks passed");
