@@ -197,9 +197,9 @@ namespace QuestPhoneStream
             foreach (var signaling in UnityEngine.Object.FindObjectsOfType<QuestSignalingClient>())
             {
                 var client = signaling.GetComponent<ObjectScanResultClient>() ?? signaling.gameObject.AddComponent<ObjectScanResultClient>();
-                client.recorder = signaling.GetComponent<ObjectScanRecorder>() ?? FindFirstObjectByType<ObjectScanRecorder>();
-                client.uploader = signaling.GetComponent<ObjectScanUploader>() ?? FindFirstObjectByType<ObjectScanUploader>();
-                client.previewRenderer = FindFirstObjectByType<GaussianSplatPocRenderer>();
+                client.recorder = signaling.GetComponent<ObjectScanRecorder>() ?? UnityEngine.Object.FindFirstObjectByType<ObjectScanRecorder>();
+                client.uploader = signaling.GetComponent<ObjectScanUploader>() ?? UnityEngine.Object.FindFirstObjectByType<ObjectScanUploader>();
+                client.previewRenderer = UnityEngine.Object.FindFirstObjectByType<GaussianSplatPocRenderer>();
             }
         }
     }
