@@ -1,38 +1,37 @@
 # LingBot AI Video POC
 
-This branch keeps signaling/WebRTC/Spatial Protocol unchanged. `src/aiVideoSource.ts` only replaces the source of the existing video `MediaStream`.
+This branch keeps signaling/WebRTC/Spatial Protocol unchanged. The only change is the source of the existing video `MediaStream`.
 
-## Source hook
+## Implemented source hook
 
-`renderer.ts` currently does:
+`src/aiVideoBootstrap.ts` injects a pseudo capture source:
 
-```ts
-stream = await navigator.mediaDevices.getUserMedia(screenConstraints);
-if (activeSession) await createPeer(activeSession);
+```text
+LingBot AI video · localhost bridge
 ```
 
-For the AI-video POC the equivalent source is:
+When that source is selected, the bootstrap intercepts only the corresponding `getUserMedia()` call and returns the `MediaStream` created by `src/aiVideoSource.ts`:
 
-```ts
-import { createAiVideoSource, type AiVideoSourceHandle } from "./aiVideoSource";
-
-let aiVideo: AiVideoSourceHandle | null = null;
-
-async function startAiVideo(): Promise<void> {
-  stopCapture();
-  aiVideo?.stop();
-  aiVideo = await createAiVideoSource({
-    bridgeUrl: "http://127.0.0.1:8765",
-    fps: config.fps,
-  });
-  stream = aiVideo.stream;
-  setRuntimeState(true, false);
-  uiState("ready", "LingBot AI video source ready · waiting for Quest session");
-  if (activeSession) await createPeer(activeSession);
-}
+```text
+LingBot localhost JPEG bridge
+  -> fetch latest JPEG + sequence/PTS
+  -> Canvas
+  -> canvas.captureStream(30)
+  -> existing renderer.ts stream variable
+  -> existing createPeer()
+  -> existing RTCPeerConnection
+  -> Quest receiver / SpatialPanel
 ```
 
-On stop, call `aiVideo?.stop()` and clear the handle. `createPeer()` is intentionally unchanged: it already calls `stream.getVideoTracks()[0]` and adds that track to the existing `RTCPeerConnection`.
+Desktop-screen capture continues to use the original Electron `getUserMedia()` path.
+
+The bridge URL is restricted to `localhost` / `127.0.0.1` and defaults to:
+
+```text
+http://127.0.0.1:8765
+```
+
+No LAN frame server is introduced by this POC.
 
 ## Q0 manual check
 
@@ -43,13 +42,23 @@ python scripts/quest_frame_bridge.py
 python scripts/quest_stream_replay.py <generated.mp4> --fps 12
 ```
 
-Then start the AI source and create the normal Quest session.
+On the Mac sender:
+1. Start the app normally.
+2. Select `LingBot AI video · localhost bridge`.
+3. Keep the default bridge URL unless the local port was changed.
+4. Click `Start stream`.
+5. Create/use the normal Quest session.
 
 Acceptance:
-- video reaches the existing Quest receiver,
+- replay video reaches the existing Quest receiver,
 - reconnect still works,
-- `aiVideo.stats()` shows increasing `receivedFrames`,
+- stop ends the Canvas track and polling loop,
+- bridge sequence/PTS increase monotonically,
 - bridge remains localhost-only,
 - no signaling/schema changes.
 
-The next gate is progressive VAE output; do not add new signaling messages just to transport local generated frames.
+## CI
+
+The existing `macOS Sender CI` runs `npm test` and `npm run build` on the draft PR. Q0 is not PASS until a real Quest replay is recorded even if CI is green.
+
+The next model-side gate is progressive VAE output; do not add new signaling messages just to transport locally generated frames.
