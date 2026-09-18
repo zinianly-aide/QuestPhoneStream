@@ -53,8 +53,9 @@ function ensureAiOption(): void {
 }
 
 function ensureBridgeInput(): void {
-  const select = document.getElementById("sources");
-  const card = select?.parentElement;
+  const select = document.getElementById("sources") as HTMLSelectElement | null;
+  if (!select) return;
+  const card = select.parentElement;
   if (!card || document.getElementById("ai-bridge-url")) return;
 
   const label = document.createElement("label");
