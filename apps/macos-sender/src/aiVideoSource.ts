@@ -1,0 +1,135 @@
+export interface AiVideoSourceOptions {
+  bridgeUrl?: string;
+  fps?: number;
+}
+
+export interface AiVideoSourceStats {
+  receivedFrames: number;
+  duplicatePolls: number;
+  errors: number;
+  lastSequence: number;
+  lastPtsMs: number;
+}
+
+export interface AiVideoSourceHandle {
+  stream: MediaStream;
+  stop(): void;
+  stats(): AiVideoSourceStats;
+}
+
+export function normalizeBridgeUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(trimmed)) {
+    throw new Error("AI video bridge must be a localhost http(s) URL");
+  }
+  return trimmed;
+}
+
+export function frameRequestUrl(baseUrl: string, pollId: number): string {
+  return `${normalizeBridgeUrl(baseUrl)}/v1/frame.jpg?poll=${pollId}`;
+}
+
+/**
+ * Convert LingBot's localhost latest-JPEG bridge into a browser MediaStream.
+ *
+ * WebRTC/signaling stay unchanged: renderer.ts can assign handle.stream to its
+ * existing `stream` variable and call createPeer(activeSession). Chromium then
+ * encodes the Canvas video track through the normal WebRTC sender path.
+ */
+export async function createAiVideoSource(options: AiVideoSourceOptions = {}): Promise<AiVideoSourceHandle> {
+  const bridgeUrl = normalizeBridgeUrl(options.bridgeUrl ?? "http://127.0.0.1:8765");
+  const fps = options.fps ?? 30;
+  if (!Number.isFinite(fps) || fps <= 0 || fps > 60) throw new Error("fps must be in (0, 60]");
+
+  const health = await fetch(`${bridgeUrl}/healthz`, { cache: "no-store" });
+  if (!health.ok) throw new Error(`LingBot bridge unavailable: HTTP ${health.status}`);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 2;
+  canvas.height = 2;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) throw new Error("2D canvas unavailable");
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const mediaStream = canvas.captureStream(fps);
+  const track = mediaStream.getVideoTracks()[0];
+  if (!track) throw new Error("canvas.captureStream produced no video track");
+  track.contentHint = "detail";
+
+  let stopped = false;
+  let pollId = 0;
+  let timer: number | null = null;
+  const counters: AiVideoSourceStats = {
+    receivedFrames: 0,
+    duplicatePolls: 0,
+    errors: 0,
+    lastSequence: -1,
+    lastPtsMs: 0
+  };
+
+  const intervalMs = Math.max(16, Math.round(1000 / fps));
+
+  const schedule = (): void => {
+    if (stopped) return;
+    timer = window.setTimeout(() => void pump(), intervalMs);
+  };
+
+  const pump = async (): Promise<void> => {
+    if (stopped) return;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), Math.max(1000, intervalMs * 4));
+    try {
+      const response = await fetch(frameRequestUrl(bridgeUrl, pollId++), {
+        cache: "no-store",
+        signal: controller.signal
+      });
+      if (response.status === 404) return;
+      if (!response.ok) throw new Error(`frame HTTP ${response.status}`);
+
+      const sequence = Number(response.headers.get("X-QPS-Frame-Seq") ?? "-1");
+      const ptsMs = Number(response.headers.get("X-QPS-PTS-Ms") ?? "0");
+      if (Number.isSafeInteger(sequence) && sequence <= counters.lastSequence) {
+        counters.duplicatePolls++;
+        return;
+      }
+
+      const bitmap = await createImageBitmap(await response.blob());
+      try {
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+        }
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      } finally {
+        bitmap.close();
+      }
+      counters.receivedFrames++;
+      if (Number.isSafeInteger(sequence)) counters.lastSequence = sequence;
+      if (Number.isFinite(ptsMs)) counters.lastPtsMs = ptsMs;
+    } catch (error) {
+      if (!stopped && !(error instanceof DOMException && error.name === "AbortError")) {
+        counters.errors++;
+        console.warn("[ai-video-source] frame poll failed", error);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      schedule();
+    }
+  };
+
+  void pump();
+
+  return {
+    stream: mediaStream,
+    stop(): void {
+      if (stopped) return;
+      stopped = true;
+      if (timer != null) window.clearTimeout(timer);
+      mediaStream.getTracks().forEach(item => item.stop());
+    },
+    stats(): AiVideoSourceStats {
+      return { ...counters };
+    }
+  };
+}
