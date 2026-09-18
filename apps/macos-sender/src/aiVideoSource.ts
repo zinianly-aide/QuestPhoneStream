@@ -17,6 +17,9 @@ export interface AiVideoSourceHandle {
   stats(): AiVideoSourceStats;
 }
 
+export const AI_VIDEO_SOURCE_ID = "qps-ai-video";
+export const DEFAULT_AI_VIDEO_BRIDGE_URL = "http://127.0.0.1:8765";
+
 export function normalizeBridgeUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(trimmed)) {
@@ -32,12 +35,12 @@ export function frameRequestUrl(baseUrl: string, pollId: number): string {
 /**
  * Convert LingBot's localhost latest-JPEG bridge into a browser MediaStream.
  *
- * WebRTC/signaling stay unchanged: renderer.ts can assign handle.stream to its
- * existing `stream` variable and call createPeer(activeSession). Chromium then
- * encodes the Canvas video track through the normal WebRTC sender path.
+ * WebRTC/signaling stay unchanged: Chromium receives a normal video track and
+ * the existing sender path can add it to RTCPeerConnection exactly like a
+ * desktop-capture track.
  */
 export async function createAiVideoSource(options: AiVideoSourceOptions = {}): Promise<AiVideoSourceHandle> {
-  const bridgeUrl = normalizeBridgeUrl(options.bridgeUrl ?? "http://127.0.0.1:8765");
+  const bridgeUrl = normalizeBridgeUrl(options.bridgeUrl ?? DEFAULT_AI_VIDEO_BRIDGE_URL);
   const fps = options.fps ?? 30;
   if (!Number.isFinite(fps) || fps <= 0 || fps > 60) throw new Error("fps must be in (0, 60]");
 
@@ -70,13 +73,26 @@ export async function createAiVideoSource(options: AiVideoSourceOptions = {}): P
 
   const intervalMs = Math.max(16, Math.round(1000 / fps));
 
-  const schedule = (): void => {
+  const stopInternal = (): void => {
     if (stopped) return;
+    stopped = true;
+    if (timer != null) window.clearTimeout(timer);
+    timer = null;
+  };
+
+  const schedule = (): void => {
+    if (stopped || track.readyState === "ended") {
+      stopInternal();
+      return;
+    }
     timer = window.setTimeout(() => void pump(), intervalMs);
   };
 
   const pump = async (): Promise<void> => {
-    if (stopped) return;
+    if (stopped || track.readyState === "ended") {
+      stopInternal();
+      return;
+    }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), Math.max(1000, intervalMs * 4));
     try {
@@ -84,7 +100,7 @@ export async function createAiVideoSource(options: AiVideoSourceOptions = {}): P
         cache: "no-store",
         signal: controller.signal
       });
-      if (response.status === 404) return;
+      if (response.status === 404 || response.status === 204) return;
       if (!response.ok) throw new Error(`frame HTTP ${response.status}`);
 
       const sequence = Number(response.headers.get("X-QPS-Frame-Seq") ?? "-1");
@@ -123,10 +139,10 @@ export async function createAiVideoSource(options: AiVideoSourceOptions = {}): P
   return {
     stream: mediaStream,
     stop(): void {
-      if (stopped) return;
-      stopped = true;
-      if (timer != null) window.clearTimeout(timer);
-      mediaStream.getTracks().forEach(item => item.stop());
+      stopInternal();
+      mediaStream.getTracks().forEach(item => {
+        if (item.readyState !== "ended") item.stop();
+      });
     },
     stats(): AiVideoSourceStats {
       return { ...counters };
