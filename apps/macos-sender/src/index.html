@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src ws: wss: http: https:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src ws: wss: http: https:;" />
   <title>QuestPhoneStream Mac Sender</title>
   <style>
     body { font: 14px -apple-system, BlinkMacSystemFont, sans-serif; margin: 28px; background: #111; color: #eee; }
@@ -40,14 +40,15 @@
   </div>
   <div class="card">
     <select id="sources"></select>
-    <button id="start">Start screen stream</button>
+    <button id="start">Start stream</button>
     <button id="stop">Stop</button>
   </div>
   <div class="card">
     <div id="status">Starting…</div>
     <div id="detail" class="muted"></div>
   </div>
-  <div class="muted">Screen publish · NSD · Spatial telemetry consumer · WebRTC 1080p/30fps baseline</div>
+  <div class="muted">Screen / LingBot AI-video publish · NSD · Spatial telemetry consumer · existing WebRTC path</div>
+  <script src="ai-video-bootstrap.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
