@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.main.json && esbuild src/renderer.ts --bundle --format=iife --platform=browser --outfile=dist/renderer.js && node -e \"require('fs').copyFileSync('src/index.html','dist/index.html')\"",
+    "build": "tsc -p tsconfig.main.json && esbuild src/renderer.ts --bundle --format=iife --platform=browser --outfile=dist/renderer.js && esbuild src/aiVideoBootstrap.ts --bundle --format=iife --platform=browser --outfile=dist/ai-video-bootstrap.js && node -e \"require('fs').copyFileSync('src/index.html','dist/index.html')\"",
     "start": "npm run build && electron .",
     "test": "vitest run",
     "pack": "npm run build && electron-builder --mac dir",
