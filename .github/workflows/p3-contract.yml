@@ -36,11 +36,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check Spatial protocol and P3 regressions
         run: |
           node scripts/check-spatial-protocol.mjs
+          node scripts/check-p1-p2-closeout.mjs
+          node scripts/check-settings-gates.mjs
           node scripts/check-p3-spatial.mjs
           node scripts/check-p3-lifecycle.mjs
           node scripts/check-device-select-connect.mjs

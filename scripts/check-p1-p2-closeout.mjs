@@ -41,12 +41,11 @@ check(renderer.includes("subscriptions.reset()") && subscriptions.includes('"req
   "Mac subscription lifecycle resets for reconnect/resubscribe");
 
 const devHud = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/DeveloperHud.cs");
-const legacyHud = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestDeveloperHud.cs");
 const settingsFactory = read("apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/SettingsUIFactory.cs");
 check(devHud.includes('LegacyRuntime.ttf') && devHud.includes("Auto Refresh (1 Hz)"),
   "Developer HUD has refresh controls and legacy runtime font");
-check(!legacyHud.includes("RuntimeInitializeOnLoadMethod") && !legacyHud.includes("camera.transform"),
-  "Developer HUD is not auto-created as a head-locked overlay");
+check(!fs.existsSync(path.join(root, "apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/QuestDeveloperHud.cs")),
+  "Legacy QuestDeveloperHud adapter remains removed");
 check(settingsFactory.includes("#if QPS_DEV_TOOLS || DEVELOPMENT_BUILD || UNITY_EDITOR") && settingsFactory.includes("developerHud.Initialize("),
   "Developer HUD entry is dev-only and lives under Developer Tools");
 
