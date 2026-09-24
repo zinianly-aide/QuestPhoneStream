@@ -3,10 +3,13 @@
     "com.unity.test-framework": "1.1.33",
     "com.unity.webrtc": "3.0.0-pre.8",
     "com.unity.xr.openxr": "1.14.1",
+    "com.unity.xr.hands": "1.2.1",
     "com.unity.xr.interaction.toolkit": "3.0.7",
     "com.unity.inputsystem": "1.11.2",
     "com.unity.textmeshpro": "3.0.9",
     "com.unity.ugui": "1.0.0",
-    "com.unity.modules.androidjni": "1.0.0"
+    "com.unity.modules.androidjni": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
+    "com.unity.modules.video": "1.0.0"
   }
 }

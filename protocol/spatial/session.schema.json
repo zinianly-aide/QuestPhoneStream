@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/session.schema.json",
+  "title": "Spatial Session",
+  "type": "object",
+  "required": ["id", "participants", "state", "legacySessionId", "streamId"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "participants": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 2, "uniqueItems": true },
+    "state": { "type": "string", "enum": ["creating", "active", "closing", "closed"] },
+    "legacySessionId": { "type": "string" },
+    "streamId": { "type": "string" }
+  },
+  "additionalProperties": true
+}

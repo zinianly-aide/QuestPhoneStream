@@ -2,6 +2,11 @@
 
 QuestPhoneStream streams an Android phone screen to Meta Quest 3S through WebRTC and renders it as a floating phone panel in Unity. Control commands are sent back over a WebRTC DataChannel and executed on Android through an Accessibility Service.
 
+It also includes an independent local-media MVP: the Android app can share a
+user-selected video through its embedded HTTP Range server (`:8788`), and the
+Quest client can browse the catalog and play ordinary 2D video with Unity's
+`VideoPlayer`. This path does not use MediaProjection or WebRTC transcoding.
+
 ## Architecture
 
 ```text
@@ -63,3 +68,5 @@ Unity Quest client:
 - Quest sees the Android screen in a floating panel.
 - Video runs at 720p/1080p and 30fps.
 - End-to-end latency target is below 300ms on a local Wi-Fi network.
+- Android can expose a SAF-selected MP4 through `/v1/media` and HTTP Range.
+- Quest can request a short-lived play capability and play it on a separate flat renderer.

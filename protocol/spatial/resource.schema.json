@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://questphonestream.local/protocol/spatial/resource.schema.json",
+  "title": "Spatial Resource",
+  "type": "object",
+  "required": ["id", "capability", "kind", "state", "metadata"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "capability": { "$ref": "capability.schema.json#/properties/name" },
+    "kind": { "type": "string", "minLength": 1 },
+    "state": { "type": "string", "enum": ["available", "authorized", "active", "closed"] },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": true
+}

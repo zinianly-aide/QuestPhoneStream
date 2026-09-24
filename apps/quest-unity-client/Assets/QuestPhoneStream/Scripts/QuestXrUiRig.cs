@@ -10,6 +10,8 @@ using UnityEngine.XR.Interaction.Toolkit.Inputs.Readers;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using QuestPhoneStream.Interaction;
+using QuestPhoneStream.Interaction.Backends.XRI;
 
 namespace QuestPhoneStream
 {
@@ -17,6 +19,7 @@ namespace QuestPhoneStream
     public sealed class QuestXrUiRig : MonoBehaviour
     {
         public InputActionAsset actionAsset;
+        public object PanelDependencies { get; private set; }
         public XROrigin Origin { get; private set; }
         public EventSystem UiEvents { get; private set; }
         public InputActionMap Actions { get; private set; }
@@ -68,31 +71,81 @@ namespace QuestPhoneStream
             _events.SetActive(true);
             _root.SetActive(true);
             Debug.Log($"[QuestPhoneStream] XR rig initialized. Camera world pos={camera.transform.position} rot={camera.transform.eulerAngles}");
-            PinPanelToCamera(camera);
+            ConfigureSpatialPhonePanel(camera);
+            InitializePhonePanelBackend(camera);
         }
 
-        // The phone mirror panel lives at a fixed scene position by default, which
-        // is not where the real head is after the XR origin is rebuilt from the
-        // guardian space. Reparent it under the camera so it is always in front.
-        private void PinPanelToCamera(Camera camera)
+        /// <summary>Provide XRI runtime dependencies to the SDK-neutral interaction backend.</summary>
+        private void InitializePhonePanelBackend(Camera camera)
         {
-            var panel = GameObject.Find("PhonePanel");
-            if (panel == null)
+            var router = FindFirstObjectByType<SpatialPanelInteractionRouter>();
+            var backendManager = FindFirstObjectByType<InteractionBackendManager>();
+            if (router == null || backendManager == null)
             {
-                Debug.LogError("[QuestPhoneStream] PinPanelToCamera: PhonePanel NOT FOUND");
+                Debug.LogWarning("[QuestPhoneStream] PhonePanel interaction components not found in scene");
                 return;
             }
-            panel.transform.SetParent(camera.transform, false);
-            panel.transform.localPosition = new Vector3(0, 0.05f, 2.2f);
-            panel.transform.localRotation = Quaternion.identity;
-            panel.transform.localScale = new Vector3(0.9f, 1.6f, 1f); // 9:16 portrait mirror
+            var rightController = GameObject.Find("Right Controller");
+            var leftController = GameObject.Find("Left Controller");
+            XRRayInteractor rightRay = null;
+            XRRayInteractor leftRay = null;
+            if (rightController != null)
+            {
+                rightRay = rightController.GetComponent<XRRayInteractor>();
+                if (rightRay != null) Debug.Log("[QuestPhoneStream] XRI backend received Right Controller ray");
+            }
+            if (leftController != null)
+            {
+                leftRay = leftController.GetComponent<XRRayInteractor>();
+            }
+            XriInteractionBackend.EnsureRegistered();
+            var dependencies = new XriRuntimeDependencies {
+                trackingOrigin = Origin.CameraFloorOffsetObject.transform,
+                leftRay = leftRay, rightRay = rightRay,
+                leftClick = Actions.FindAction("LeftHand UI Click", true),
+                rightClick = Actions.FindAction("RightHand UI Click", true),
+                leftGrab = Actions.FindAction("LeftHand Grab", true),
+                rightGrab = Actions.FindAction("RightHand Grab", true)
+            };
+            PanelDependencies = dependencies;
+            router.GetComponent<SpatialPanelShell>().ConfigureBackend(dependencies);
+        }
+
+        private void ConfigureSpatialPhonePanel(Camera camera)
+        {
+            var panel = GameObject.Find("PhonePanelRoot") ?? GameObject.Find("PhonePanel");
+            if (panel == null)
+            {
+                Debug.LogError("[QuestPhoneStream] ConfigureSpatialPhonePanel: PhonePanel NOT FOUND");
+                return;
+            }
+
+            var spatialPanels = _root.transform.Find("SpatialPanels");
+            if (spatialPanels == null)
+            {
+                spatialPanels = new GameObject("SpatialPanels").transform;
+                spatialPanels.SetParent(_root.transform, false);
+            }
+
+            var root = panel.name == "PhonePanelRoot" ? panel : CreatePhonePanelRoot(panel, spatialPanels);
+            root.transform.SetParent(spatialPanels, true);
+            var screen = root.transform.Find("PhoneScreen")?.gameObject ?? panel;
+            var screenCollider = screen.GetComponent<Collider>();
+            var shell = root.GetComponent<SpatialPanelShell>() ?? root.AddComponent<SpatialPanelShell>();
+            shell.Initialize(screen.transform, screenCollider, camera, new ViewOnlySurfaceInput());
+            shell.Manipulator.ResetPose(camera);
+            var mapper = screen.GetComponent<PanelInputMapper>();
+            if (mapper != null) mapper.panelCollider = screenCollider;
+            _receiver.BindScreenSurface(shell, mapper);
 
             // Ensure the receiver writes video to the SAME material the renderer uses.
             // Use sharedMaterial to avoid creating a per-renderer instance that would
             // diverge from the serialized targetMaterial reference.
-            var r = panel.GetComponent<Renderer>();
+            var r = screen.GetComponent<Renderer>();
             if (r != null)
             {
+                _receiver.phoneScreenRenderer = r;
+                if (_receiver.mediaPlayback != null) _receiver.mediaPlayback.phoneScreenRenderer = r;
                 var shared = r.sharedMaterial;
                 if (shared != null)
                 {
@@ -104,10 +157,24 @@ namespace QuestPhoneStream
                           $"same={shared == _receiver.targetMaterial}");
             }
 
-            var vp = camera.WorldToViewportPoint(panel.transform.position);
-            Debug.Log($"[QuestPhoneStream] Panel pinned. localPos={panel.transform.localPosition} " +
+            var vp = camera.WorldToViewportPoint(root.transform.position);
+            Debug.Log($"[QuestPhoneStream] Spatial PhonePanel ready. worldPos={root.transform.position} " +
                       $"viewport=({vp.x:F2},{vp.y:F2},{vp.z:F2}) active={panel.activeInHierarchy}");
         }
+
+        private static GameObject CreatePhonePanelRoot(GameObject screen, Transform parent)
+        {
+            var root = new GameObject("PhonePanelRoot");
+            root.transform.SetPositionAndRotation(screen.transform.position, screen.transform.rotation);
+            root.transform.localScale = Vector3.one;
+            root.transform.SetParent(parent, true);
+            screen.name = "PhoneScreen";
+            screen.transform.SetParent(root.transform, true);
+            if (screen.GetComponent<PhonePanelController>() != null) Destroy(screen.GetComponent<PhonePanelController>());
+            if (root.GetComponent<PhonePanelController>() == null) root.AddComponent<PhonePanelController>();
+            return root;
+        }
+
 
         private InputActionReference Reference(string name)
         {
@@ -138,12 +205,12 @@ namespace QuestPhoneStream
                 inputActionReferencePerformed = Reference(hand + " UI Click"),
                 inputActionReferenceValue = Reference(hand + " UI Click Value")
             };
-            // UI selection is handled by XRI; no custom raycast/input dispatch implementation.
-            ray.selectInput = new XRInputButtonReader { inputSourceMode = XRInputButtonReader.InputSourceMode.Unused };
+            // Trigger remains screen/UI-only. No XRI select input is configured;
+            // Trigger is screen/UI-only; the XRI backend maps the separate grip action to the frame.
             controller.AddComponent<XRInteractorLineVisual>();
         }
 
-        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleSettings(); }
+        private void OpenSettings(InputAction.CallbackContext _) { _receiver.ToggleHome(); }
         private void OnDisable() { Actions?.Disable(); }
         private void OnEnable() { Actions?.Enable(); }
         private void OnDestroy()

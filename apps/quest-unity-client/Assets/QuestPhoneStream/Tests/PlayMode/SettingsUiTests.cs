@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -88,6 +89,7 @@ namespace QuestPhoneStream.Tests
             Assert.IsNotNull(ui.canvas.GetComponent<TrackedDeviceGraphicRaycaster>());
             foreach (var input in ui.GetComponentsInChildren<InputField>(true))
             {
+                Assert.IsNotNull(input.GetComponent<QuestKeyboardInputField>());
                 var textRect = input.textComponent.rectTransform.rect;
                 Assert.Greater(textRect.width, 0);
                 Assert.Greater(textRect.height, input.textComponent.fontSize);
@@ -129,6 +131,156 @@ namespace QuestPhoneStream.Tests
             ui.Hide(); ui.Show();
             Assert.AreNotEqual(initial, ui.canvas.transform.position);
             Assert.Less(Vector3.Angle(ui.canvas.transform.up, Vector3.up), 0.01f);
+        }
+
+        [UnityTest]
+        public IEnumerator HomeKeepsNavigationAndAdvancedSettingsInViewport()
+        {
+            var receiver = _root.AddComponent<QuestWebRtcReceiver>();
+            receiver.enabled = false;
+            receiver.signaling = _client;
+            receiver.xrCamera = _camera;
+            var home = _root.AddComponent<QuestHomeUI>();
+            home.Initialize(_client, _camera, receiver);
+            Canvas.ForceUpdateCanvases();
+
+            Button advanced = null, phone = null, videos = null, keyboard = null;
+            foreach (var button in home.GetComponentsInChildren<Button>(true))
+            {
+                var text = button.GetComponentInChildren<Text>();
+                if (text == null) continue;
+                if (text.text == "⚙ Settings") advanced = button;
+                if (text.text == "Screen") phone = button;
+                if (text.text == "Media") videos = button;
+                if (text.text == "Keyboard") keyboard = button;
+            }
+
+            Assert.IsNotNull(advanced);
+            Assert.IsNotNull(phone);
+            Assert.IsNotNull(videos);
+            Assert.IsNotNull(keyboard);
+            var viewport = _camera.WorldToViewportPoint(advanced.transform.position);
+            Assert.Greater(viewport.z, 0f);
+            Assert.That(viewport.x, Is.InRange(0.1f, 0.9f));
+            Assert.That(viewport.y, Is.InRange(0.15f, 0.85f));
+
+            var canvas = home.GetComponentInChildren<Canvas>(true);
+            Assert.AreEqual(new Vector2(900f, 520f), ((RectTransform)canvas.transform).sizeDelta);
+            Assert.That(((RectTransform)canvas.transform).lossyScale.x, Is.EqualTo(0.0015f).Within(0.00001f));
+            var panel = canvas.transform.Find("HomePanel");
+            var deviceScroll = panel.Find("DeviceScroll") as RectTransform;
+            Assert.IsNotNull(deviceScroll);
+            Assert.Less(deviceScroll.anchorMax.y, advanced.GetComponent<RectTransform>().anchorMin.y);
+            Assert.Less(phone.GetComponent<RectTransform>().anchorMax.x, videos.GetComponent<RectTransform>().anchorMin.x);
+            Assert.Less(videos.GetComponent<RectTransform>().anchorMax.x, keyboard.GetComponent<RectTransform>().anchorMin.x);
+            Assert.Less(keyboard.GetComponent<RectTransform>().anchorMax.x, advanced.GetComponent<RectTransform>().anchorMin.x);
+
+            advanced.onClick.Invoke();
+            var settingsObject = GameObject.Find("SettingsUI");
+            var settings = settingsObject == null ? null : settingsObject.GetComponent<SettingsUI>();
+            Assert.IsNotNull(settings);
+            Assert.IsTrue(settings.IsVisible);
+            Assert.IsNotNull(settings.signalingUrlInput);
+            Assert.IsNotNull(settings.tokenInput);
+            Assert.IsNotNull(settings.questDeviceIdInput);
+            Assert.IsNotNull(settings.androidDeviceIdInput);
+            Assert.IsNotNull(settings.sessionIdInput);
+            Assert.IsNotNull(settings.mediaBaseUrlInput);
+            Assert.IsNotNull(settings.connectButton);
+            yield return null;
+        }
+
+        [Test]
+        public void PeerConnectedDoesNotHideVisibleAdvancedSettings()
+        {
+            var ui = CreateUi();
+            ui.ShowAdvanced();
+            Assert.IsTrue(ui.IsVisible);
+            var method = typeof(SettingsUI).GetMethod("OnStateChanged", BindingFlags.NonPublic | BindingFlags.Instance);
+            method.Invoke(ui, new object[] { ConnectionState.PeerConnected });
+            Assert.IsTrue(ui.IsVisible);
+        }
+
+        [Test]
+        public void WirelessAdbHelperSelectsIpv4AndBuildsSafeCommand()
+        {
+            Assert.AreEqual("192.168.1.20", WirelessAdbHelper.SelectIpv4(new[] {
+                "127.0.0.1", "invalid", "8.8.8.8", "192.168.1.20"
+            }));
+            Assert.AreEqual(string.Empty, WirelessAdbHelper.SelectIpv4(new[] { "127.0.0.1", "not-an-ip" }));
+            Assert.AreEqual("adb connect 192.168.1.20:5555", WirelessAdbHelper.BuildConnectCommand("192.168.1.20"));
+            Assert.AreEqual(string.Empty, WirelessAdbHelper.BuildConnectCommand("not-an-ip"));
+        }
+
+        [Test]
+        public void WirelessAdbHelperMapsProbeStatesAndSettingsFallback()
+        {
+            Assert.AreEqual(WirelessAdbStatus.Unknown, WirelessAdbHelper.ProbePort(string.Empty));
+            Assert.AreEqual("Listening", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.Listening));
+            Assert.AreEqual("Not listening", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.NotListening));
+            Assert.AreEqual("Unknown", WirelessAdbHelper.StatusLabel(WirelessAdbStatus.Unknown));
+
+            var attempts = 0;
+            Assert.IsFalse(WirelessAdbHelper.TryOpenSettings(action => {
+                attempts++;
+                throw new System.InvalidOperationException(action);
+            }));
+            Assert.AreEqual(2, attempts);
+        }
+
+        [Test]
+        public void NsdLateResolveCannotPromoteLostService()
+        {
+            Assert.IsTrue(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(true, true));
+            Assert.IsFalse(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(true, false));
+            Assert.IsFalse(MediaDeviceDiscovery.ShouldAcceptResolvedCallback(false, true));
+        }
+
+        [Test]
+        public void UnifiedDeviceCapabilitiesRemainDiscoverableWithoutSecrets()
+        {
+            var device = new MediaDeviceInfo(
+                capabilities: "media,screen,control",
+                streamId: "android-stream-001",
+                signalingUrl: "ws://192.168.1.9:8787"
+            );
+            Assert.IsTrue(device.HasCapability("media"));
+            Assert.IsTrue(device.HasCapability("screen"));
+            Assert.IsTrue(device.HasCapability("control"));
+            Assert.IsFalse(device.HasCapability("token"));
+            Assert.AreEqual("android-stream-001", device.streamId);
+            Assert.AreEqual("ws://192.168.1.9:8787", device.signalingUrl);
+        }
+
+        [Test]
+        public void SelectedDeviceMetadataAppliesToExistingSignalingClient()
+        {
+            var ui = CreateUi();
+            ui.ApplyDiscoveredSignaling(" ws://192.168.1.9:8787 ", " android-stream-001 ");
+
+            Assert.AreEqual("ws://192.168.1.9:8787", _client.signalingUrl);
+            Assert.AreEqual("android-stream-001", _client.androidDeviceId);
+            Assert.AreEqual(_client.signalingUrl, ui.signalingUrlInput.text);
+            Assert.AreEqual(_client.androidDeviceId, ui.androidDeviceIdInput.text);
+        }
+
+        [UnityTest]
+        public IEnumerator DeveloperToolsIsAnAdvancedSettingsChildPage()
+        {
+            var ui = CreateUi();
+            if (!WirelessAdbHelper.IsDeveloperToolsAvailable)
+            {
+                Assert.IsNull(ui.developerToolsButton);
+                yield break;
+            }
+            Assert.IsNotNull(ui.developerToolsButton);
+            Assert.IsNotNull(ui.wirelessAdbHelper);
+            ui.developerToolsButton.onClick.Invoke();
+            Assert.IsTrue(ui.IsVisible);
+            Assert.IsTrue(ui.developerHud.IsVisible);
+            Assert.IsFalse(ui.wirelessAdbHelper.IsVisible);
+            ui.HideDeveloperTools();
+            yield return null;
         }
     }
 }
