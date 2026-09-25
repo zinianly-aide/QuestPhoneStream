@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.meta.xr.mrutilitykit": "85.0.0",
     "com.unity.test-framework": "1.1.33",
     "com.unity.webrtc": "3.0.0-pre.8",
     "com.unity.xr.openxr": "1.14.1",

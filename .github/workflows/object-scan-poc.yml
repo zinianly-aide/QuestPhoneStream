@@ -1,0 +1,47 @@
+name: Object Scan POC
+
+on:
+  push:
+    branches:
+      - feat/object-scan-poc
+    paths:
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScan*.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs"
+      - "apps/quest-unity-client/Packages/manifest.json"
+      - "apps/object-scan-worker/**"
+      - "scripts/check-object-scan-poc.mjs"
+      - "docs/object-scan-poc.md"
+      - ".github/workflows/object-scan-poc.yml"
+  pull_request:
+    paths:
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Scripts/ObjectScan*.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Tests/PlayMode/ObjectScanPocTests.cs"
+      - "apps/quest-unity-client/Assets/QuestPhoneStream/Editor/AndroidManifestPostProcessor.cs"
+      - "apps/quest-unity-client/Packages/manifest.json"
+      - "apps/object-scan-worker/**"
+      - "scripts/check-object-scan-poc.mjs"
+      - "docs/object-scan-poc.md"
+      - ".github/workflows/object-scan-poc.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: object-scan-poc-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check object scan G0-G4 contract
+        run: node scripts/check-object-scan-poc.mjs
+
+      - name: Test desktop scan worker
+        run: node --test apps/object-scan-worker/test/*.test.mjs
