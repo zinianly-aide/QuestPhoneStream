@@ -39,7 +39,12 @@
     <button id="save">Apply signaling endpoint</button>
   </div>
   <div class="card">
-    <select id="sources"></select>
+    <label for="ai-bridge-url" class="muted">LingBot bridge (localhost)</label>
+    <input id="ai-bridge-url" type="text" value="http://127.0.0.1:8765"
+           placeholder="http://127.0.0.1:8765" autocomplete="off" spellcheck="false" />
+    <select id="sources">
+      <option value="qps-ai-video">LingBot AI video · localhost bridge</option>
+    </select>
     <button id="start">Start stream</button>
     <button id="stop">Stop</button>
   </div>

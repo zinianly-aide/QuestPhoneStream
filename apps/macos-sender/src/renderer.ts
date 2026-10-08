@@ -7,6 +7,7 @@ import {
   type SpatialEnvelope
 } from "./protocol";
 import { SpatialSubscriptionTracker } from "./subscriptions";
+import { captureSourceOptions } from "./sourceOptions";
 
 declare global {
   interface Window {
@@ -510,7 +511,10 @@ async function startCapture(): Promise<void> {
     if (activeSession) await createPeer(activeSession);
   } catch (error) {
     stream = null; setRuntimeState(false, false);
-    uiState("permission", `Screen capture denied/unavailable — grant Screen Recording in System Settings: ${error instanceof Error ? error.message : "error"}`);
+    const reason = error instanceof Error ? error.message : "error";
+    uiState("permission", sourceId === "qps-ai-video"
+      ? `LingBot video source unavailable: ${reason}`
+      : `Screen capture denied/unavailable — grant Screen Recording in System Settings: ${reason}`);
   }
 }
 
@@ -557,10 +561,24 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     log("listSources failed:", String(err));
   }
-  el.sources().replaceChildren(...sources.map(source => {
-    const option = document.createElement("option"); option.value = source.id; option.textContent = source.name; return option;
+  // Source enumeration can resolve after the bootstrap script runs.
+  // Always include the AI pseudo source in the authoritative list instead of
+  // relying on a MutationObserver to repair a later replaceChildren().
+  const sourceSelect = el.sources();
+  const previouslySelected = sourceSelect.value;
+  const available = captureSourceOptions(sources);
+  sourceSelect.replaceChildren(...available.map(source => {
+    const option = document.createElement("option");
+    option.value = source.id;
+    option.textContent = source.name;
+    return option;
   }));
-  if (!sources.length) uiState("permission", "No screens visible — grant Screen Recording permission in System Settings");
+  if (available.some(source => source.id === previouslySelected)) {
+    sourceSelect.value = previouslySelected;
+  }
+  if (!sources.length) {
+    uiState("ready", "No screens available — LingBot AI video is still selectable");
+  }
   el.start().addEventListener("click", () => void startCapture());
   el.stop().addEventListener("click", stopCapture);
   el.saveButton().addEventListener("click", () => void applySignalingUrl(el.signalingInput().value));
