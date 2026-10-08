@@ -32,6 +32,50 @@ export function frameRequestUrl(baseUrl: string, pollId: number): string {
   return `${normalizeBridgeUrl(baseUrl)}/v1/frame.jpg?poll=${pollId}`;
 }
 
+/** Read one actual frame before captureStream(), so Chromium negotiates the real
+ * landscape/portrait dimensions rather than the temporary 2x2 canvas size. */
+export async function primeAiVideoCanvas(
+  bridgeUrl: string,
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  timeoutMs = 20_000
+): Promise<{ sequence: number; ptsMs: number }> {
+  const deadline = Date.now() + timeoutMs;
+  let pollId = 0;
+  while (Date.now() < deadline) {
+    const controller = new AbortController();
+    const requestTimeout = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(frameRequestUrl(bridgeUrl, pollId++), {
+        cache: "no-store", signal: controller.signal
+      });
+      if (response.status !== 404 && response.status !== 204) {
+        if (!response.ok) throw new Error(`LingBot frame HTTP ${response.status}`);
+        const bitmap = await createImageBitmap(await response.blob());
+        try {
+          if (bitmap.width <= 0 || bitmap.height <= 0)
+            throw new Error("LingBot returned an invalid frame size");
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        } finally {
+          bitmap.close();
+        }
+        return {
+          sequence: Number(response.headers.get("X-QPS-Frame-Seq") ?? "-1"),
+          ptsMs: Number(response.headers.get("X-QPS-PTS-Ms") ?? "0")
+        };
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    } finally {
+      clearTimeout(requestTimeout);
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error("LingBot bridge has no video frame yet (waited 20s); start C7 generation first");
+}
+
 /**
  * Convert LingBot's localhost latest-JPEG bridge into a browser MediaStream.
  *
@@ -52,8 +96,9 @@ export async function createAiVideoSource(options: AiVideoSourceOptions = {}): P
   canvas.height = 2;
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("2D canvas unavailable");
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // A WebRTC sender may pin the dimensions observed when the track starts.
+  // Never negotiate the placeholder 2x2 canvas as the AI video resolution.
+  const firstFrame = await primeAiVideoCanvas(bridgeUrl, canvas, ctx);
 
   const mediaStream = canvas.captureStream(fps);
   const track = mediaStream.getVideoTracks()[0];
@@ -61,14 +106,14 @@ export async function createAiVideoSource(options: AiVideoSourceOptions = {}): P
   track.contentHint = "detail";
 
   let stopped = false;
-  let pollId = 0;
+  let pollId = 1;
   let timer: number | null = null;
   const counters: AiVideoSourceStats = {
-    receivedFrames: 0,
+    receivedFrames: 1,
     duplicatePolls: 0,
     errors: 0,
-    lastSequence: -1,
-    lastPtsMs: 0
+    lastSequence: firstFrame.sequence,
+    lastPtsMs: firstFrame.ptsMs
   };
 
   const intervalMs = Math.max(16, Math.round(1000 / fps));

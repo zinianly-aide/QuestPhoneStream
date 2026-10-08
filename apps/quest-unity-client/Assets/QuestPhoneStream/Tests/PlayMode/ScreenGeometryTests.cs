@@ -37,6 +37,37 @@ namespace QuestPhoneStream.Tests.PlayMode
         }
 
         [Test]
+        public void WebRtcReceiver_ChangesScreenPanelFromPortraitToLandscape()
+        {
+            var root = new GameObject("PhonePanelRoot");
+            var surface = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            surface.name = "PhoneScreen";
+            surface.transform.SetParent(root.transform, false);
+            surface.transform.localScale = new Vector3(.72f, 1.6f, 1f);
+            var receiverObject = new GameObject("Receiver");
+            var receiver = receiverObject.AddComponent<QuestWebRtcReceiver>();
+            receiver.enabled = false;
+            try
+            {
+                var shell = root.AddComponent<SpatialPanelShell>();
+                shell.Initialize(surface.transform, surface.GetComponent<Collider>(), null, null);
+                receiver.BindScreenSurface(shell, null);
+                receiver.SyncScreenAspectFromVideo(672, 368);
+                Assert.That(surface.transform.localScale.x / surface.transform.localScale.y,
+                    Is.EqualTo(672f / 368f).Within(.002f));
+                receiver.SyncScreenAspectFromVideo(368, 672);
+                Assert.That(surface.transform.localScale.y / surface.transform.localScale.x,
+                    Is.EqualTo(672f / 368f).Within(.002f));
+                Assert.That(shell.Router.screenCollider.transform, Is.SameAs(surface.transform));
+            }
+            finally
+            {
+                Object.DestroyImmediate(receiverObject);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void SurfaceAspect_PreservesSurfaceScaleSigns()
         {
             var root = new GameObject("SpatialPanelRoot");

@@ -42,51 +42,7 @@ Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
   value: getUserMedia
 });
 
-function ensureAiOption(): void {
-  const select = document.getElementById("sources") as HTMLSelectElement | null;
-  if (!select) return;
-  if (Array.from(select.options).some(option => option.value === AI_VIDEO_SOURCE_ID)) return;
-  const option = document.createElement("option");
-  option.value = AI_VIDEO_SOURCE_ID;
-  option.textContent = "LingBot AI video · localhost bridge";
-  select.append(option);
-}
-
-function ensureBridgeInput(): void {
-  const select = document.getElementById("sources") as HTMLSelectElement | null;
-  if (!select) return;
-  const card = select.parentElement;
-  if (!card || document.getElementById("ai-bridge-url")) return;
-
-  const label = document.createElement("label");
-  label.setAttribute("for", "ai-bridge-url");
-  label.className = "muted";
-  label.textContent = "LingBot bridge";
-
-  const input = document.createElement("input");
-  input.id = "ai-bridge-url";
-  input.value = DEFAULT_AI_VIDEO_BRIDGE_URL;
-  input.placeholder = DEFAULT_AI_VIDEO_BRIDGE_URL;
-  input.autocomplete = "off";
-  input.spellcheck = false;
-
-  card.insertBefore(label, select);
-  card.insertBefore(input, select);
-}
-
-const observer = new MutationObserver(() => {
-  ensureBridgeInput();
-  ensureAiOption();
-});
-observer.observe(document.documentElement, { childList: true, subtree: true });
-
-window.addEventListener("DOMContentLoaded", () => {
-  ensureBridgeInput();
-  ensureAiOption();
-});
-
 window.addEventListener("beforeunload", () => {
-  observer.disconnect();
   activeHandle?.stop();
   activeHandle = null;
 });

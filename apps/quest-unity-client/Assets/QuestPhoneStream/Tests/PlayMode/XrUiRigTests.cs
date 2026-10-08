@@ -60,6 +60,7 @@ namespace QuestPhoneStream.Tests
 
                 var panelRoot = GameObject.Find("PhonePanelRoot");
                 Assert.IsNotNull(panelRoot);
+                Assert.IsNotNull(panelRoot.GetComponent<PhonePanelController>());
                 Assert.AreSame(origin.transform.Find("SpatialPanels"), panelRoot.transform.parent);
                 Assert.AreNotSame(camera.transform, panelRoot.transform.parent);
                 var screen = panelRoot.transform.Find("PhoneScreen");
