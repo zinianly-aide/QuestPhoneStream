@@ -5,5 +5,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/renderer.ts", "src/protocol.ts", "src/subscriptions.ts"]
+  "include": ["src/renderer.ts", "src/aiVideoBootstrap.ts", "src/aiVideoSource.ts", "src/protocol.ts", "src/subscriptions.ts"]
 }

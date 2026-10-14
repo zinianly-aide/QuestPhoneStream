@@ -7,11 +7,23 @@ import {
   type SpatialEnvelope
 } from "./protocol";
 import { SpatialSubscriptionTracker } from "./subscriptions";
+import { captureSourceOptions } from "./sourceOptions";
+
+interface AdbSnapshot {
+  available: boolean;
+  services: string[];
+  connectedWireless: string[];
+  message: string;
+  checkedAt: number;
+}
 
 declare global {
   interface Window {
     qps: {
       getConfig(): Promise<SenderConfig>;
+      adbStatus(): Promise<AdbSnapshot>;
+      adbRefresh(): Promise<AdbSnapshot>;
+      onAdbState(cb: (state: AdbSnapshot) => void): void;
       listSources(): Promise<Array<{ id: string; name: string; thumbnail: string }>>;
       saveConfig(patch: Record<string, unknown>): Promise<{ config: SenderConfig }>;
       setSpatialReady(ready: boolean): void;
@@ -85,7 +97,9 @@ const el = {
   start: () => document.getElementById("start") as HTMLButtonElement,
   stop: () => document.getElementById("stop") as HTMLButtonElement,
   status: () => document.getElementById("status") as HTMLElement,
-  detail: () => document.getElementById("detail") as HTMLElement
+  detail: () => document.getElementById("detail") as HTMLElement,
+  adbStatus: () => document.getElementById("adb-status") as HTMLElement,
+  adbRefresh: () => document.getElementById("adb-refresh") as HTMLButtonElement
 };
 
 function setStatus(text: string): void { el.status().textContent = text; }
@@ -127,7 +141,12 @@ function describeChannels(): string {
 function refreshDetail(): void {
   const subs = subscriptions.snapshot();
   const subText = subs.length ? subs.map(s => `${s.capability}=${s.phase}`).join(" ") : "none";
-  setDetail(`peer ${describePeer()} · channels ${describeChannels()} · subs ${subText} · telemetry seq ${telemetryLastSequence} drop ${telemetryDropped}`);
+  // Same renderer window as aiVideoBootstrap; no extra network requests.
+  const ai = window.qpsAiVideoStats?.();
+  const aiText = ai ? ` · AI ${ai.observedUniqueFps.toFixed(1)}fps ` +
+    `fetch+draw p95 ${ai.fetchDecodeDrawP95Ms.toFixed(0)}ms · ` +
+    `last-frame ${ai.msSinceLastNewFrame}ms · seq gaps ${ai.sequenceGaps}` : "";
+  setDetail(`peer ${describePeer()} · channels ${describeChannels()} · subs ${subText} · telemetry seq ${telemetryLastSequence} drop ${telemetryDropped}${aiText}`);
 }
 
 function publishCapabilityChanged(): void {
@@ -510,7 +529,10 @@ async function startCapture(): Promise<void> {
     if (activeSession) await createPeer(activeSession);
   } catch (error) {
     stream = null; setRuntimeState(false, false);
-    uiState("permission", `Screen capture denied/unavailable — grant Screen Recording in System Settings: ${error instanceof Error ? error.message : "error"}`);
+    const reason = error instanceof Error ? error.message : "error";
+    uiState("permission", sourceId === "qps-ai-video"
+      ? `LingBot video source unavailable: ${reason}`
+      : `Screen capture denied/unavailable — grant Screen Recording in System Settings: ${reason}`);
   }
 }
 
@@ -547,6 +569,13 @@ function showConfigState(state: { config: SenderConfig; source: string }): void 
   }
 }
 
+function showAdbSnapshot(state: AdbSnapshot): void {
+  const lines = [state.message];
+  if (state.services?.length) lines.push("TLS mDNS: " + state.services.join(", "));
+  if (state.connectedWireless?.length) lines.push("Connected: " + state.connectedWireless.join(", "));
+  el.adbStatus().textContent = lines.join(" · ");
+}
+
 async function bootstrap(): Promise<void> {
   const state = await window.qps.getConfig();
   showConfigState({ config: state as unknown as SenderConfig, source: state.signalingUrl ? "persisted" : "none" });
@@ -557,10 +586,32 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     log("listSources failed:", String(err));
   }
-  el.sources().replaceChildren(...sources.map(source => {
-    const option = document.createElement("option"); option.value = source.id; option.textContent = source.name; return option;
+  // Source enumeration can resolve after the bootstrap script runs.
+  // Always include the AI pseudo source in the authoritative list instead of
+  // relying on a MutationObserver to repair a later replaceChildren().
+  const sourceSelect = el.sources();
+  const previouslySelected = sourceSelect.value;
+  const available = captureSourceOptions(sources);
+  sourceSelect.replaceChildren(...available.map(source => {
+    const option = document.createElement("option");
+    option.value = source.id;
+    option.textContent = source.name;
+    return option;
   }));
-  if (!sources.length) uiState("permission", "No screens visible — grant Screen Recording permission in System Settings");
+  if (available.some(source => source.id === previouslySelected)) {
+    sourceSelect.value = previouslySelected;
+  }
+  if (!sources.length) {
+    uiState("ready", "No screens available — LingBot AI video is still selectable");
+  }
+  window.qps.onAdbState(showAdbSnapshot);
+  window.qps.adbStatus().then(showAdbSnapshot).catch(error => {
+    el.adbStatus().textContent = "ADB unavailable: " + String(error);
+  });
+  el.adbRefresh().addEventListener("click", () =>
+    void window.qps.adbRefresh().then(showAdbSnapshot).catch(error => {
+      el.adbStatus().textContent = "ADB refresh failed: " + String(error);
+    }));
   el.start().addEventListener("click", () => void startCapture());
   el.stop().addEventListener("click", stopCapture);
   el.saveButton().addEventListener("click", () => void applySignalingUrl(el.signalingInput().value));
@@ -570,6 +621,11 @@ async function bootstrap(): Promise<void> {
     connectSignaling();
   });
   window.qps.onConfigState(showConfigState);
+  // Show actual source receive cadence while active; separate from Quest
+  // headset presentation FPS and model generation throughput.
+  window.setInterval(() => {
+    if (window.qpsAiVideoStats?.()) refreshDetail();
+  }, 1000);
 }
 
 void bootstrap();

@@ -12,6 +12,7 @@ import {
   hostname
 } from "./config";
 import { SignalingDiscovery } from "./discovery";
+import { WirelessAdbAutoConnect } from "./adbAutoConnect";
 
 class UnifiedDeviceAdvertisement {
   private readonly bonjour = new Bonjour();
@@ -100,6 +101,7 @@ class UnifiedDeviceAdvertisement {
 
 let advertisement: UnifiedDeviceAdvertisement | null = null;
 let discovery: SignalingDiscovery | null = null;
+let wirelessAdb: WirelessAdbAutoConnect | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentConfig: SenderConfig;
 let pendingDiscoveredUrl = "";
@@ -151,6 +153,15 @@ app.whenReady().then(async () => {
   discovery.start();
   log("discovery started");
 
+  // ADB manages TLS pairing and auto-connect itself; we only start/observe it.
+  wirelessAdb = new WirelessAdbAutoConnect(snapshot => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send("qps:adb-state", snapshot);
+  });
+  wirelessAdb.start();
+  ipcMain.handle("qps:adb-status", () => wirelessAdb?.current());
+  ipcMain.handle("qps:adb-refresh", () => wirelessAdb?.refresh());
+
   ipcMain.handle("qps:get-config", () => currentConfig);
   ipcMain.handle("qps:list-sources", async () => {
     const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 320, height: 180 } });
@@ -186,9 +197,11 @@ app.whenReady().then(async () => {
     pendingDiscoveredUrl = "";
   }
   broadcastConfigState();
+  mainWindow.webContents.send("qps:adb-state", wirelessAdb.current());
 });
 
 app.on("before-quit", () => {
+  wirelessAdb?.stop();
   advertisement?.stop();
   discovery?.stop();
 });

@@ -213,6 +213,18 @@ namespace QuestPhoneStream.Tests
         }
 
         [Test]
+        public void WirelessAdbEnableIsExplicitAndSettingsFallbackRemainsAvailable()
+        {
+            // Editor runs have no privileged Android API. The helper must
+            // not autonomously change the system setting or claim success.
+            Assert.IsNull(WirelessAdbHelper.ReadWirelessDebuggingEnabled());
+            Assert.IsFalse(WirelessAdbHelper.HasSecureSettingsGrant());
+            Assert.IsFalse(WirelessAdbHelper.TryRequestEnableWirelessDebugging());
+            CollectionAssert.Contains(WirelessAdbHelper.WirelessDebuggingSettingsActions,
+                "android.settings.WIRELESS_DEBUGGING_SETTINGS");
+        }
+
+        [Test]
         public void WirelessAdbHelperMapsProbeStatesAndSettingsFallback()
         {
             Assert.AreEqual(WirelessAdbStatus.Unknown, WirelessAdbHelper.ProbePort(string.Empty));

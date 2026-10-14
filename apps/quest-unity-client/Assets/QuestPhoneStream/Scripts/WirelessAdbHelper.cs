@@ -17,8 +17,9 @@ namespace QuestPhoneStream
     }
 
     /// <summary>
-    /// Developer-only helper for opening wireless ADB settings and probing the legacy TCP port.
-    /// It never enables ADB or changes Android system debug state.
+    /// Development-build-only, explicitly user-triggered helper. If the user has
+    /// granted WRITE_SECURE_SETTINGS over USB, requests Android TLS wireless ADB.
+    /// Otherwise opens system settings. Android controls pairing and the TLS port.
     /// </summary>
     public sealed class WirelessAdbHelper : MonoBehaviour
     {
@@ -33,6 +34,8 @@ namespace QuestPhoneStream
         private Canvas _canvas;
         private GameObject _page;
         private Text _ipText, _portText, _statusText, _commandText, _helpText;
+        private const string WirelessAdbSetting = "adb_wifi_enabled";
+        private const string SecureSettingsPermission = "android.permission.WRITE_SECURE_SETTINGS";
         private Action _onBack;
         private bool _initialized;
         private Coroutine _probeRoutine;
@@ -72,22 +75,111 @@ namespace QuestPhoneStream
         public void Refresh()
         {
             if (!_initialized || !IsVisible) return;
-
             CancelProbe();
             var ip = GetCurrentIpv4();
             _ipText.text = "Quest IP: " + (string.IsNullOrEmpty(ip) ? "Unavailable" : ip);
-            _portText.text = "ADB TCP: :" + DefaultAdbPort;
+            _portText.text = "Wireless ADB TLS port: dynamic (mDNS)";
+            _commandText.text = "Mac: adb mdns services / adb devices -l";
 
-            if (string.IsNullOrEmpty(ip))
+            var enabled = ReadWirelessDebuggingEnabled();
+            if (enabled == true)
             {
-                SetProbeState(WirelessAdbStatus.Unknown, string.Empty);
-                _helpText.text = "Quest IP is unavailable. Connect to Wi-Fi, then tap Refresh.";
+                _statusText.text = "Status: Wireless debugging enabled";
+                _helpText.text = "Android advertises _adb-tls-connect._tcp. Mac auto-connects ONLY after pairing. " +
+                    "Open system settings if you need to pair this Mac.";
+            }
+            else if (enabled == false)
+            {
+                _statusText.text = "Status: Wireless debugging off";
+                _helpText.text = HasSecureSettingsGrant()
+                    ? "Tap Enable Wireless ADB. If Horizon OS rejects the request, use System Settings."
+                    : "One-time USB setup: adb shell pm grant com.questphonestream.quest " +
+                      SecureSettingsPermission + "\nIf permission is blocked, use System Settings.";
+            }
+            else
+            {
+                _statusText.text = "Status: Unavailable on this build";
+                _helpText.text = "Open system wireless debugging settings and pair your Mac. " +
+                    "This screen never bypasses Android ADB authentication.";
+            }
+        }
+
+        // Returns null outside Android, or when Quest does not expose this setting.
+        public static bool? ReadWirelessDebuggingEnabled()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var resolver = activity.Call<AndroidJavaObject>("getContentResolver"))
+                using (var settings = new AndroidJavaClass("android.provider.Settings$Global"))
+                    return settings.CallStatic<int>("getInt", resolver, WirelessAdbSetting, 0) == 1;
+            }
+            catch (Exception) { return null; }
+#else
+            return null;
+#endif
+        }
+
+        public static bool HasSecureSettingsGrant()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                    return activity.Call<int>("checkSelfPermission", SecureSettingsPermission) == 0;
+            }
+            catch (Exception) { return false; }
+#else
+            return false;
+#endif
+        }
+
+        // Do not request runtime signature permissions. Only an explicit USB
+        // pm grant can authorize this developer-only feature, if OS permits it.
+        // Merely writing the setting does NOT prove adbd has opened a TLS port.
+        public static bool TryRequestEnableWirelessDebugging()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR && (DEVELOPMENT_BUILD || QPS_DEV_TOOLS)
+            if (!HasSecureSettingsGrant()) return false;
+            try
+            {
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var resolver = activity.Call<AndroidJavaObject>("getContentResolver"))
+                using (var settings = new AndroidJavaClass("android.provider.Settings$Global"))
+                    return settings.CallStatic<bool>("putInt", resolver, WirelessAdbSetting, 1);
+            }
+            catch (Exception) { return false; }
+#else
+            return false;
+#endif
+        }
+
+        private void EnableWirelessDebugging()
+        {
+            if (!HasSecureSettingsGrant())
+            {
+                _helpText.text = "USB one-time grant required (if supported):\n" +
+                    "adb shell pm grant com.questphonestream.quest " + SecureSettingsPermission +
+                    "\nThen return and tap Enable. Or use System Settings.";
+                _statusText.text = "Status: permission not granted";
                 return;
             }
 
-            SetProbeState(WirelessAdbStatus.Unknown, BuildConnectCommand(ip, DefaultAdbPort));
-            _helpText.text = "Checking port 5555...";
-            _probeRoutine = StartCoroutine(ProbeRoutine(ip, _probeGeneration));
+            if (!TryRequestEnableWirelessDebugging())
+            {
+                _helpText.text = "Quest rejected the wireless debug request. Use System Settings.";
+                _statusText.text = "Status: request denied";
+                return;
+            }
+
+            Refresh();
+            _helpText.text = ReadWirelessDebuggingEnabled() == true
+                ? "Setting accepted; wait for Android TLS mDNS, then Mac connects if paired."
+                : "Request submitted but not confirmed. Use System Settings if still off.";
         }
 
         public static string SelectIpv4(IEnumerable<string> addresses)
@@ -292,8 +384,8 @@ namespace QuestPhoneStream
             CreateText(_page.transform, "", 20, TextAnchor.MiddleLeft, 0.08f, 0.32f, 0.92f, 0.40f, out _commandText);
             CreateText(_page.transform, "", 17, TextAnchor.UpperLeft, 0.08f, 0.17f, 0.92f, 0.31f, out _helpText);
 
-            CreateButton(_page.transform, "Open Wireless Debugging", 0.08f, 0.06f, 0.38f, 0.14f, OpenWirelessDebugging);
-            CreateButton(_page.transform, "Copy Command", 0.41f, 0.06f, 0.62f, 0.14f, CopyCommand);
+            CreateButton(_page.transform, "Enable Wireless ADB", 0.08f, 0.06f, 0.40f, 0.14f, EnableWirelessDebugging);
+            CreateButton(_page.transform, "System Settings", 0.41f, 0.06f, 0.64f, 0.14f, OpenWirelessDebugging);
             CreateButton(_page.transform, "Refresh", 0.65f, 0.06f, 0.78f, 0.14f, Refresh);
             CreateButton(_page.transform, "Back", 0.81f, 0.06f, 0.92f, 0.14f, Back);
             _page.SetActive(false);

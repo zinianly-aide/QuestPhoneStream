@@ -41,7 +41,20 @@ namespace QuestPhoneStream
             _screenShell.SetInteractive(interactive);
         }
         public void BindScreenSurface(SpatialPanelShell shell, PanelInputMapper mapper)
-        { _screenShell = shell; _screenMapper = mapper; RefreshScreenHandler(); }
+        {
+            _screenShell = shell;
+            _screenMapper = mapper;
+            RefreshScreenHandler();
+            if (_receivedTexture != null)
+                SyncScreenAspectFromVideo(_receivedTexture.width, _receivedTexture.height);
+        }
+        // Keep the actual Quad and its collider in the same aspect as the
+        // decoded remote frame. Works for phone rotations and Mac AI video.
+        public void SyncScreenAspectFromVideo(int pixelWidth, int pixelHeight)
+        {
+            _screenShell?.SetSurfaceAspect(pixelWidth, pixelHeight);
+        }
+
         private void RefreshScreenHandler()
         {
             if (_screenShell == null) return;
@@ -474,6 +487,11 @@ namespace QuestPhoneStream
             if (_peer == null || texture == null || !signaling.IsCurrentNegotiation(_negotiationId)) return;
             EnsureRenderTexture(texture.width, texture.height);
             _receivedTexture = texture;
+            // Match geometry and hit collider to the decoded track dimensions,
+            // including Mac/LingBot landscape sources and reconnect rotations.
+            // Do not depend solely on PhonePanelController.LateUpdate() being
+            // present in a particular scene prefab or panel hierarchy.
+            SyncScreenAspectFromVideo(texture.width, texture.height);
             if (targetMaterial != null) targetMaterial.mainTexture = _renderTexture;
             if (_panelInput == null) _panelInput = FindFirstObjectByType<PanelInputMapper>();
             _panelInput?.SetAndroidResolution(texture.width, texture.height);

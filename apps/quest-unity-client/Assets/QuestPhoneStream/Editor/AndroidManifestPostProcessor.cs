@@ -1,5 +1,6 @@
 using System.IO;
 using System.Xml;
+using UnityEditor;
 using UnityEditor.Android;
 using UnityEngine;
 
@@ -12,6 +13,7 @@ namespace QuestPhoneStream.Editor
 
         private const string OverlayKeyboardFeature = "oculus.software.overlay_keyboard";
         private const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
+        private const string SecureSettingsPermission = "android.permission.WRITE_SECURE_SETTINGS";
         private const string AndroidNs = "http://schemas.android.com/apk/res/android";
 
         public void OnPostGenerateGradleAndroidProject(string path)
@@ -92,6 +94,17 @@ namespace QuestPhoneStream.Editor
                 manifest.AppendChild(permissionElement);
                 changed = true;
                 Debug.Log("[AndroidManifestPostProcessor] Added HEADSET_CAMERA permission declaration");
+            }
+
+            // Elevated ADB settings toggle is opt-in and NEVER in release builds.
+            // Unity's development build checkbox enables the diagnostic UI too.
+            if (EditorUserBuildSettings.development &&
+                !HasNamedElement(manifest, "uses-permission", SecureSettingsPermission))
+            {
+                var permission = doc.CreateElement("uses-permission");
+                AppendAndroidAttribute(doc, permission, "name", SecureSettingsPermission);
+                manifest.AppendChild(permission);
+                changed = true;
             }
 
             if (changed)

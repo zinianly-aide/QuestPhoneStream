@@ -128,6 +128,10 @@ namespace QuestPhoneStream
             }
 
             var root = panel.name == "PhonePanelRoot" ? panel : CreatePhonePanelRoot(panel, spatialPanels);
+            // Existing serialized PhonePanelRoot scenes must get the same aspect
+            // observer as dynamically created roots (Mac screens are landscape).
+            if (root.GetComponent<PhonePanelController>() == null)
+                root.AddComponent<PhonePanelController>();
             root.transform.SetParent(spatialPanels, true);
             var screen = root.transform.Find("PhoneScreen")?.gameObject ?? panel;
             var screenCollider = screen.GetComponent<Collider>();

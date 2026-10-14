@@ -39,13 +39,28 @@
     <button id="save">Apply signaling endpoint</button>
   </div>
   <div class="card">
-    <select id="sources"></select>
+    <label for="ai-bridge-url" class="muted">LingBot bridge (localhost)</label>
+    <input id="ai-bridge-url" type="text" value="http://127.0.0.1:8765"
+           placeholder="http://127.0.0.1:8765" autocomplete="off" spellcheck="false" />
+    <select id="sources">
+      <option value="qps-ai-video">LingBot AI video · localhost bridge</option>
+    </select>
     <button id="start">Start stream</button>
     <button id="stop">Stop</button>
   </div>
   <div class="card">
     <div id="status">Starting…</div>
     <div id="detail" class="muted"></div>
+  </div>
+  <div class="card">
+    <div class="row">
+      <strong>Quest wireless ADB (paired devices only)</strong>
+      <button id="adb-refresh" type="button">Refresh ADB</button>
+    </div>
+    <div id="adb-status" class="muted" aria-live="polite">Starting local ADB service…</div>
+    <div class="muted">Quest: Diagnostics → Wireless ADB → Enable. Pair this Mac once in
+      the headset's system Wireless debugging settings if not previously trusted.
+      The ADB server discovers the changing TLS port automatically.</div>
   </div>
   <div class="muted">Screen / LingBot AI-video publish · NSD · Spatial telemetry consumer · existing WebRTC path</div>
   <script src="ai-video-bootstrap.js"></script>
