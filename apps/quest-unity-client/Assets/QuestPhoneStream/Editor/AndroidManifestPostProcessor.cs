@@ -96,15 +96,25 @@ namespace QuestPhoneStream.Editor
                 Debug.Log("[AndroidManifestPostProcessor] Added HEADSET_CAMERA permission declaration");
             }
 
-            // Elevated ADB settings toggle is opt-in and NEVER in release builds.
-            // Unity's development build checkbox enables the diagnostic UI too.
-            if (EditorUserBuildSettings.development &&
+            // BuildOptions.Development does NOT always update the Editor UI
+            // checkbox (EditorUserBuildSettings.development) in batchmode.
+            // Our explicit dev-tools define is added only by
+            // QuestPhoneStreamBuild.BuildAndroidDevelopmentTools, and removed
+            // by BuildAndroid. Gate the privileged permission on that define.
+#if UNITY_2021_3_OR_NEWER
+            var androidDefines = PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Android);
+#else
+            var androidDefines = PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android);
+#endif
+            var devToolsBuild = System.Array.IndexOf(androidDefines.Split(';'), "QPS_DEV_TOOLS") >= 0;
+            if (devToolsBuild &&
                 !HasNamedElement(manifest, "uses-permission", SecureSettingsPermission))
             {
                 var permission = doc.CreateElement("uses-permission");
                 AppendAndroidAttribute(doc, permission, "name", SecureSettingsPermission);
                 manifest.AppendChild(permission);
                 changed = true;
+                Debug.Log("[AndroidManifestPostProcessor] Added WRITE_SECURE_SETTINGS to dev-tools build");
             }
 
             if (changed)
