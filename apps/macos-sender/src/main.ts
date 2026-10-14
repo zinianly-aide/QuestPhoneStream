@@ -1,4 +1,6 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, systemPreferences, shell } from "electron";
+import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { Bonjour } from "bonjour-service";
@@ -13,6 +15,7 @@ import {
 } from "./config";
 import { SignalingDiscovery } from "./discovery";
 import { WirelessAdbAutoConnect } from "./adbAutoConnect";
+import { displayIdFromSource, mapClickToDisplay, parseClickCommand } from "./remoteControl";
 
 class UnifiedDeviceAdvertisement {
   private readonly bonjour = new Bonjour();
@@ -106,8 +109,43 @@ let mainWindow: BrowserWindow | null = null;
 let currentConfig: SenderConfig;
 let pendingDiscoveredUrl = "";
 
+// Input is disabled by default on every start; Mac user must explicitly opt in.
+let remoteClicksEnabled = false;
+let lastRemoteClickAt = 0;
+const clickHelper = () => app.isPackaged
+  ? path.join(process.resourcesPath, "qps-mac-click")
+  : path.join(__dirname, "../native/qps-mac-click");
+
+function runClickHelper(args: string[]): Promise<{ ok: boolean; message: string }> {
+  return new Promise(resolve => {
+    const helper = clickHelper();
+    if (!fs.existsSync(helper)) {
+      resolve({ ok: false, message: "Native click helper missing; rebuild Mac Sender" });
+      return;
+    }
+    execFile(helper, args, { timeout: args[0] === "drag" ? 5000 : 2500, windowsHide: true }, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        message: error ? (stderr.trim() || error.message) : (stdout.trim() || "Click delivered")
+      });
+    });
+  });
+}
+
+
 function log(...parts: unknown[]): void {
   console.log(`[macos-sender]`, ...parts);
+}
+
+// Durable control diagnostics; no tokens or actual click coordinates recorded.
+function controlLog(message: string): void {
+  const line = new Date().toISOString() + " [control] " + message + "\n";
+  console.log(line.trim());
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "control-debug.log"), line);
+  } catch (error) {
+    console.warn("[control] unable to save diagnostic log:", String(error));
+  }
 }
 
 function applyDiscoveredSignaling(url: string): void {
@@ -160,12 +198,103 @@ app.whenReady().then(async () => {
   });
   wirelessAdb.start();
   ipcMain.handle("qps:adb-status", () => wirelessAdb?.current());
-  ipcMain.handle("qps:adb-refresh", () => wirelessAdb?.refresh());
+  ipcMain.handle("qps:adb-refresh", async () => {
+    controlLog("ADB refresh requested");
+    if (!wirelessAdb) return { available: false, services: [], connectedWireless: [],
+      message: "ADB discovery not initialized", checkedAt: Date.now() };
+    const result = await wirelessAdb.refresh();
+    controlLog("ADB refresh completed: available=" + result.available +
+      " services=" + result.services.length +
+      " connected=" + result.connectedWireless.length +
+      " message=" + result.message.slice(0, 150));
+    return result;
+  });
+
+  ipcMain.handle("qps:control-enable", async (event, enable: unknown) => {
+    controlLog("toggle received enabled=" + String(enable));
+    if (event.sender !== mainWindow?.webContents) {
+      controlLog("toggle rejected: invalid sender");
+      return { enabled: false, message: "Invalid sender" };
+    }
+    if (enable !== true) {
+      remoteClicksEnabled = false;
+      controlLog("remote clicks disabled by Mac user");
+      return { enabled: false, message: "Remote clicks disabled" };
+    }
+    try {
+      const status = await runClickHelper(["status", "--prompt"]);
+      remoteClicksEnabled = status.ok;
+      controlLog(status.ok ? "Accessibility granted; enabled" : "Accessibility denied: " + status.message);
+      return { enabled: status.ok, message: status.ok ? "Remote clicks enabled" : status.message };
+    } catch (error) {
+      remoteClicksEnabled = false;
+      controlLog("helper failed: " + String(error));
+      return { enabled: false, message: "Accessibility check failed: " + String(error) };
+    }
+  });
+  ipcMain.handle("qps:control-click", async (event, payload: unknown) => {
+    if (event.sender !== mainWindow?.webContents || !remoteClicksEnabled ||
+        typeof payload !== "object" || payload === null) return { ok: false, message: "Remote clicks disabled" };
+    const request = payload as Record<string, unknown>;
+    const sourceId = request.sourceId;
+    const w = request.frameWidth, h = request.frameHeight;
+    if (typeof sourceId !== "string" || !Number.isInteger(w) || !Number.isInteger(h) ||
+        (w as number) < 1 || (h as number) < 1 || (w as number) > 16384 || (h as number) > 16384 ||
+        typeof request.command !== "string") return { ok: false, message: "Invalid source" };
+    const click = parseClickCommand(request.command, currentConfig.sessionId, w as number, h as number);
+    if (!click) return { ok: false, message: "Invalid/expired control command" };
+    if (Date.now() - lastRemoteClickAt < (click.type === "scroll" ? 60 : 100))
+      return { ok: false, message: "Input rate limit" };
+    const displayId = displayIdFromSource(sourceId);
+    const displays = screen.getAllDisplays();
+    const display = displays.find(d => d.id === displayId) ??
+      (displayId === 0 && displays.length === 1 ? displays[0] : null);
+    if (!display) return { ok: false, message: "Display not found" };
+    const point = mapClickToDisplay(click, w as number, h as number, display.bounds);
+    if (!point) return { ok: false, message: "Invalid coordinates" };
+    let args = ["click", point.x.toFixed(2), point.y.toFixed(2)];
+    if (click.type === "scroll") {
+      args = ["scroll", point.x.toFixed(2), point.y.toFixed(2),
+        String(click.deltaY), String(click.deltaX)];
+    } else if (click.type === "swipe") {
+      const end = mapClickToDisplay({ ...click, x: click.endX!, y: click.endY! },
+        w as number, h as number, display.bounds);
+      if (!end) return { ok: false, message: "Invalid swipe endpoint" };
+      args = ["drag", point.x.toFixed(2), point.y.toFixed(2),
+        end.x.toFixed(2), end.y.toFixed(2), String(click.durationMs)];
+    }
+    lastRemoteClickAt = Date.now();
+    const outcome = await runClickHelper(args);
+    if (click.type !== "scroll" || !outcome.ok)
+      controlLog("remote " + click.type + (outcome.ok ? " executed" : " failed: " + outcome.message));
+    if (!outcome.ok) {
+      remoteClicksEnabled = false;
+      log("remote click stopped:", outcome.message);
+    }
+    return outcome;
+  });
 
   ipcMain.handle("qps:get-config", () => currentConfig);
+  // Return explicit screen permission and enumeration status instead of
+  // silently leaving the LingBot pseudo-source as the only selection.
   ipcMain.handle("qps:list-sources", async () => {
-    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 320, height: 180 } });
-    return sources.map(source => ({ id: source.id, name: source.name, thumbnail: source.thumbnail.toDataURL() }));
+    const permission = systemPreferences.getMediaAccessStatus("screen");
+    const displays = screen.getAllDisplays().length;
+    try {
+      const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 320, height: 180 } });
+      const result = sources.map(source => ({ id: source.id, name: source.name, thumbnail: source.thumbnail.toDataURL() }));
+      controlLog("screen sources enumerated permission=" + permission +
+        " displays=" + displays + " captured=" + result.length);
+      return { sources: result, permission, displayCount: displays, error: "" };
+    } catch (error) {
+      const message = String(error);
+      controlLog("screen enumeration failed permission=" + permission +
+        " displays=" + displays + " error=" + message.slice(0, 200));
+      return { sources: [], permission, displayCount: displays, error: message };
+    }
+  });
+  ipcMain.handle("qps:open-screen-settings", async () => {
+    await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
   });
   ipcMain.handle("qps:save-config", (_event, patch: Partial<PersistedConfig>) => {
     const persisted = savePersisted(patch ?? {});
@@ -185,6 +314,12 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+  mainWindow.webContents.on("console-message", (_event, level, message) => {
+    if (message.includes("[control-ui]") || message.includes("[adb-ui]") ||
+        message.includes("[screen-sources]") || message.includes("[control-channel]") ||
+        message.includes("bootstrap failed"))
+      controlLog("renderer: " + message.slice(0, 300));
   });
   mainWindow.on("closed", () => { mainWindow = null; });
   await mainWindow.loadFile(path.join(__dirname, "index.html"));

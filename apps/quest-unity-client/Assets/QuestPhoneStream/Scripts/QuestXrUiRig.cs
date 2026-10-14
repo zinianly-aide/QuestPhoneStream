@@ -109,6 +109,7 @@ namespace QuestPhoneStream
             };
             PanelDependencies = dependencies;
             router.GetComponent<SpatialPanelShell>().ConfigureBackend(dependencies);
+            _receiver.ConfigureMacScroll(rightRay);
         }
 
         private void ConfigureSpatialPhonePanel(Camera camera)

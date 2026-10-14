@@ -28,8 +28,15 @@ namespace QuestPhoneStream
         private string _screenPlatform;
         public bool CanSendAndroidSurfaceInput => _screenPlatform == "android" &&
             IsControlConnected && ActiveDevice != null &&
-            ActiveDevice.Capabilities.Allows("display.control") &&
-            (mediaPlayback == null || !mediaPlayback.IsMediaMode) && phoneScreenRenderer != null && phoneScreenRenderer.enabled;
+            ActiveDevice.Capabilities.Allows("display.control") && ScreenInputVisible;
+        // macOS advertises screen-only media, but accepts its own independent
+        // control channel when the Mac user explicitly enables remote input.
+        // The Mac sender is the final permission authority.
+        public bool CanSendMacSurfaceInput => _screenPlatform == "macos" &&
+            IsControlConnected && ActiveDevice != null && SupportsScreen && ScreenInputVisible;
+        private bool ScreenInputVisible =>
+            (mediaPlayback == null || !mediaPlayback.IsMediaMode) &&
+            phoneScreenRenderer != null && phoneScreenRenderer.enabled;
         private bool _screenInteractive = true;
         private void LateUpdate()
         {
@@ -48,6 +55,11 @@ namespace QuestPhoneStream
             if (_receivedTexture != null)
                 SyncScreenAspectFromVideo(_receivedTexture.width, _receivedTexture.height);
         }
+        public void ConfigureMacScroll(UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor rightRay)
+        {
+            _screenMapper?.ConfigureMacScroll(rightRay, this);
+        }
+
         // Keep the actual Quad and its collider in the same aspect as the
         // decoded remote frame. Works for phone rotations and Mac AI video.
         public void SyncScreenAspectFromVideo(int pixelWidth, int pixelHeight)
@@ -58,12 +70,35 @@ namespace QuestPhoneStream
         private void RefreshScreenHandler()
         {
             if (_screenShell == null) return;
-            _screenShell.Input.SetHandler(PanelSurfaceInputFactory.Screen(_screenPlatform, _screenMapper, () => CanSendAndroidSurfaceInput));
+            _screenShell.Input.SetHandler(PanelSurfaceInputFactory.Screen(_screenPlatform, _screenMapper,
+                () => _screenPlatform == "macos" ? CanSendMacSurfaceInput : CanSendAndroidSurfaceInput));
+            Debug.Log("[QPS-Route] handler configured platform=" + (_screenPlatform ?? "unknown")
+                + " mapper=" + (_screenMapper != null)
+                + " screenVisible=" + ScreenInputVisible + " controlOpen=" + IsControlConnected);
         }
+        private void AdoptCurrentAuthenticatedPeer(string peer)
+        {
+            if (_activeDevice != null || mediaDiscovery == null || signaling == null ||
+                string.IsNullOrWhiteSpace(peer) ||
+                !string.Equals(peer, signaling.ActiveAndroidDeviceId, StringComparison.Ordinal))
+                return;
+            var restored = ActiveDeviceContext.FromAuthenticatedPeer(mediaDiscovery.Devices, peer);
+            if (restored == null) return;
+            _activeDevice = restored;
+            if (restored.Platform == "macos" || restored.Platform == "android")
+                _screenPlatform = restored.Platform;
+            Debug.Log("[QPS-Route] recovered active discovered peer platform="
+                + (restored.Platform ?? "unknown"));
+            RefreshScreenHandler();
+            ActiveDeviceChanged?.Invoke(_activeDevice);
+            _homeUI?.RefreshStatus();
+        }
+
         private void OnPeerPlatform(string peer, string platform)
         {
+            AdoptCurrentAuthenticatedPeer(peer);
             if (ActiveDevice == null || !ActiveDevice.MatchesPeer(peer)) return;
-            _screenPlatform = platform;
+            _screenPlatform = !string.IsNullOrWhiteSpace(platform) ? platform : ActiveDevice.Platform;
             RefreshScreenHandler();
         }
 
@@ -255,7 +290,11 @@ namespace QuestPhoneStream
         {
             if (mediaDiscovery == null || !mediaDiscovery.TryGetReadyDevice(deviceId, out var device)) return false;
             _activeDevice = ActiveDeviceContext.FromDiscovered(device);
-            _screenPlatform = null;
+            // Platform is advertised at NSD bootstrap. Do not lose it when a
+            // device.hello arrived before the user selected this device.
+            _screenPlatform = _activeDevice.Platform == "macos" ? "macos" :
+                _activeDevice.Platform == "android" ? "android" : null;
+            Debug.Log($"[QuestPhoneStream] Selected screen platform={_screenPlatform ?? "unknown"}");
             RefreshScreenHandler();
             EnsureSettingsUI();
             // Screen-only publishers (e.g. the macOS sender) advertise no media
@@ -361,6 +400,7 @@ namespace QuestPhoneStream
 
         private void OnPeerCapabilities(string peerId, SpatialCapabilityDescriptor[] capabilities)
         {
+            AdoptCurrentAuthenticatedPeer(peerId);
             // The signaling client already isolates the active reconnect epoch. Keep a second
             // device identity check here so an A -> B switch cannot restore A's UI capability set.
             if (_activeDevice == null || !_activeDevice.MatchesPeer(peerId)) return;
@@ -381,9 +421,21 @@ namespace QuestPhoneStream
 
         private void OnDiscoveredDevicesChanged()
         {
+            // NSD can resolve after signaling/device.hello was processed.
+            // Restore only the exact authenticated peer, never a random LAN device.
+            if (_activeDevice == null)
+                AdoptCurrentAuthenticatedPeer(signaling?.ActiveAndroidDeviceId);
             if (_activeDevice == null || mediaDiscovery == null) return;
             if (mediaDiscovery.TryGetDevice(_activeDevice.DeviceId, out var device))
+            {
                 _activeDevice.UpdateFromDiscovery(device);
+                if (string.IsNullOrWhiteSpace(_screenPlatform) &&
+                    (_activeDevice.Platform == "macos" || _activeDevice.Platform == "android"))
+                {
+                    _screenPlatform = _activeDevice.Platform;
+                    RefreshScreenHandler();
+                }
+            }
             else
                 _activeDevice.MarkLost();
             ActiveDeviceChanged?.Invoke(_activeDevice);

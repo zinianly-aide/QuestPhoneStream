@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.XR;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using QuestPhoneStream.Interaction;
 
 namespace QuestPhoneStream
@@ -17,6 +19,54 @@ namespace QuestPhoneStream
         public int swipeThresholdPixels = 24;
         public bool showCursor = true;
         public Transform cursorIndicator;
+
+        private XRRayInteractor _macScrollRay;
+        private QuestWebRtcReceiver _receiver;
+        private float _nextScrollAt;
+        private const float ScrollIntervalSeconds = 0.085f;
+        private const float ScrollDeadZone = 0.28f;
+
+        public void ConfigureMacScroll(XRRayInteractor rightRay, QuestWebRtcReceiver receiver)
+        {
+            _macScrollRay = rightRay;
+            _receiver = receiver;
+        }
+
+        // The hardware thumbstick is independent from XRI press/grab semantics.
+        // Only emit wheel steps while the right controller ray intersects this
+        // Mac screen; UI, Android media and frame grips retain their behavior.
+        private void Update()
+        {
+            if (_receiver == null || !_receiver.CanSendMacSurfaceInput ||
+                IsInputBlocked || controlChannel == null || !controlChannel.IsOpen ||
+                _macScrollRay == null || !_macScrollRay.isActiveAndEnabled ||
+                panelCollider == null || !panelCollider.enabled ||
+                Time.unscaledTime < _nextScrollAt) return;
+
+            var device = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            if (!device.isValid ||
+                !device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 stick)) return;
+            var deltaX = ScrollSteps(stick.x);
+            var deltaY = ScrollSteps(stick.y);
+            if (deltaX == 0 && deltaY == 0) return;
+
+            var origin = _macScrollRay.rayOriginTransform != null ?
+                _macScrollRay.rayOriginTransform : _macScrollRay.transform;
+            var ray = new Ray(origin.position, origin.forward);
+            if (!TryMapHitToUv(ray, out var uv)) return;
+            var point = MapUvToAndroidPixels(uv);
+            controlChannel.SendScroll(point.x, point.y, deltaX, deltaY);
+            _nextScrollAt = Time.unscaledTime + ScrollIntervalSeconds;
+        }
+
+        // Small stick deflections are ignored so hand tremors cannot scroll.
+        public static int ScrollSteps(float axis)
+        {
+            if (Mathf.Abs(axis) <= ScrollDeadZone) return 0;
+            var count = Mathf.Clamp(Mathf.CeilToInt(
+                (Mathf.Abs(axis) - ScrollDeadZone) / (1f - ScrollDeadZone) * 3f), 1, 3);
+            return axis > 0f ? count : -count;
+        }
 
         private int _androidWidth = 720;
         private int _androidHeight = 1280;

@@ -171,7 +171,7 @@ namespace QuestPhoneStream.Tests
         }
 
         [TestCase("android", typeof(AndroidScreenSurfaceInput))]
-        [TestCase("macos", typeof(ViewOnlySurfaceInput))]
+        [TestCase("macos", typeof(MacScreenSurfaceInput))]
         [TestCase("unknown", typeof(ViewOnlySurfaceInput))]
         public void PlatformSelectsHandler(string platform, System.Type expected)
         {
@@ -179,15 +179,22 @@ namespace QuestPhoneStream.Tests
         }
 
         [Test]
-        public void MacViewOnlySurfaceCannotSendAndroidControl()
+        public void MacSurfaceSendsClickWhenControlChannelIsAuthorized()
         {
             _shell.Input.SetHandler(PanelSurfaceInputFactory.Screen("macos", _mapper, () => true));
             Touch(InteractionPhase.PressBegin, .1f, .1f);
-            Touch(InteractionPhase.PressEnd, .8f, .8f);
+            Touch(InteractionPhase.PressEnd, .1f, .1f);
+            Assert.IsInstanceOf<MacScreenSurfaceInput>(_shell.Input.Handler);
+            Assert.AreEqual(1, _mapper.clicks);
+        }
 
-            Assert.IsInstanceOf<ViewOnlySurfaceInput>(_shell.Input.Handler);
+        [Test]
+        public void MacSurfaceRejectsClickWithoutAuthorizedControlChannel()
+        {
+            _shell.Input.SetHandler(PanelSurfaceInputFactory.Screen("macos", _mapper, () => false));
+            Touch(InteractionPhase.PressBegin, .1f, .1f);
+            Touch(InteractionPhase.PressEnd, .1f, .1f);
             Assert.AreEqual(0, _mapper.clicks + _mapper.swipes);
-            Assert.IsFalse(_shell.Input.IsActive);
         }
 
         [Test]

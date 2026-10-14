@@ -19,6 +19,21 @@ describe("Mac sender LingBot source availability", () => {
     expect(sources[1].name).toBe("LingBot AI video · localhost bridge");
   });
 
+  it("registers core UI/ADB actions before async screen enumeration", () => {
+    const renderer = readFileSync(
+      fileURLToPath(new URL("../src/renderer.ts", import.meta.url)), "utf8"
+    );
+    const bootCall = renderer.lastIndexOf("void bootstrap().catch");
+    const wireCall = renderer.lastIndexOf("wireCoreControls();");
+    expect(wireCall).toBeGreaterThan(0);
+    expect(wireCall).toBeLessThan(bootCall);
+    const bootstrap = renderer.slice(
+      renderer.indexOf("async function bootstrap():"),
+      renderer.indexOf("function wireCoreControls():")
+    );
+    expect(bootstrap).not.toContain('el.adbRefresh().addEventListener("click"');
+    expect(renderer).toContain('status.textContent = "Refreshing wireless ADB discovery…"');
+  });
   it("renders source and bridge input before async enumeration starts", () => {
     const html = readFileSync(
       fileURLToPath(new URL("../src/index.html", import.meta.url)), "utf8"

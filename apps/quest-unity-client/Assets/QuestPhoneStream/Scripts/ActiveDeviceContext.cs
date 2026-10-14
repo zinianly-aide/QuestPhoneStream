@@ -13,9 +13,29 @@ namespace QuestPhoneStream
         public string Name { get; private set; }
         public string StreamId { get; private set; }
         public string SignalingUrl { get; private set; }
+        public string Platform { get; private set; }
         public string MediaBaseUrl { get; private set; }
         public DeviceCapabilities Capabilities { get; } = new DeviceCapabilities();
         public bool IsLost { get; private set; }
+
+        /// <summary>
+        /// Recover a display-only selected peer after signaling restored an
+        /// authenticated session ahead of NSD selection/Spatial device.hello.
+        /// Never adopt an unconfirmed or unrelated LAN discovery result.
+        /// </summary>
+        public static ActiveDeviceContext FromAuthenticatedPeer(
+            IEnumerable<MediaDeviceInfo> discovered, string authenticatedPeerId)
+        {
+            if (discovered == null || string.IsNullOrWhiteSpace(authenticatedPeerId)) return null;
+            foreach (var device in discovered)
+            {
+                if (device == null || !device.IsReady) continue;
+                if (string.Equals(device.streamId, authenticatedPeerId, StringComparison.Ordinal) ||
+                    string.Equals(device.deviceId, authenticatedPeerId, StringComparison.Ordinal))
+                    return FromDiscovered(device);
+            }
+            return null;
+        }
 
         public static ActiveDeviceContext FromDiscovered(MediaDeviceInfo device)
         {
@@ -32,6 +52,7 @@ namespace QuestPhoneStream
             Name = string.IsNullOrWhiteSpace(device.name) ? DeviceId : device.name;
             StreamId = device.streamId ?? string.Empty;
             SignalingUrl = device.signalingUrl ?? string.Empty;
+            Platform = device.platform ?? string.Empty;
             MediaBaseUrl = device.BaseUrl ?? string.Empty;
             IsLost = !device.IsReady;
             Capabilities.ApplyNsdBootstrap(device.capabilities);

@@ -32,9 +32,30 @@ namespace QuestPhoneStream.Interaction
 
         public void RoutePointer(PointerEvent pointer)
         {
-            if (screenCollider == null || pointer.target != screenCollider) return;
-            if (manipulator != null && manipulator.IsGrabActive) return;
-            touchController?.Process(pointer);
+            // Diagnostic only on transitions; avoid hover-frame log spam.
+            var diagnostic = pointer.phase == InteractionPhase.PressBegin ||
+                pointer.phase == InteractionPhase.PressEnd;
+            if (screenCollider == null || pointer.target != screenCollider)
+            {
+                if (diagnostic)
+                    Debug.Log("[QPS-Route] ignored target mismatch panel=" + name);
+                return;
+            }
+            if (manipulator != null && manipulator.IsGrabActive)
+            {
+                if (diagnostic) Debug.Log("[QPS-Route] blocked by grab panel=" + name);
+                return;
+            }
+            if (touchController == null)
+            {
+                if (diagnostic) Debug.Log("[QPS-Route] missing input controller panel=" + name);
+                return;
+            }
+            var accepted = touchController.Process(pointer);
+            if (diagnostic)
+                Debug.Log("[QPS-Route] panel=" + name + " phase=" + pointer.phase
+                    + " accepted=" + accepted + " handler="
+                    + (touchController.Handler == null ? "null" : touchController.Handler.GetType().Name));
         }
 
         public void RouteTransform(TransformEvent transformEvent)

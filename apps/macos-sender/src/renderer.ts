@@ -8,6 +8,7 @@ import {
 } from "./protocol";
 import { SpatialSubscriptionTracker } from "./subscriptions";
 import { captureSourceOptions } from "./sourceOptions";
+import { decodeControlPayload, parseClickCommand } from "./remoteControl";
 
 interface AdbSnapshot {
   available: boolean;
@@ -21,10 +22,14 @@ declare global {
   interface Window {
     qps: {
       getConfig(): Promise<SenderConfig>;
+      controlEnable(enabled: boolean): Promise<{ enabled: boolean; message: string }>;
+      controlClick(payload: Record<string, unknown>): Promise<{ ok: boolean; message: string }>;
       adbStatus(): Promise<AdbSnapshot>;
       adbRefresh(): Promise<AdbSnapshot>;
       onAdbState(cb: (state: AdbSnapshot) => void): void;
-      listSources(): Promise<Array<{ id: string; name: string; thumbnail: string }>>;
+      listSources(): Promise<{ sources: Array<{ id: string; name: string; thumbnail: string }>;
+        permission: string; displayCount: number; error: string }>;
+      openScreenSettings(): Promise<void>;
       saveConfig(patch: Record<string, unknown>): Promise<{ config: SenderConfig }>;
       setSpatialReady(ready: boolean): void;
       onSignalingChanged(cb: (state: { url: string; source: string }) => void): void;
@@ -64,6 +69,10 @@ let heartbeatTimer: number | null = null;
 let subscriptionRetryTimer: number | null = null;
 let stream: MediaStream | null = null;
 let peer: RTCPeerConnection | null = null;
+let controlDataChannel: RTCDataChannel | null = null;
+let captureSourceId = "";
+let captureFrameWidth = 0, captureFrameHeight = 0;
+let macClickEnabled = false;
 let fastSpatialChannel: RTCDataChannel | null = null;
 let compatSpatialChannel: RTCDataChannel | null = null;
 let reliableSpatialChannel: RTCDataChannel | null = null;
@@ -99,7 +108,12 @@ const el = {
   status: () => document.getElementById("status") as HTMLElement,
   detail: () => document.getElementById("detail") as HTMLElement,
   adbStatus: () => document.getElementById("adb-status") as HTMLElement,
-  adbRefresh: () => document.getElementById("adb-refresh") as HTMLButtonElement
+  adbRefresh: () => document.getElementById("adb-refresh") as HTMLButtonElement,
+  controlButton: () => document.getElementById("control-enable") as HTMLButtonElement,
+  controlStatus: () => document.getElementById("control-status") as HTMLElement,
+  sourceStatus: () => document.getElementById("source-status") as HTMLElement,
+  refreshSources: () => document.getElementById("refresh-sources") as HTMLButtonElement,
+  screenSettings: () => document.getElementById("screen-settings") as HTMLButtonElement
 };
 
 function setStatus(text: string): void { el.status().textContent = text; }
@@ -433,6 +447,61 @@ function matchesSession(message: any): boolean {
     message.from === config.questDeviceId && message.to === config.deviceId;
 }
 
+function attachControlChannel(channel: RTCDataChannel, current: RTCPeerConnection): void {
+  controlDataChannel = channel;
+  channel.binaryType = "arraybuffer";
+  channel.onopen = () => {
+    if (peer === current) console.info("[control-channel] opened; local opt-in=" + macClickEnabled);
+  };
+  channel.onmessage = event => {
+    if (peer !== current || controlDataChannel !== channel) return;
+    // Decode Unity's binary UTF-8 packet without leaking payload/coordinates.
+    void decodeControlPayload(event.data).then(command => {
+      if (peer !== current || controlDataChannel !== channel) return;
+      if (!macClickEnabled) {
+        console.info("[control-channel] input ignored: Mac opt-in is OFF");
+        return;
+      }
+      if (!activeSession || !captureSourceId || captureSourceId === "qps-ai-video") {
+        console.warn("[control-channel] input ignored: no active screen/session");
+        return;
+      }
+      if (!command || !parseClickCommand(command, activeSession.sessionId, captureFrameWidth, captureFrameHeight)) {
+        // Log only non-sensitive diagnostics; no raw payload or coordinates.
+        let skewMs: number | null = null;
+        let type: string | null = null;
+        try {
+          const meta = JSON.parse(command || "{}") as Record<string, unknown>;
+          skewMs = typeof meta.timestamp === "number" ? Math.round(Date.now() - meta.timestamp) : null;
+          type = typeof meta.type === "string" ? meta.type.slice(0, 24) : null;
+        } catch { /* malformed packet */ }
+        console.warn("[control-channel] rejected command type=" + (type ?? "unknown") +
+          " clockDeltaMs=" + String(skewMs) + " captureFrame=" + captureFrameWidth + "x" + captureFrameHeight);
+        return;
+      }
+      // Scroll may arrive at ~12 Hz; avoid flooding persistent app logs.
+      const kind = JSON.parse(command).type as string;
+      if (kind !== "scroll") console.info("[control-channel] valid Quest " + kind + " received");
+      void window.qps.controlClick({ command, sourceId: captureSourceId,
+        frameWidth: captureFrameWidth, frameHeight: captureFrameHeight }).then(result => {
+        if (kind !== "scroll" || !result.ok)
+          console.info("[control-channel] Mac " + kind + " result:", result.ok, result.message);
+        if (!result.ok && result.message !== "Input rate limit") {
+          macClickEnabled = false;
+          el.controlStatus().textContent = result.message;
+          el.controlButton().textContent = "Enable Quest clicks";
+        }
+      }).catch(error => console.warn("[control-channel] IPC exception:", String(error)));
+    }).catch(error => console.warn("[control-channel] decode exception:", String(error)));
+  };
+  channel.onclose = () => {
+    if (controlDataChannel === channel) {
+      controlDataChannel = null;
+      console.info("[control-channel] closed");
+    }
+  };
+}
+
 async function createPeer(session: SessionMessage): Promise<void> {
   const track = stream?.getVideoTracks()[0];
   if (!track) return;
@@ -446,6 +515,9 @@ async function createPeer(session: SessionMessage): Promise<void> {
   telemetryDropped = 0;
   telemetryLastSequence = -1;
   current.addTrack(track, stream!);
+  // Existing Quest ControlChannel listens for this exact label.
+  const control = current.createDataChannel("control", { ordered: true });
+  attachControlChannel(control, current);
   uiState("reconnecting", "Negotiating WebRTC with Quest…");
   log("creating peer; session:", session.sessionId);
 
@@ -489,6 +561,7 @@ function closePeer(updateState = true): void {
   clearSubscriptionRetry();
   const old = peer;
   peer = null;
+  controlDataChannel = null;
   remoteReady = false;
   pendingIce = [];
   subscriptions.reset();
@@ -523,6 +596,9 @@ async function startCapture(): Promise<void> {
     track.addEventListener("ended", () => {
       stream = null; closePeer(); setRuntimeState(authorized, false); uiState("ready", "Screen sharing stopped");
     }, { once: true });
+    captureSourceId = sourceId;
+    captureFrameWidth = track.getSettings().width || config.width;
+    captureFrameHeight = track.getSettings().height || config.height;
     setRuntimeState(true, false);
     uiState("ready", "Screen captured · waiting for Quest session");
     log("screen capture started:", track.getSettings() ? JSON.stringify(track.getSettings()) : "n/a");
@@ -540,6 +616,8 @@ function stopCapture(): void {
   closePeer();
   stream?.getTracks().forEach(track => track.stop());
   stream = null;
+  captureSourceId = "";
+  captureFrameWidth = captureFrameHeight = 0;
   setRuntimeState(authorized, false);
   uiState("ready", "Stopped — choose a screen and start again");
 }
@@ -576,50 +654,58 @@ function showAdbSnapshot(state: AdbSnapshot): void {
   el.adbStatus().textContent = lines.join(" · ");
 }
 
+async function refreshScreenSources(): Promise<void> {
+  const button = el.refreshSources();
+  const status = el.sourceStatus();
+  button.disabled = true;
+  status.textContent = "Scanning available screens…";
+  try {
+    const result = await window.qps.listSources();
+    const sources = result.sources || [];
+    const select = el.sources();
+    const previous = select.value;
+    const available = captureSourceOptions(sources);
+    select.replaceChildren(...available.map(source => {
+      const option = document.createElement("option");
+      option.value = source.id;
+      option.textContent = source.name;
+      return option;
+    }));
+    if (available.some(source => source.id === previous)) select.value = previous;
+    if (!sources.length) {
+      status.textContent = result.permission !== "granted"
+        ? "Screen capture permission: " + result.permission + ". Open Screen Recording Settings, allow this Mac app, then relaunch it."
+        : result.error
+          ? "Screen capture error: " + result.error
+          : "No screen sources returned (" + result.displayCount + " displays detected). Refresh, or restart the Mac app.";
+      console.warn("[screen-sources]",status.textContent);
+    } else {
+      status.textContent = sources.length + " display source(s) available · Screen Recording: " + result.permission;
+      console.info("[screen-sources]",status.textContent);
+    }
+  } catch (error) {
+    status.textContent = "Screen source enumeration failed: " + String(error);
+    console.error("[screen-sources]",status.textContent);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function wireScreenSources(): void {
+  el.refreshSources().addEventListener("click", () => { void refreshScreenSources(); });
+  el.screenSettings().addEventListener("click", () => {
+    void window.qps.openScreenSettings().catch(error => {
+      el.sourceStatus().textContent = "Could not open macOS Settings: " + String(error);
+    });
+  });
+}
+
 async function bootstrap(): Promise<void> {
   const state = await window.qps.getConfig();
   showConfigState({ config: state as unknown as SenderConfig, source: state.signalingUrl ? "persisted" : "none" });
   el.identity().textContent = `${config.deviceId} · ${config.platform} · ${config.width}×${config.height}@${config.fps}`;
-  let sources: Array<{ id: string; name: string; thumbnail: string }> = [];
-  try {
-    sources = await window.qps.listSources();
-  } catch (err) {
-    log("listSources failed:", String(err));
-  }
-  // Source enumeration can resolve after the bootstrap script runs.
-  // Always include the AI pseudo source in the authoritative list instead of
-  // relying on a MutationObserver to repair a later replaceChildren().
-  const sourceSelect = el.sources();
-  const previouslySelected = sourceSelect.value;
-  const available = captureSourceOptions(sources);
-  sourceSelect.replaceChildren(...available.map(source => {
-    const option = document.createElement("option");
-    option.value = source.id;
-    option.textContent = source.name;
-    return option;
-  }));
-  if (available.some(source => source.id === previouslySelected)) {
-    sourceSelect.value = previouslySelected;
-  }
-  if (!sources.length) {
-    uiState("ready", "No screens available — LingBot AI video is still selectable");
-  }
-  window.qps.onAdbState(showAdbSnapshot);
-  window.qps.adbStatus().then(showAdbSnapshot).catch(error => {
-    el.adbStatus().textContent = "ADB unavailable: " + String(error);
-  });
-  el.adbRefresh().addEventListener("click", () =>
-    void window.qps.adbRefresh().then(showAdbSnapshot).catch(error => {
-      el.adbStatus().textContent = "ADB refresh failed: " + String(error);
-    }));
-  el.start().addEventListener("click", () => void startCapture());
-  el.stop().addEventListener("click", stopCapture);
-  el.saveButton().addEventListener("click", () => void applySignalingUrl(el.signalingInput().value));
-  window.qps.onSignalingChanged(state => {
-    el.signalingInfo().textContent = `Signaling: ${state.url} (${state.source})`;
-    el.signalingInput().value = state.url;
-    connectSignaling();
-  });
+  await refreshScreenSources();
+  // Controls are registered before async bootstrap. Never block on screen enumeration.
   window.qps.onConfigState(showConfigState);
   // Show actual source receive cadence while active; separate from Quest
   // headset presentation FPS and model generation throughput.
@@ -628,4 +714,82 @@ async function bootstrap(): Promise<void> {
   }, 1000);
 }
 
-void bootstrap();
+// Wire this immediately, before any async getConfig()/desktopCapturer call.
+ // On some macOS installations desktopCapturer never resolves until Screen
+ // Recording permission is handled, so binding inside bootstrap makes this
+ // button appear clickable but entirely inert.
+function wireCoreControls(): void {
+  console.info("[adb-ui] Refresh ADB event handler wired before bootstrap");
+  el.start().addEventListener("click", () => {
+    console.info("[core-ui] Start stream clicked");
+    void startCapture();
+  });
+  el.stop().addEventListener("click", () => {
+    console.info("[core-ui] Stop stream clicked");
+    stopCapture();
+  });
+  el.saveButton().addEventListener("click", () => {
+    console.info("[core-ui] Apply signaling clicked");
+    void applySignalingUrl(el.signalingInput().value);
+  });
+  window.qps.onSignalingChanged(state => {
+    el.signalingInfo().textContent = "Signaling: " + state.url + " (" + state.source + ")";
+    el.signalingInput().value = state.url;
+    if (config) connectSignaling();
+  });
+  window.qps.onAdbState(showAdbSnapshot);
+  el.adbRefresh().addEventListener("click", () => {
+    const button = el.adbRefresh();
+    const status = el.adbStatus();
+    button.disabled = true;
+    status.textContent = "Refreshing wireless ADB discovery…";
+    console.info("[adb-ui] Refresh ADB clicked");
+    void window.qps.adbRefresh().then(snapshot => {
+      showAdbSnapshot(snapshot);
+      console.info("[adb-ui] Refresh complete:", snapshot.message);
+    }).catch(error => {
+      status.textContent = "ADB refresh failed: " + String(error);
+      console.error("[adb-ui] Refresh failed:", String(error));
+    }).finally(() => {
+      button.disabled = false;
+    });
+  });
+  void window.qps.adbStatus().then(showAdbSnapshot).catch(error => {
+    el.adbStatus().textContent = "ADB status unavailable: " + String(error);
+  });
+}
+
+function wireControlToggle(): void {
+  const button = el.controlButton();
+  const status = el.controlStatus();
+  if (!button || !status) {
+    console.error("[control-ui] click controls missing from renderer HTML");
+    return;
+  }
+  button.addEventListener("click", () => {
+    const enable = !macClickEnabled;
+    status.textContent = enable ? "Checking Accessibility permission…" : "Disabling Quest clicks…";
+    button.disabled = true;
+    console.info("[control-ui] click control toggle", enable);
+    void window.qps.controlEnable(enable).then(state => {
+      macClickEnabled = state.enabled;
+      button.textContent = state.enabled ? "Disable Quest clicks" : "Enable Quest clicks";
+      status.textContent = state.message;
+      console.info("[control-ui] control toggle result", state.enabled, state.message);
+    }).catch(error => {
+      macClickEnabled = false;
+      button.textContent = "Enable Quest clicks";
+      status.textContent = "Could not enable Quest clicks: " + String(error);
+      console.error("[control-ui] control toggle failed", error);
+    }).finally(() => {
+      button.disabled = false;
+    });
+  });
+}
+wireControlToggle();
+wireScreenSources();
+wireCoreControls();
+void bootstrap().catch(error => {
+  console.error("[macos-sender] bootstrap failed", error);
+  setStatus("Initialization failed: " + String(error));
+});

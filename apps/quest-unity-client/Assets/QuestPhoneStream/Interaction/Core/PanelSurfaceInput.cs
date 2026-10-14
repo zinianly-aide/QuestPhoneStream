@@ -12,7 +12,9 @@ namespace QuestPhoneStream.Interaction
     public static class PanelSurfaceInputFactory
     {
         public static IPanelSurfaceInputHandler Screen(string platform, IPhonePanelTouchMapper mapper, Func<bool> authorized) =>
-            platform == "android" ? (IPanelSurfaceInputHandler)new AndroidScreenSurfaceInput(mapper, authorized) : new ViewOnlySurfaceInput();
+            platform == "android" ? (IPanelSurfaceInputHandler)new AndroidScreenSurfaceInput(mapper, authorized) :
+            platform == "macos" ? (IPanelSurfaceInputHandler)new MacScreenSurfaceInput(mapper, authorized) :
+            new ViewOnlySurfaceInput();
     }
 
     public class ViewOnlySurfaceInput : IPanelSurfaceInputHandler
@@ -24,7 +26,7 @@ namespace QuestPhoneStream.Interaction
     // Media playback/seek stays with the media UI; no remote control dependency.
     public sealed class MediaSurfaceInput : ViewOnlySurfaceInput { }
 
-    public sealed class AndroidScreenSurfaceInput : IPanelSurfaceInputHandler
+    public class AndroidScreenSurfaceInput : IPanelSurfaceInputHandler
     {
         private readonly IPhonePanelTouchMapper _mapper;
         private readonly Func<bool> _authorized;
@@ -37,7 +39,7 @@ namespace QuestPhoneStream.Interaction
         public AndroidScreenSurfaceInput(IPhonePanelTouchMapper mapper, Func<bool> authorized = null)
         { _mapper = mapper; _authorized = authorized; }
 
-        public bool Process(PointerEvent pointer)
+        public virtual bool Process(PointerEvent pointer)
         {
             if (_mapper == null || _mapper.IsInputBlocked || (_authorized != null && !_authorized()))
             {
@@ -97,6 +99,24 @@ namespace QuestPhoneStream.Interaction
             _source = default;
             _modality = default;
             _start = _last = default;
+        }
+    }
+
+    // Identical panel coordinate semantics; macOS processes click events only
+    // after explicit local user opt-in and Accessibility permission.
+    public sealed class MacScreenSurfaceInput : AndroidScreenSurfaceInput
+    {
+        public MacScreenSurfaceInput(IPhonePanelTouchMapper mapper, Func<bool> authorized = null)
+            : base(mapper, authorized) { }
+
+        public override bool Process(PointerEvent pointer)
+        {
+            var processed = base.Process(pointer);
+            // Diagnose real input phases, not hover/move (hundreds per second).
+            if (pointer.phase == InteractionPhase.PressBegin ||
+                pointer.phase == InteractionPhase.PressEnd)
+                Debug.Log($"[QPS-MacInput] phase={pointer.phase} accepted={processed}");
+            return processed;
         }
     }
 }

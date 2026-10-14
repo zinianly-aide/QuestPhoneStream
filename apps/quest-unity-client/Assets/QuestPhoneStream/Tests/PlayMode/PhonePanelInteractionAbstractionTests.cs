@@ -19,6 +19,18 @@ namespace QuestPhoneStream.Tests
             XriInteractionBackend.EnsureRegistered();
         }
 
+        [TestCase(0f, 0)]
+        [TestCase(.2f, 0)]
+        [TestCase(-.28f, 0)]
+        [TestCase(.3f, 1)]
+        [TestCase(-.3f, -1)]
+        [TestCase(.8f, 3)]
+        [TestCase(-1f, -3)]
+        public void MacThumbstickWheelDeadzoneAndDirection(float axis, int steps)
+        {
+            Assert.AreEqual(steps, PanelInputMapper.ScrollSteps(axis));
+        }
+
         [Test]
         public void CoreDoesNotReferenceXriSdkTypes()
         {

@@ -20,7 +20,7 @@ namespace QuestPhoneStream
             _channel.OnOpen = HandleOpen;
             _channel.OnClose = HandleClose;
             signaling?.ReportCapabilityState("display.control", active: IsOpen);
-            Debug.Log("[QuestPhoneStream] Control DataChannel attached");
+            Debug.Log("[QuestPhoneStream] Control DataChannel attached state=" + _channel.ReadyState);
         }
 
         public void ResetChannel()
@@ -78,6 +78,22 @@ namespace QuestPhoneStream
             });
         }
 
+        // Right controller thumbstick → physical macOS mouse wheel.
+        // Call only while aiming at the selected Mac screen. No drag/press state.
+        public void SendScroll(int x, int y, int deltaX, int deltaY)
+        {
+            if (deltaX == 0 && deltaY == 0) return;
+            Send(new ControlCommandDto
+            {
+                type = "scroll",
+                sessionId = signaling.sessionId,
+                deviceId = signaling.questDeviceId,
+                x = x, y = y,
+                deltaX = Mathf.Clamp(deltaX, -4, 4),
+                deltaY = Mathf.Clamp(deltaY, -4, 4)
+            });
+        }
+
         public void SendBack()
         {
             Send(new ControlCommandDto
@@ -105,7 +121,8 @@ namespace QuestPhoneStream
             if (_channel != null && _channel.ReadyState == RTCDataChannelState.Open)
             {
                 _channel.Send(Encoding.UTF8.GetBytes(json));
-                Debug.Log($"[QuestPhoneStream] Control sent: type={command.type} x={command.x} y={command.y}");
+                if (command.type != "scroll")
+                    Debug.Log($"[QuestPhoneStream] Control sent: type={command.type} x={command.x} y={command.y}");
             }
             else
             {

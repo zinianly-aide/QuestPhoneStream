@@ -45,8 +45,19 @@
     <select id="sources">
       <option value="qps-ai-video">LingBot AI video · localhost bridge</option>
     </select>
+    <div class="row">
+      <button id="refresh-sources" type="button">Refresh screens</button>
+      <button id="screen-settings" type="button">Screen Recording Settings</button>
+    </div>
+    <div id="source-status" class="muted" aria-live="polite">Checking screen capture permissions…</div>
     <button id="start">Start stream</button>
     <button id="stop">Stop</button>
+  </div>
+  <div class="card">
+    <strong>Quest → Mac mouse control</strong>
+    <button id="control-enable" type="button">Enable Quest clicks</button>
+    <div id="control-status" class="muted" aria-live="polite">Off by default. Enable explicitly and grant Accessibility
+      permission to the bundled click helper in macOS System Settings. Mac screen sources only.</div>
   </div>
   <div class="card">
     <div id="status">Starting…</div>

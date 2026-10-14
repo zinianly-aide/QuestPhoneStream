@@ -68,6 +68,7 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
 
             if (action.WasPressedThisFrame())
             {
+                Debug.Log("[QPS-Input] Controller ray press collider=" + (_screen == null ? "none" : _screen.name));
                 BeginGesture(source, PointerModality.Ray, hit.point, hit.normal);
                 return;
             }
@@ -104,7 +105,13 @@ namespace QuestPhoneStream.Interaction.Backends.XRI
             var tracking = _dependencies?.trackingOrigin;
             var point = tracking != null ? tracking.TransformPoint(tip.position) : tip.position;
             var pressed = IsActive(source, PointerModality.Poke);
-            var nearest = _screen.ClosestPoint(point);
+            // Physics.ClosestPoint throws/warns each frame for a non-convex
+            // MeshCollider (the flat PhonePanel default). Bounds fallback is
+            // approximate, but safe and avoids flooding logcat/XR frame time.
+            var mesh = _screen as MeshCollider;
+            var nearest = mesh != null && !mesh.convex
+                ? _screen.ClosestPointOnBounds(point)
+                : _screen.ClosestPoint(point);
             var distance = Vector3.Distance(nearest, point);
             if (!PokeHysteresis.IsPressed(pressed, distance, pressThreshold, releaseThreshold))
             {

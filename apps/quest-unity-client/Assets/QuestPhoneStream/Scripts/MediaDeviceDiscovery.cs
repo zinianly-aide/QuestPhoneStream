@@ -16,6 +16,7 @@ namespace QuestPhoneStream
         public string capabilities { get; internal set; }
         public string streamId { get; internal set; }
         public string signalingUrl { get; internal set; }
+        public string platform { get; internal set; }
         public bool IsReady { get; internal set; }
 
         public MediaDeviceInfo() { }
@@ -29,7 +30,8 @@ namespace QuestPhoneStream
             string capabilities = null,
             string streamId = null,
             string signalingUrl = null,
-            bool isReady = false)
+            bool isReady = false,
+            string platform = null)
         {
             this.deviceId = deviceId;
             this.name = name;
@@ -39,6 +41,7 @@ namespace QuestPhoneStream
             this.capabilities = capabilities;
             this.streamId = streamId;
             this.signalingUrl = signalingUrl;
+            this.platform = platform;
             this.IsReady = isReady;
         }
 
@@ -72,6 +75,7 @@ namespace QuestPhoneStream
         private readonly Dictionary<string, string> _serviceCapabilities = new Dictionary<string, string>();
         private readonly Dictionary<string, string> _serviceStreamIds = new Dictionary<string, string>();
         private readonly Dictionary<string, string> _serviceSignalingUrls = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> _servicePlatforms = new Dictionary<string, string>();
         private int _discoveryGeneration;
 #if UNITY_ANDROID && !UNITY_EDITOR
         private AndroidNsdBridge _bridge;
@@ -207,6 +211,7 @@ namespace QuestPhoneStream
             var capabilities = GetAttribute(attributes, "caps");
             var streamId = GetAttribute(attributes, "streamId");
             var signalingUrl = GetAttribute(attributes, "signalingUrl");
+            var platform = GetAttribute(attributes, "platform");
             Debug.Log($"[MediaDeviceDiscovery] Service resolved key={serviceKey} v={version} id={deviceId} caps={capabilities} attrCount={attributes.Count}");
             if (version != "1" || string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(capabilities))
             {
@@ -227,12 +232,14 @@ namespace QuestPhoneStream
                 _serviceCapabilities.Remove(serviceKey);
                 _serviceStreamIds.Remove(serviceKey);
                 _serviceSignalingUrls.Remove(serviceKey);
+                _servicePlatforms.Remove(serviceKey);
             }
 
             _serviceToDevice[serviceKey] = deviceId;
             _serviceCapabilities[serviceKey] = capabilities;
             _serviceStreamIds[serviceKey] = streamId;
             _serviceSignalingUrls[serviceKey] = signalingUrl;
+            _servicePlatforms[serviceKey] = platform;
             if (!_servicesByDevice.TryGetValue(deviceId, out var services))
                 _servicesByDevice[deviceId] = services = new HashSet<string>();
             services.Add(serviceKey);
@@ -247,6 +254,7 @@ namespace QuestPhoneStream
             device.capabilities = MergeCapabilitiesForDevice(deviceId);
             device.streamId = GetPreferredServiceValue(deviceId, _serviceStreamIds);
             device.signalingUrl = GetPreferredServiceValue(deviceId, _serviceSignalingUrls);
+            device.platform = GetPreferredServiceValue(deviceId, _servicePlatforms);
             device.IsReady = true;
             Debug.Log($"[MediaDeviceDiscovery] Device READY name={device.name} id={deviceId} host={host} port={port} baseUrl={device.BaseUrl}");
             DevicesChanged?.Invoke();
@@ -272,6 +280,7 @@ namespace QuestPhoneStream
             _serviceCapabilities.Remove(serviceKey);
             _serviceStreamIds.Remove(serviceKey);
             _serviceSignalingUrls.Remove(serviceKey);
+            _servicePlatforms.Remove(serviceKey);
             if (_servicesByDevice.TryGetValue(deviceId, out var services))
             {
                 services.Remove(serviceKey);
@@ -284,6 +293,7 @@ namespace QuestPhoneStream
                         remainingDevice.serviceType = PreferredServiceTypeForDevice(deviceId);
                         remainingDevice.streamId = GetPreferredServiceValue(deviceId, _serviceStreamIds);
                         remainingDevice.signalingUrl = GetPreferredServiceValue(deviceId, _serviceSignalingUrls);
+                        remainingDevice.platform = GetPreferredServiceValue(deviceId, _servicePlatforms);
                         Debug.Log($"[MediaDeviceDiscovery] Device metadata updated after service loss id={deviceId} serviceType={remainingDevice.serviceType} caps={remainingDevice.capabilities}");
                     }
                     DevicesChanged?.Invoke();
@@ -326,6 +336,7 @@ namespace QuestPhoneStream
             _serviceCapabilities.Remove(serviceKey);
             _serviceStreamIds.Remove(serviceKey);
             _serviceSignalingUrls.Remove(serviceKey);
+            _servicePlatforms.Remove(serviceKey);
             Debug.LogWarning($"[MediaDeviceDiscovery] NSD resolve failed service={serviceKey} error={errorCode}");
             DevicesChanged?.Invoke();
         }
@@ -340,6 +351,7 @@ namespace QuestPhoneStream
             _serviceCapabilities.Clear();
             _serviceStreamIds.Clear();
             _serviceSignalingUrls.Clear();
+            _servicePlatforms.Clear();
             foreach (var device in _devices.Values)
             {
                 if (device.IsReady) changed = true;
@@ -348,6 +360,7 @@ namespace QuestPhoneStream
                 device.serviceType = string.Empty;
                 device.streamId = string.Empty;
                 device.signalingUrl = string.Empty;
+                device.platform = string.Empty;
             }
             return changed;
         }

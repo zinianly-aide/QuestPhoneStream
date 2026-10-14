@@ -91,6 +91,9 @@ namespace QuestPhoneStream
         public int endX;
         public int endY;
         public int durationMs = 100;
+        // Mac-only wheel steps. Existing Android commands leave these zero.
+        public int deltaX;
+        public int deltaY;
         public string text = "";
         public long timestamp;
 

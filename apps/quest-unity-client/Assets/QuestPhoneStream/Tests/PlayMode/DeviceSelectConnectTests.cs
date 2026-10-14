@@ -5,6 +5,40 @@ namespace QuestPhoneStream.Tests
     public class DeviceSelectConnectTests
     {
         [Test]
+        public void MacPlatformIsPreservedByNsdDiscoverySnapshot()
+        {
+            var context = ActiveDeviceContext.FromDiscovered(new MediaDeviceInfo(
+                deviceId: "mac-a", streamId: "mac-a", capabilities: "screen",
+                platform: "macos", isReady: true));
+            Assert.AreEqual("macos", context.Platform);
+            context.UpdateFromDiscovery(new MediaDeviceInfo(
+                deviceId: "mac-a", streamId: "mac-a", capabilities: "screen",
+                platform: "macos", isReady: true));
+            Assert.AreEqual("macos", context.Platform);
+        }
+
+        [Test]
+        public void AuthenticatedMacSessionRestoresOnlyItsReadyDiscoveredPeer()
+        {
+            var devices = new[] {
+                new MediaDeviceInfo(deviceId: "other-mac", streamId: "other-mac",
+                    capabilities: "screen", platform: "macos", isReady: true),
+                new MediaDeviceInfo(deviceId: "current-mac", streamId: "sender-1",
+                    capabilities: "screen", platform: "macos", isReady: true),
+            };
+            var recovered = ActiveDeviceContext.FromAuthenticatedPeer(devices, "sender-1");
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual("current-mac", recovered.DeviceId);
+            Assert.AreEqual("macos", recovered.Platform);
+            Assert.IsTrue(recovered.Capabilities.Supports("display.publish"));
+            Assert.IsNull(ActiveDeviceContext.FromAuthenticatedPeer(devices, "attacker-peer"));
+            Assert.IsNull(ActiveDeviceContext.FromAuthenticatedPeer(devices, ""));
+            Assert.IsNull(ActiveDeviceContext.FromAuthenticatedPeer(
+                new[] { new MediaDeviceInfo(deviceId: "sender-1", isReady: false) },
+                "sender-1"));
+        }
+
+        [Test]
         public void SpatialPeerIsolation_RejectsStaleSourceAfterDeviceSwitch()
         {
             var oldAndroid = "android-old";
