@@ -132,3 +132,17 @@ Meta documentation used to plan S2 (not implemented in S0):
 - CAD模型重叠与墙体贴边精度验证、专用碰撞层、家具的复制/恢复、Redo和房间级快照。
 - MRUK空间白模及房间扫描权限接入；未引入SDK，不宣称具备扫描能力。
 - 性能/人体碰撞/重定位/空间锚点真机验证。
+
+
+## S2 — Room exploration & stick menu (2026-10-22)
+
+- Home > Spaces > Stick controls: configure each stick independently as
+  Off / Move / SnapTurn / SmoothTurn, persisted locally in PlayerPrefs.
+- Defaults: left Move (1.2 m/s); right SnapTurn (30 degrees). Speeds 0.6/1.2/1.8
+  m/s; 30/45 degree snap angle; smooth turn 45 deg/s.
+- Explore room hides the browser without opening Home. Movement is blocked while
+  Home, Settings, scene browser, or furniture editing is visible.
+- Right-stick Mac wheel takes priority only while aiming at a connected Mac panel.
+- Capsule collisions; moving XR Origin, never disabling the physical Quest boundary.
+- Spawn at Hefu CAD 00_ floor center; Reset position returns to that reference.
+- Headset verification needed for real CAD collision and menu ergonomics.

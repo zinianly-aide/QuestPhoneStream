@@ -292,6 +292,9 @@ namespace QuestPhoneStream.Spaces
             foreach(var receiver in UnityEngine.Object.FindObjectsOfType<QuestWebRtcReceiver>())
                 if(!receiver.GetComponent<SceneWorkspaceManager>())
                     receiver.gameObject.AddComponent<SceneWorkspaceManager>();
+            foreach(var receiver in UnityEngine.Object.FindObjectsOfType<QuestWebRtcReceiver>())
+                if(!receiver.GetComponent<SceneWorkspaceLocomotion>())
+                    receiver.gameObject.AddComponent<SceneWorkspaceLocomotion>();
         }
     }
 }

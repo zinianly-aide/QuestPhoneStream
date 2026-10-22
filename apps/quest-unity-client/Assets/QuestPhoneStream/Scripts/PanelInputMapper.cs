@@ -32,6 +32,18 @@ namespace QuestPhoneStream
             _receiver = receiver;
         }
 
+        /// <summary>Room locomotion must yield the right stick while targeting a live Mac screen.</summary>
+        public bool IsMacScrollTargeted()
+        {
+            if (_receiver == null || !_receiver.CanSendMacSurfaceInput ||
+                IsInputBlocked || controlChannel == null || !controlChannel.IsOpen ||
+                _macScrollRay == null || !_macScrollRay.isActiveAndEnabled ||
+                panelCollider == null || !panelCollider.enabled) return false;
+            var origin = _macScrollRay.rayOriginTransform != null ?
+                _macScrollRay.rayOriginTransform : _macScrollRay.transform;
+            return TryMapHitToUv(new Ray(origin.position, origin.forward), out _);
+        }
+
         // The hardware thumbstick is independent from XRI press/grab semantics.
         // Only emit wheel steps while the right controller ray intersects this
         // Mac screen; UI, Android media and frame grips retain their behavior.
