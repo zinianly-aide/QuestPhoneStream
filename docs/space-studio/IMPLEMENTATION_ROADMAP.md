@@ -146,3 +146,24 @@ Meta documentation used to plan S2 (not implemented in S0):
 - Capsule collisions; moving XR Origin, never disabling the physical Quest boundary.
 - Spawn at Hefu CAD 00_ floor center; Reset position returns to that reference.
 - Headset verification needed for real CAD collision and menu ergonomics.
+
+
+## S2.1 — Quest height, doors, and visual affordances
+
+- Height root now requests Floor tracking; 1.6m Device fallback is retained only
+  where the XR runtime cannot supply a floor-referenced origin.
+- Eye trim moves the shared camera/controller calibration root ±20cm and persists
+  a small meter adjustment (initial 0). UI cycles 0/-5/-10/-15/+5/+10 cm.
+  The setting is not a substitute for correct Quest boundary-floor calibration.
+- The private Hefu bundle intentionally strips all old HefuVR behaviours. The
+  public client reattaches safe runtime bindings for exactly 7 hinged doors
+  (entrance + 6 rooms) and 1 sliding balcony leaf by their known hierarchy.
+  Handle/door-leaf ray hits use right Trigger in Explore; fixed door frames do not.
+- Edit room: green floating marks above the 16 movable Hefu furniture groups,
+  hover outline and text differentiate editable, door, and locked CAD; toggle
+  markers on the editor toolbar. No renderer materials are modified permanently.
+- Door animations do not change saved furniture transforms, and remain separate
+  from Grip editing and XR tracked hands. Quest safety boundary remains enabled.
+- Verification gates: editor compile/test, Unity Android build, local private
+  install, headset testing for calibrated eye height, door hinge directions,
+  blocker geometry, UI interactions, controller input ownership.

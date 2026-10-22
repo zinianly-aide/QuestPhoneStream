@@ -23,6 +23,9 @@ namespace QuestPhoneStream
         public XROrigin Origin { get; private set; }
         public EventSystem UiEvents { get; private set; }
         public InputActionMap Actions { get; private set; }
+        private const string EyeTrimKey = "qps.space.eyeTrimMeters";
+        public float EyeTrimMeters { get; private set; }
+        private Transform _heightCalibration;
         private QuestWebRtcReceiver _receiver;
         private GameObject _root, _events;
         private readonly List<InputActionReference> _references = new List<InputActionReference>();
@@ -44,13 +47,19 @@ namespace QuestPhoneStream
             Origin = _root.AddComponent<XROrigin>();
             var offset = new GameObject("Camera Offset");
             offset.transform.SetParent(_root.transform, false);
-            camera.transform.SetParent(offset.transform, false);
+            // Floor origin on Quest reports real eye height directly. Device fallback uses
+            // the configured 1.6m offset only if floor tracking is unavailable.
+            var heightObject = new GameObject("Eye Height Calibration");
+            heightObject.transform.SetParent(offset.transform, false);
+            _heightCalibration = heightObject.transform;
+            camera.transform.SetParent(_heightCalibration, false);
             camera.transform.localPosition = Vector3.zero;
             camera.transform.localRotation = Quaternion.identity;
             Origin.Camera = camera;
             Origin.CameraFloorOffsetObject = offset;
-            Origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Device;
+            Origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
             Origin.CameraYOffset = 1.6f;
+            SetEyeTrim(PlayerPrefs.GetFloat(EyeTrimKey, 0f));
             ConfigurePose(camera.gameObject, "Head");
 
             var manager = _root.AddComponent<XRInteractionManager>();
@@ -65,14 +74,24 @@ namespace QuestPhoneStream
             module.enableGamepadInput = false;
             module.enableJoystickInput = false;
             module.enableBuiltinActionsAsFallback = false;
-            CreateController(offset.transform, manager, "LeftHand");
-            CreateController(offset.transform, manager, "RightHand");
+            CreateController(_heightCalibration, manager, "LeftHand");
+            CreateController(_heightCalibration, manager, "RightHand");
             Actions.Enable();
             _events.SetActive(true);
             _root.SetActive(true);
             Debug.Log($"[QuestPhoneStream] XR rig initialized. Camera world pos={camera.transform.position} rot={camera.transform.eulerAngles}");
             ConfigureSpatialPhonePanel(camera);
             InitializePhonePanelBackend(camera);
+        }
+
+        public void SetEyeTrim(float meters)
+        {
+            EyeTrimMeters = Mathf.Clamp(Mathf.Round(meters * 100f) / 100f, -.20f, .20f);
+            if (_heightCalibration != null)
+                _heightCalibration.localPosition = new Vector3(0, EyeTrimMeters, 0);
+            PlayerPrefs.SetFloat(EyeTrimKey, EyeTrimMeters);
+            PlayerPrefs.Save();
+            Debug.Log("[Spaces] Eye trim set " + EyeTrimMeters.ToString("F2") + "m");
         }
 
         /// <summary>Provide XRI runtime dependencies to the SDK-neutral interaction backend.</summary>

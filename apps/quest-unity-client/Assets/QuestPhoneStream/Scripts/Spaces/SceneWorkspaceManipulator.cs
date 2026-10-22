@@ -30,6 +30,12 @@ namespace QuestPhoneStream.Spaces
         Canvas _toolbar;
         Text _status;
         Camera _eye;
+        LineRenderer _hoverOutline;
+        TextMesh _hoverLabel;
+        readonly Dictionary<SceneWorkspaceObject,GameObject> _editableMarkers =
+            new Dictionary<SceneWorkspaceObject,GameObject>();
+        bool _showMarkers = true;
+        int _focusedId;
 
         public void Initialize(SceneWorkspaceManager manager)
         {
@@ -38,12 +44,19 @@ namespace QuestPhoneStream.Spaces
             Workspace=manager;
             if(manager!=null)manager.SceneChanged+=OnSceneChanged;
         }
-        void OnSceneChanged(SceneWorkspaceRecord _) {Selected=null;Dragging=false;SetStatus("Scene changed");}
+        void OnSceneChanged(SceneWorkspaceRecord _)
+        {
+            Selected=null;Dragging=false;SetStatus("Scene changed");
+            ClearMarkers();
+            if(Editing)BuildMarkers();
+        }
         public void Enter(Camera camera)
         {
             if(Workspace?.Active==null || camera==null)return;
             _eye=camera;Editing=true;_pressed=false;
             if(!_toolbar)BuildToolbar();
+            BuildMarkers();
+            EnsureHoverVisuals();
             var horizontal=Vector3.ProjectOnPlane(camera.transform.forward,Vector3.up).normalized;
             if(horizontal.sqrMagnitude<.01f)horizontal=Vector3.forward;
             _toolbar.transform.position=camera.transform.position+horizontal*1.45f-
@@ -56,6 +69,9 @@ namespace QuestPhoneStream.Spaces
         {
             FinishGrab(false);
             Editing=false;Selected=null;_pressed=false;
+            ClearMarkers();
+            if(_hoverOutline)_hoverOutline.gameObject.SetActive(false);
+            if(_hoverLabel)_hoverLabel.gameObject.SetActive(false);
             if(_toolbar)_toolbar.gameObject.SetActive(false);
             SetStatus("Edit inactive");
             Workspace?.ShowBrowser(_eye);
@@ -74,6 +90,7 @@ namespace QuestPhoneStream.Spaces
                 }
             }
             if(!_right || _grip==null)return;
+            UpdateAffordances();
             bool pressed=_grip.IsPressed();
             var pointer=new Ray(_right.position,_right.forward);
             if(pressed&&!_pressed)BeginGrab(pointer);
@@ -81,6 +98,150 @@ namespace QuestPhoneStream.Spaces
             if(!pressed&&_pressed&&Dragging)FinishGrab(true);
             _pressed=pressed;
         }
+        static Bounds VisualBounds(Transform root)
+        {
+            var renderers=root.GetComponentsInChildren<Renderer>(true);
+            Bounds bounds=new Bounds(root.position,Vector3.one*.10f);
+            bool first=true;
+            foreach(var renderer in renderers)
+            {
+                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy)continue;
+                if(first){bounds=renderer.bounds;first=false;}else bounds.Encapsulate(renderer.bounds);
+            }
+            return bounds;
+        }
+
+        void ClearMarkers()
+        {
+            foreach(var marker in _editableMarkers.Values)
+                if(marker)Destroy(marker);
+            _editableMarkers.Clear();
+        }
+
+        void BuildMarkers()
+        {
+            ClearMarkers();
+            if(!Workspace || !Workspace.EnvironmentRoot)return;
+            var shader=Shader.Find("Unlit/Color");
+            foreach(var tag in Workspace.EnvironmentRoot.GetComponentsInChildren<SceneWorkspaceObject>(true))
+            {
+                if(!tag.editable || !tag.gameObject.activeInHierarchy)continue;
+                var marker=GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.name="EditableMarker_"+tag.persistentId;
+                marker.transform.SetParent(transform,false);
+                marker.transform.localScale=Vector3.one*.075f;
+                var collider=marker.GetComponent<Collider>();
+                if(collider)Destroy(collider);
+                var renderer=marker.GetComponent<Renderer>();
+                if(shader)
+                    renderer.material=new Material(shader){color=new Color(.21f,1f,.49f)};
+                marker.SetActive(_showMarkers);
+                _editableMarkers.Add(tag,marker);
+            }
+        }
+
+        void EnsureHoverVisuals()
+        {
+            if(!_hoverOutline)
+            {
+                var go=new GameObject("WorkspaceHoverOutline");
+                go.transform.SetParent(transform,false);
+                _hoverOutline=go.AddComponent<LineRenderer>();
+                _hoverOutline.useWorldSpace=true;
+                _hoverOutline.positionCount=16;
+                _hoverOutline.loop=false;
+                _hoverOutline.widthMultiplier=.011f;
+                _hoverOutline.material=new Material(Shader.Find("Sprites/Default"));
+                _hoverOutline.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+                _hoverOutline.receiveShadows=false;
+            }
+            if(!_hoverLabel)
+            {
+                var go=new GameObject("WorkspaceHoverLabel");
+                go.transform.SetParent(transform,false);
+                _hoverLabel=go.AddComponent<TextMesh>();
+                _hoverLabel.fontSize=40;
+                _hoverLabel.characterSize=.012f;
+                _hoverLabel.anchor=TextAnchor.MiddleCenter;
+            }
+        }
+
+        static void DrawBounds(LineRenderer line,Bounds b)
+        {
+            var c=b.center;var e=Vector3.Max(b.extents,Vector3.one*.045f);
+            Vector3[] v=new Vector3[8];
+            for(int i=0;i<8;i++)
+                v[i]=c+new Vector3((i&1)==0?-e.x:e.x,(i&2)==0?-e.y:e.y,(i&4)==0?-e.z:e.z);
+            // One line shows the upper and lower rectangles plus side rails.
+            int[] walk={0,1,3,2,0,4,5,7,6,4,5,1,3,7,6,2};
+            for(int i=0;i<walk.Length;i++)line.SetPosition(i,v[walk[i]]);
+        }
+
+        void UpdateAffordances()
+        {
+            if(!_hoverOutline || !_hoverLabel)return;
+            foreach(var pair in _editableMarkers)
+                if(pair.Key && pair.Value)
+                {
+                    var b=VisualBounds(pair.Key.transform);
+                    pair.Value.transform.position=b.center+Vector3.up*(b.extents.y+.10f);
+                    pair.Value.SetActive(_showMarkers && pair.Key.gameObject.activeInHierarchy);
+                }
+
+            Collider hitCollider=null;
+            SceneWorkspaceObject hover=null;
+            SceneWorkspaceDoors.Door hoveredDoor=null;
+            if(_right && Physics.Raycast(new Ray(_right.position,_right.forward),out var hit,
+                maxReach,~0,QueryTriggerInteraction.Ignore))
+            {
+                hitCollider=hit.collider;
+                if(hitCollider && hitCollider.transform.IsChildOf(Workspace.EnvironmentRoot))
+                {
+                    hover=hitCollider.GetComponentInParent<SceneWorkspaceObject>();
+                    hoveredDoor=hitCollider.GetComponentInParent<SceneWorkspaceDoors.Door>();
+                }
+                else hitCollider=null;
+            }
+            Transform target=Dragging && Selected ? Selected.transform:
+                (hover && hover.editable ? hover.transform:
+                    hoveredDoor ? hoveredDoor.movingPart : hitCollider ? hitCollider.transform : null);
+            if(!target)
+            {
+                _hoverOutline.gameObject.SetActive(false);
+                _hoverLabel.gameObject.SetActive(false);
+                _focusedId=0;
+                return;
+            }
+            var editable=Dragging && Selected || hover && hover.editable;
+            var caption=editable?"EDITABLE · Grip to move":
+                hoveredDoor?"DOOR · Trigger to open in Explore":"LOCKED · Structure";
+            var color=editable?new Color(.18f,1f,.45f):
+                hoveredDoor?new Color(.20f,.85f,1f):new Color(.65f,.67f,.74f);
+            Bounds bounds=VisualBounds(target);
+            _hoverOutline.gameObject.SetActive(true);
+            _hoverLabel.gameObject.SetActive(true);
+            _hoverOutline.startColor=color;
+            _hoverOutline.endColor=color;
+            DrawBounds(_hoverOutline,bounds);
+            _hoverLabel.color=color;
+            _hoverLabel.text=caption;
+            _hoverLabel.transform.position=bounds.center+Vector3.up*(bounds.extents.y+.17f);
+            if(_eye)_hoverLabel.transform.rotation=Quaternion.LookRotation(
+                _hoverLabel.transform.position-_eye.transform.position,Vector3.up);
+            int id=target.GetInstanceID();
+            if(_focusedId!=id && !Dragging)
+            {
+                _focusedId=id;
+                SetStatus(caption+" : "+target.name);
+            }
+        }
+
+        public void ToggleEditableMarkers()
+        {
+            _showMarkers=!_showMarkers;
+            SetStatus(_showMarkers?"Editable markers ON":"Editable markers OFF");
+        }
+
         // Only closest physical collider wins: phone/window/UI blocks furniture behind it.
         public bool TrySelect(Ray pointer)
         {
@@ -216,7 +377,7 @@ namespace QuestPhoneStream.Spaces
             _toolbar.worldCamera=_eye;_toolbar.sortingOrder=108;
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
             var rect=root.GetComponent<RectTransform>();
-            rect.sizeDelta=new Vector2(650,230);
+            rect.sizeDelta=new Vector2(650,305);
             rect.localScale=Vector3.one*.00125f;
             root.AddComponent<Image>().color=new Color(.045f,.07f,.12f,.95f);
             _status=SceneWorkspaceBrowser.Label(root.transform,"Edit",22,
@@ -228,6 +389,10 @@ namespace QuestPhoneStream.Spaces
             SceneWorkspaceBrowser.Action(root.transform,"Delete",15,155,142,()=>DeleteSelected());
             SceneWorkspaceBrowser.Action(root.transform,"Undo",171,155,142,()=>Undo());
             SceneWorkspaceBrowser.Action(root.transform,"Done",476,155,146,Exit);
+            SceneWorkspaceBrowser.Action(root.transform,"Show/Hide marks",15,228,225,ToggleEditableMarkers);
+            SceneWorkspaceBrowser.Label(root.transform,
+                "Green: editable  /  Cyan: door  /  Gray: locked",
+                19,new Vector2(252,228),new Vector2(395,58));
         }
         void OnDestroy()
         {if(Workspace!=null)Workspace.SceneChanged-=OnSceneChanged;}

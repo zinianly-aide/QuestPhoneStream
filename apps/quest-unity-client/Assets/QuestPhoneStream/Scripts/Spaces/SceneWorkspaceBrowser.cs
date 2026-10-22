@@ -12,7 +12,7 @@ namespace QuestPhoneStream.Spaces
         GameObject _scenePage, _controlsPage;
         RectTransform _list;
         Text _status;
-        Button _leftButton, _rightButton, _speedButton, _snapButton;
+        Button _leftButton, _rightButton, _speedButton, _snapButton, _heightButton;
         SceneWorkspaceManager _spaces;
         SceneWorkspaceLocomotion _movement;
         Camera _eye;
@@ -90,7 +90,7 @@ namespace QuestPhoneStream.Spaces
         {
             var page = new GameObject(name, typeof(RectTransform));
             page.transform.SetParent(canvas, false);
-            Rect(page.GetComponent<RectTransform>(), 0, 0, 880, 730);
+            Rect(page.GetComponent<RectTransform>(), 0, 0, 880, 780);
             return page;
         }
 
@@ -103,7 +103,7 @@ namespace QuestPhoneStream.Spaces
             _canvas.worldCamera = _eye;
             _canvas.sortingOrder = 105;
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
-            root.GetComponent<RectTransform>().sizeDelta = new Vector2(880, 730);
+            root.GetComponent<RectTransform>().sizeDelta = new Vector2(880, 780);
             root.GetComponent<RectTransform>().localScale = Vector3.one * .0015f;
             var bg = root.AddComponent<Image>();
             bg.color = new Color(.045f, .06f, .09f, .97f);
@@ -165,14 +165,26 @@ namespace QuestPhoneStream.Spaces
                 if (_movement == null) return;
                 _movement.ConfigureSnap(_movement.SnapDegrees == 30 ? 45 : 30); RefreshControls();
             });
+            _heightButton = Action(_controlsPage.transform, "Eye height calibration", 34, 390, 780, () => {
+                var rig = FindObjectOfType<QuestXrUiRig>();
+                if (!rig) return;
+                var values = new [] { 0f, -.05f, -.10f, -.15f, .05f, .10f };
+                int current = 0;
+                for (int i = 0; i < values.Length; i++)
+                    if (Mathf.Abs(rig.EyeTrimMeters - values[i]) < .001f) { current = i; break; }
+                rig.SetEyeTrim(values[(current + 1) % values.Length]);
+                RefreshControls();
+            });
+            Label(_controlsPage.transform, "Floor tracking preferred; tap Eye height to calibrate 5cm at a time.",
+                18, new Vector2(34, 455), new Vector2(815, 45));
             Label(_controlsPage.transform, "Modes: Off / Move / Snap turn / Smooth turn",
-                20, new Vector2(34, 410), new Vector2(810, 50));
-            Label(_controlsPage.transform, "Mac screen: right-stick scroll always has priority while aimed at the screen.",
-                18, new Vector2(34, 467), new Vector2(815, 70));
-            Label(_controlsPage.transform, "Move only while exploring · menus/editing block movement.",
-                18, new Vector2(34, 547), new Vector2(810, 54));
-            Action(_controlsPage.transform, "Back to scenes", 34, 617, 342, ShowScenePage);
-            Action(_controlsPage.transform, "Explore room", 398, 617, 416, Explore);
+                20, new Vector2(34, 509), new Vector2(810, 42));
+            Label(_controlsPage.transform, "Mac screen: right stick scroll has priority when aimed at screen.",
+                18, new Vector2(34, 555), new Vector2(815, 48));
+            Label(_controlsPage.transform, "Movement is paused during menus or furniture editing.",
+                18, new Vector2(34, 609), new Vector2(810, 36));
+            Action(_controlsPage.transform, "Back to scenes", 34, 682, 342, ShowScenePage);
+            Action(_controlsPage.transform, "Explore room", 398, 682, 416, Explore);
             _controlsPage.SetActive(false);
         }
 
@@ -205,6 +217,15 @@ namespace QuestPhoneStream.Spaces
             SetButtonLabel(_rightButton, "Right stick: " + _movement.RightMode);
             SetButtonLabel(_speedButton, "Move speed: " + _movement.MoveSpeed.ToString("0.0") + " m/s");
             SetButtonLabel(_snapButton, "Snap angle: " + _movement.SnapDegrees + " degrees");
+            var rig = FindObjectOfType<QuestXrUiRig>();
+            if (rig)
+            {
+                float eye = rig.Origin != null && rig.Origin.Camera != null ?
+                    rig.Origin.Camera.transform.position.y : 0f;
+                SetButtonLabel(_heightButton, "Eye adjustment: " +
+                    (rig.EyeTrimMeters * 100f).ToString("+0;-0;0") +
+                    " cm  |  Eye Y: " + eye.ToString("F2") + " m");
+            }
         }
 
         public void Refresh()
