@@ -40,16 +40,16 @@ namespace QuestPhoneStream.Spaces
             rect.anchoredPosition=new Vector2(x,-y);
             rect.sizeDelta=new Vector2(w,h);
         }
-        static Text Label(Transform root,string value,int size,Vector2 pos,Vector2 dimensions)
+        internal static Text Label(Transform root,string value,int size,Vector2 pos,Vector2 dimensions)
         {
             var go=new GameObject("Text_"+value,typeof(RectTransform));go.transform.SetParent(root,false);
-            var text=go.AddComponent<Text>();text.text=value;text.font=Resources.GetBuiltinResource<Font>("Arial.ttf");
+            var text=go.AddComponent<Text>();text.text=value;text.font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize=size;text.color=new Color(.91f,.94f,.98f);
             text.alignment=TextAnchor.MiddleLeft;
             Rect(go.GetComponent<RectTransform>(),pos.x,pos.y,dimensions.x,dimensions.y);
             return text;
         }
-        static Button Action(Transform root,string title,float x,float y,float width,Action onClick)
+        internal static Button Action(Transform root,string title,float x,float y,float width,Action onClick)
         {
             var go=new GameObject("Action_"+title,typeof(RectTransform));go.transform.SetParent(root,false);
             var rect=go.GetComponent<RectTransform>();Rect(rect,x,y,width,56);
@@ -81,7 +81,12 @@ namespace QuestPhoneStream.Spaces
                 Refresh();});
             Action(root.transform,"Add cube",225,521,179,()=>{
                 if(_spaces.AddPrimitive("cube",new Vector3(0,1.4f,1f)))Refresh();});
-            Action(root.transform,"Undo",416,521,130,()=>{_spaces.Undo();Refresh();});
+            Action(root.transform,"Edit room",416,521,130,()=>{
+                if(_canvas)_canvas.gameObject.SetActive(false);
+                var editor=_spaces.GetComponent<SceneWorkspaceManipulator>();
+                if(!editor)editor=_spaces.gameObject.AddComponent<SceneWorkspaceManipulator>();
+                editor.Initialize(_spaces);editor.Enter(_eye);
+            });
             Action(root.transform,"Copy scene",559,521,168,()=>{
                 if(_spaces.Active!=null)_spaces.Duplicate(_spaces.Active.id);
                 Refresh();});

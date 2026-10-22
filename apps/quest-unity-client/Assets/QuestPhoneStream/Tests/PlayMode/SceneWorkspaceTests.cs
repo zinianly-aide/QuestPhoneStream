@@ -105,6 +105,60 @@ namespace QuestPhoneStream.Tests
             SceneWorkspaceManager.PersistentRootOverrideForTests=null;
         }
 
+        [UnityTest]
+        public IEnumerator ExplicitFurnitureEditDoesNotClickThroughPanelAndRestoresSavedPose()
+        {
+            SceneWorkspaceManager.PersistentRootOverrideForTests=_temp;
+            var host=new GameObject("QuestAppHost");
+            var cameraGo=new GameObject("TestEditorCamera");
+            var camera=cameraGo.AddComponent<Camera>();
+            cameraGo.transform.position=new Vector3(0,1.40f,0);
+            var space=host.AddComponent<SceneWorkspaceManager>();
+            Assert.IsTrue(space.AddPrimitive("cube",new Vector3(0,1.4f,1.7f)));
+            var editor=host.AddComponent<SceneWorkspaceManipulator>();
+            editor.Initialize(space);
+            var pointer=new Ray(new Vector3(0,1.4f,0),Vector3.forward);
+            Assert.IsFalse(editor.TrySelect(pointer),"Editor must be explicitly enabled");
+            editor.Enter(camera);
+            var foreground=GameObject.CreatePrimitive(PrimitiveType.Cube);
+            foreground.name="PhonePanelScreen_BlockingSelection";
+            foreground.transform.position=new Vector3(0,1.4f,.7f);
+            foreground.transform.localScale=new Vector3(1f,1f,.07f);
+            Physics.SyncTransforms();
+            Assert.IsFalse(editor.TrySelect(pointer),"Must not click through phone screen");
+            foreground.SetActive(false);
+            Physics.SyncTransforms();
+            Assert.IsTrue(editor.BeginGrab(pointer));
+            var id=space.Active.objects[0].id;
+            Assert.AreEqual(id,editor.Selected.persistentId);
+            Assert.IsTrue(editor.Drag(new Ray(new Vector3(.2f,1.4f,0),Vector3.forward)));
+            Assert.IsTrue(editor.FinishGrab(true));
+            Assert.AreEqual(.2f,space.Active.objects[0].localPosition.x,.02f);
+            Assert.IsTrue(File.Exists(space.Store.ScenePath(space.Active.id)));
+            Assert.IsTrue(editor.Undo());
+            Assert.AreEqual(0f,space.Active.objects[0].localPosition.x,.02f);
+            Assert.IsTrue(editor.TrySelect(pointer));
+            Assert.IsTrue(editor.RotateSelected(15f));
+            Assert.IsTrue(editor.ScaleSelected(1.05f));
+            Assert.IsTrue(editor.DeleteSelected());
+            Assert.IsTrue(space.Active.objects[0].deleted);
+            Assert.IsTrue(editor.Undo());
+            Assert.IsFalse(space.Active.objects[0].deleted);
+            var initialId=space.Active.id;
+            var another=space.CreateBlank("Other");
+            Assert.IsTrue(space.Select(another.id));
+            Assert.IsTrue(space.Select(initialId));
+            Assert.AreEqual(1,space.Active.objects.Count);
+            Assert.IsFalse(space.Active.objects[0].deleted);
+            Assert.AreEqual(15f,space.Active.objects[0].localRotation.eulerAngles.y,1f);
+            Assert.IsNotNull(host.GetComponent<SceneWorkspaceManipulator>());
+            UnityEngine.Object.Destroy(host);
+            UnityEngine.Object.Destroy(cameraGo);
+            UnityEngine.Object.Destroy(foreground);
+            SceneWorkspaceManager.PersistentRootOverrideForTests=null;
+            yield return null;
+        }
+
         [Test]
         public void SceneSourceMustBeRecognized()
         {

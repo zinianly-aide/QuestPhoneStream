@@ -115,3 +115,20 @@ Meta documentation used to plan S2 (not implemented in S0):
 - QuestPhoneStream Android APK **本地构建通过**，含OpenXR和`Spaces`入口，签名/ZIP完整性检查通过；打包检查没有把私有CAD文件或bundle塞进APK。
 - 私有安装器（尚无设备执行）：`/Volumes/ssd/HefuVR-Quest/Scripts/install_private_hefu_into_qps.sh`。设备上的空间场景还需要真机验收。
 - 原WebRTC/Signaling/Spatial Protocol v1均没有被重构，也没有merge/push任何分支。
+
+## 2026-10-22 · S1.1 首轮编辑器交互闭环
+
+- 新增 `SceneWorkspaceManipulator`：**手动选择 Spaces > Edit room** 后进入，不重建或修改 XR Origin，不改变WebRTC、Spatial Protocol或远程控制协议。
+- 使用原 `QuestXrUiRig` 的 Right Controller 姿态和 `RightHand Grab`（Grip）。Physics.Raycast **只接受最近命中的场景家具**，不穿透位于前方的PhonePanel或墙体，避免 Grab 同时控制房屋和远程屏幕。
+- Grip 按住仅预览世界空间移动，Y 保持不变，释放才批量保存为一次 Undo；拖动最大3米；只允许具备 `SceneWorkspaceObject` 标签的物体，CAD结构默认不可编辑。
+- 独立 WorldSpace Edit Toolbar：Rotate ±15°、Scale ±5%、Delete、Undo、Done。回到 Spaces Browser 时仍保存原 WebRTC/手机控制 UI 状态。
+- 默认进场仍是浏览模式；没有连接真实Quest测试，因此无法宣称控制器与现有SpatialPanel手势完全无冲突。
+- 改进 `SceneWorkspaceManager`: 清除旧环境前立即停用旧节点Collider，避免 Deferred Destroy 同帧与Undo/Select冲突；装入新环境后 `Physics.SyncTransforms()`。
+- PlayMode 测试 `SceneWorkspaceTests` 从5扩展到 **6/6 PASS**，新增显式编辑、屏幕遮挡优先、移动松开保存、撤销、旋转、缩放、软删除和场景重载闭环。
+
+### S1后续仍未完成
+
+- Quest 3S真机内的 Grip/XRI点击仲裁，尤其切换页面与UI Poke/Ray。
+- CAD模型重叠与墙体贴边精度验证、专用碰撞层、家具的复制/恢复、Redo和房间级快照。
+- MRUK空间白模及房间扫描权限接入；未引入SDK，不宣称具备扫描能力。
+- 性能/人体碰撞/重定位/空间锚点真机验证。

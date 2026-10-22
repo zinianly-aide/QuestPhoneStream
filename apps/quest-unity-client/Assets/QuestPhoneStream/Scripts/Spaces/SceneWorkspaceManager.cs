@@ -64,6 +64,7 @@ namespace QuestPhoneStream.Spaces
             Store.SaveScene(Active);
             Store.SaveCatalog(Catalog);
             _undo.Clear();IndexObjects();
+            Physics.SyncTransforms();
             SceneChanged?.Invoke(Active);_browser?.Refresh();return true;
         }
         bool Stage(SceneWorkspaceRecord record,out GameObject staged,out AssetBundle bundle)
@@ -226,6 +227,7 @@ namespace QuestPhoneStream.Spaces
             _undo.Pop();ClearEnvironment(bundle!=null && ReferenceEquals(bundle,_bundle));
             staged.transform.SetParent(EnvironmentRoot,false);_bundle=bundle;
             Active=previous;IndexObjects();
+            Physics.SyncTransforms();
             Store.SaveScene(Active);
             int pos=Catalog.scenes.FindIndex(x=>x.id==Active.id);
             if(pos>=0)Catalog.scenes[pos]=Active;
@@ -254,7 +256,13 @@ namespace QuestPhoneStream.Spaces
         void ClearEnvironment(bool keepBundle=false)
         {
             if(EnvironmentRoot!=null)
-                foreach(Transform item in EnvironmentRoot)DestroySafe(item.gameObject);
+                foreach(Transform item in EnvironmentRoot)
+                {
+                    // Destroy is deferred in PlayMode. Disable colliders and renderers
+                    // immediately so same-frame selection/Undo cannot hit stale scene.
+                    item.gameObject.SetActive(false);
+                    DestroySafe(item.gameObject);
+                }
             if(_bundle && !keepBundle){_bundle.Unload(false);_bundle=null;}
             _objects.Clear();
         }
