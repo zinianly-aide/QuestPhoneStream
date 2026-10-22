@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using QuestPhoneStream.Spaces;
 
 namespace QuestPhoneStream
 {
@@ -109,9 +110,10 @@ namespace QuestPhoneStream
             _controlStatus = AddStatus(panelGo.transform, "Control", 0.30f, 0.68f);
             _mediaStatus = AddStatus(panelGo.transform, "Media", 0.55f, 0.68f);
 
-            _phoneTab = MakeButton(panelGo.transform, "Screen", 0.05f, 0.49f, 0.27f, 0.61f, OnPhone);
-            _videosTab = MakeButton(panelGo.transform, "Media", 0.29f, 0.49f, 0.51f, 0.61f, OnVideos);
-            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.53f, 0.49f, 0.75f, 0.61f, OpenKeyboard);
+            _phoneTab = MakeButton(panelGo.transform, "Screen", 0.05f, 0.49f, 0.21f, 0.61f, OnPhone);
+            _videosTab = MakeButton(panelGo.transform, "Media", 0.23f, 0.49f, 0.39f, 0.61f, OnVideos);
+            _keyboardButton = MakeButton(panelGo.transform, "Keyboard", 0.41f, 0.49f, 0.57f, 0.61f, OpenKeyboard);
+            MakeButton(panelGo.transform, "Spaces", 0.59f, 0.49f, 0.75f, 0.61f, OpenSpaces);
             _advancedSettingsButton = MakeButton(panelGo.transform, "⚙ Settings", 0.77f, 0.49f, 0.95f, 0.61f, OpenSettings);
 
             // Device-scoped quick actions: pick a discovered device, then Stream (screen push)
@@ -180,6 +182,14 @@ namespace QuestPhoneStream
             var text = MakeText(parent, label + "  ·  —", 17, TextAnchor.MiddleLeft);
             Anchor(text.rectTransform, x, y, x + 0.25f, y + 0.12f);
             return text.textComponent;
+        }
+
+        private void OpenSpaces()
+        {
+            var spaces=FindObjectOfType<SceneWorkspaceManager>();
+            if(spaces==null){SetNotice("Scene Workspace unavailable",3f);return;}
+            Hide();
+            spaces.ShowBrowser(_camera);
         }
 
         private void OnPhone()

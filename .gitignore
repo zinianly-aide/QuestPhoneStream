@@ -17,3 +17,11 @@ Builds/
 Logs/
 UserSettings/
 .tools/
+
+# PRIVATE personal spatial data / home geometry. Never publish in repository or CI.
+apps/quest-unity-client/Assets/StreamingAssets/SceneWorkspaces/Private/
+apps/quest-unity-client/Assets/StreamingAssets/SceneWorkspaces/Private.meta
+apps/quest-unity-client/Assets/QuestPhoneStream/PrivateHomes/
+apps/quest-unity-client/Assets/QuestPhoneStream/PrivateHomes.meta
+*.qpsspace
+*.qpsspace.bak
