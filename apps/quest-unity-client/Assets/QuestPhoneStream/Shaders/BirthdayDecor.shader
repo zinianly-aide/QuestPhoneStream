@@ -8,6 +8,8 @@ Shader "QuestPhoneStream/BirthdayDecor"
         _Smoothness ("Surface Gloss", Range(0,1)) = 0.35
         _EmissionColor ("Warm LED Emission", Color) = (0, 0, 0, 0)
         _Unlit ("Unlit Photo Surface", Range(0,1)) = 0
+        _Fabric ("Matte Textile Microtexture", Range(0,1)) = 0
+        _Pearl ("Soft Pearl Sheen", Range(0,1)) = 0
     }
     SubShader
     {
@@ -29,6 +31,8 @@ Shader "QuestPhoneStream/BirthdayDecor"
             half _Smoothness;
             half4 _EmissionColor;
             half _Unlit;
+            half _Fabric;
+            half _Pearl;
             struct Input
             {
                 float4 vertex : POSITION;
@@ -69,7 +73,12 @@ Shader "QuestPhoneStream/BirthdayDecor"
                 half3 viewDir = normalize(_WorldSpaceCameraPos - input.worldPosition);
                 half3 halfDir = normalize(key + viewDir);
                 half gloss = pow(saturate(dot(normalWorld,halfDir)),lerp(10.0h,56.0h,_Smoothness));
-                half specIntensity = (0.04h + 0.27h*_Metallic) * gloss;
+                // Smooth low-frequency woven highlights, no tiling texture and no
+                // noisy high-frequency sparkle in Quest stereo rendering.
+                half weave = 0.5h + 0.5h * sin(input.worldPosition.y * 14.0h) *
+                                        cos(input.worldPosition.z * 12.0h);
+                albedo.rgb *= (1.0h - _Fabric * (0.035h + 0.035h * weave));
+                half specIntensity = (0.04h + 0.27h*_Metallic + 0.075h*_Pearl) * gloss;
                 half3 lighted = albedo.rgb * illumination + specIntensity *
                     lerp(half3(1,1,1),albedo.rgb,_Metallic) + _EmissionColor.rgb;
                 return half4(lerp(lighted,albedo.rgb,_Unlit),albedo.a);

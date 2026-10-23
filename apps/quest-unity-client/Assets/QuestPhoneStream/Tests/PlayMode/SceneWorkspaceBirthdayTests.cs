@@ -42,9 +42,10 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(5,created.AnchorCount);
             // Fine detail replaces many separate sphere/cube primitives with a
             // few properly shaped meshes; geometry quality matters more than count.
-            Assert.That(created.DecorationCount, Is.InRange(105, 145),
+            Assert.That(created.DecorationCount, Is.InRange(115, 150),
                 "Detailed birthday should pool petals instead of spawning dozens of primitive balls");
             int bouquetMeshes = 0, stringMeshes = 0, icingMeshes = 0, candleMeshes = 0, frameMeshes = 0;
+            int galleryBackdrops = 0, welcomeArches = 0, diningRunners = 0;
             var ribbons = 0;
             foreach (var filter in _room.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -70,8 +71,14 @@ namespace QuestPhoneStream.Tests
                 if(f.name.Contains("CakeIcingScallops")) icingMeshes++;
                 if(f.name.Contains("CakeThreeCandles")) candleMeshes++;
                 if(f.name.Contains("PhotoFrameMoulding")) frameMeshes++;
+                if(f.name.Contains("PhotoWallFabricBackdrop")) galleryBackdrops++;
+                if(f.name.Contains("WelcomeTextileArch")) welcomeArches++;
+                if(f.name.Contains("DiningTextileAndMacarons")) diningRunners++;
             }
-            Assert.AreEqual(3,bouquetMeshes,"Three real folded-rose bouquets, not spheres");
+            Assert.AreEqual(5,bouquetMeshes,"Five fine floral clusters, including gallery corners");
+            Assert.AreEqual(1,galleryBackdrops);
+            Assert.AreEqual(1,welcomeArches);
+            Assert.AreEqual(1,diningRunners);
             Assert.AreEqual(3,stringMeshes,"Each balloon group has one pooled curved-string mesh");
             Assert.AreEqual(1,icingMeshes,"Scalloped frosting uses one mesh");
             Assert.AreEqual(1,candleMeshes,"Three candles use one mesh with visible flames");

@@ -165,6 +165,66 @@ namespace QuestPhoneStream.Spaces
             b.Box(0,new Vector3(-.032f,0,width*.5f),new Vector3(.014f,height*.5f,side*.5f));
             return b.Finish("Birthday_PhotoFrame_RealMoulding");
         }
+
+        // B2.5/2.6: arch silhouettes and seams use shared submeshes, no colliders,
+        // no per-petal GameObject. Panel triangles are double-sided in BirthdayDecor.
+        static Mesh Arch(float halfWidth, float bottom, float shoulders, float archHeight,
+            float depth, bool facesWest, string name)
+        {
+            const int parts=28;
+            var b=new Builder(2); // textured matte panel + champagne rolled piping
+            Func<float,float> top=z=>shoulders + archHeight *
+                Mathf.Sqrt(Mathf.Max(0f,1f-z*z/(halfWidth*halfWidth)));
+            Func<float,float,Vector3> pt=(z,y)=>facesWest?
+                new Vector3(depth,y,z):new Vector3(z,y,depth);
+            Func<float,float,Vector3> trim=(z,y)=>facesWest?
+                new Vector3(depth-.015f,y,z):new Vector3(z,y,depth-.015f);
+            for(int i=0;i<parts;i++)
+            {
+                float a=Mathf.Lerp(-halfWidth,halfWidth,(float)i/parts);
+                float c=Mathf.Lerp(-halfWidth,halfWidth,(float)(i+1)/parts);
+                b.Quad(0,pt(a,bottom),pt(c,bottom),pt(c,top(c)),pt(a,top(a)));
+                // Top metallic piping follows the arch rather than floating above it.
+                b.Quad(1,trim(a,top(a)-.013f),trim(c,top(c)-.013f),
+                    trim(c,top(c)+.008f),trim(a,top(a)+.008f));
+            }
+            // Two thin metallic vertical inlays mark the panel edges.
+            float z0=halfWidth-.012f;
+            b.Quad(1,trim(-z0,bottom),trim(-z0+.008f,bottom),
+                trim(-z0+.008f,shoulders),trim(-z0,shoulders));
+            b.Quad(1,trim(z0-.008f,bottom),trim(z0,bottom),
+                trim(z0,shoulders),trim(z0-.008f,shoulders));
+            return b.Finish(name);
+        }
+        public static Mesh WelcomeArch()
+        {
+            return Arch(.39f,.025f,.73f,.26f,.055f,false,
+                "Birthday_Welcome_ArchedFabricSign");
+        }
+        public static Mesh GalleryArch()
+        {
+            return Arch(.89f,.30f,2.16f,.31f,.055f,true,
+                "Birthday_Gallery_ArchedBackdrop");
+        }
+        public static Mesh DiningTableRunner()
+        {
+            var b=new Builder(4);
+            // Lightweight stitched textile runner ~0.82 x 0.46 m on the table.
+            b.Box(0,new Vector3(0,.010f,0),new Vector3(.42f,.004f,.23f));
+            // One shared cream platter, five macarons in grouped pastel hues.
+            foreach(float x in new[]{-.34f,.34f})
+            {
+                b.Box(1,new Vector3(x,.022f,.14f),new Vector3(.080f,.006f,.067f));
+                for(int i=0;i<3;i++)
+                {
+                    var center=new Vector3(x+(i-1)*.039f,.038f,.14f);
+                    b.Box(i%2==0?2:3,center,new Vector3(.017f,.014f,.018f));
+                    b.Box(1,center+Vector3.up*.015f,new Vector3(.017f,.002f,.018f));
+                }
+            }
+            return b.Finish("Birthday_DiningRunner_DessertPlates");
+        }
+
         public static Mesh BalloonStrings(Vector3[] points)
         {
             var b=new Builder(1);

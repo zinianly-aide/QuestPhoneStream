@@ -20,6 +20,7 @@ namespace QuestPhoneStream.Spaces
         readonly List<Renderer> _bulbs = new List<Renderer>();
         readonly List<Light> _lights = new List<Light>();
         Material _ivory, _gold, _rose, _white, _leaves, _glow, _photoMat;
+        Material _fabric, _sage;
 
         static Transform FindFurniture(Transform root, string id)
         {
@@ -56,7 +57,12 @@ namespace QuestPhoneStream.Spaces
             if (!mat) return null; // Keep the room even if this material cannot render.
             mat.name = "Birthday_" + name;
             if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", metallic ? .75f : 0);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", metallic ? .78f : .32f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness",
+                metallic ? .70f : (name=="Fabric" ? .13f : .27f));
+            if (mat.HasProperty("_Fabric")) mat.SetFloat("_Fabric",
+                name=="Fabric" || name=="Blush" || name=="Leaves" ? .78f : .05f);
+            if (mat.HasProperty("_Pearl")) mat.SetFloat("_Pearl",
+                name=="White" || name=="Ivory" ? .42f : 0f);
             if (name == "LED" && mat.HasProperty("_EmissionColor"))
                 mat.SetColor("_EmissionColor", new Color(.42f,.24f,.07f));
             _owned.Add(mat);
@@ -286,6 +292,8 @@ namespace QuestPhoneStream.Spaces
             _leaves=MakeMaterial("Leaves",new Color(.21f,.45f,.29f));
             _glow=MakeMaterial("LED",new Color(1f,.80f,.38f));
             _photoMat=MakeMaterial("PlaceholderPhotoMat",new Color(.30f,.23f,.20f));
+            _fabric=MakeMaterial("Fabric",new Color(.79f,.70f,.67f));
+            _sage=MakeMaterial("Sage",new Color(.53f,.62f,.51f));
             var entry=BoundsOf(FindFurniture(environment,"EntranceShoeCabinet"));
             var cabinet=BoundsOf(FindFurniture(environment,"DiningSideboard"));
             var dining=BoundsOf(FindFurniture(environment,"Move_Dining_Table"));
@@ -293,10 +301,16 @@ namespace QuestPhoneStream.Spaces
             var coffee=BoundsOf(FindFurniture(environment,"Move_Coffee_Table"));
 
             // North entry: use the real shoe-cabinet top, not the doorway floor.
+            // Entrance photo-view audit B2.5: the old -Z-facing board was hidden
+            // behind door jambs. The east-facing cabinet side is the clear sightline.
             var foyer=MakeAnchor(environment,"EntranceShoeCabinet","NorthWelcome",
-                new Vector3(entry.center.x,entry.max.y,entry.center.z));
-            Box(foyer,"WelcomeBoard",new Vector3(0,.39f,0),
-                new Vector3(.62f,.68f,.045f),_ivory);
+                new Vector3(entry.center.x+.38f,Mathf.Min(entry.max.y,1.05f),entry.center.z));
+            foyer.rotation=Quaternion.Euler(0f,-90f,0f);
+            // A matte textile arch with real trim instead of a plain square sign.
+            FineMesh(foyer,"WelcomeTextileArch",new Vector3(0,0,.02f),
+                BirthdayFineMesh.WelcomeArch(),_fabric,_gold);
+            Box(foyer,"WelcomeBoard",new Vector3(0,.39f,-.043f),
+                new Vector3(.52f,.53f,.012f),_ivory);
             Words(foyer,"HAPPY\nBIRTHDAY",new Vector3(0,.42f,-.03f),.014f,180);
             Balloons(foyer,new Vector3(-.41f,.64f,0),10,.16f);
             Ribbon(foyer,"WelcomeSwag",new Vector3(-.32f,.78f,-.048f),
@@ -316,7 +330,9 @@ namespace QuestPhoneStream.Spaces
             // Dining: the cake sits on the actual CAD tabletop.
             var table=MakeAnchor(environment,"Move_Dining_Table","DiningCake",
                 new Vector3(dining.center.x,dining.max.y,dining.center.z));
-            Cylinder(table,"CakePlate",new Vector3(0,.016f,0),new Vector3(.25f,.016f,.25f),_gold);
+            FineMesh(table,"DiningTextileAndMacarons",Vector3.zero,
+                BirthdayFineMesh.DiningTableRunner(),_fabric,_ivory,_rose,_gold);
+            Cylinder(table,"CakePlate",new Vector3(0,.029f,0),new Vector3(.25f,.016f,.25f),_gold);
             Cylinder(table,"CakeBase",new Vector3(0,.115f,0),new Vector3(.19f,.10f,.19f),_white);
             Cylinder(table,"CakeCreamTop",new Vector3(0,.23f,0),new Vector3(.15f,.052f,.15f),_ivory);
             FineMesh(table,"CakeIcingScallops",Vector3.zero,
@@ -334,8 +350,28 @@ namespace QuestPhoneStream.Spaces
 
             // South living: sofa is east of the coffee table in the Hefu CAD layout.
             // Gallery faces WEST toward the coffee table, 20cm before the east wall.
+            // B2.5: gallery was EAST of wall 12 and hidden from the living area.
+            // Find the interior/west face of an existing wall, then stand the
+            // backdrop 8cm west of it. Never mutate CAD or furniture transforms.
+            float galleryWallX = sofa.max.x - .20f;
+            // Cast from the lounge (west) toward the east wall. An east-to-west
+            // ray would select the wall's back face and bury the gallery again.
+            var ray=new Ray(new Vector3(sofa.max.x-2.4f,1.68f,sofa.center.z),Vector3.right);
+            float closest=float.PositiveInfinity;
+            foreach(var hit in Physics.RaycastAll(ray,3.1f))
+            {
+                var name=hit.collider.name.ToLowerInvariant();
+                if(!(name.Contains("wall") || name.Contains("墙")))continue;
+                if(hit.point.x<sofa.max.x && hit.point.x>sofa.max.x-2.2f &&
+                   hit.distance<closest)
+                {closest=hit.distance;galleryWallX=hit.point.x-.095f;}
+            }
             var gallery=MakeAnchor(environment,"Move_Sofa","SouthLivingGallery",
-                new Vector3(sofa.max.x-.20f,0,sofa.center.z));
+                new Vector3(galleryWallX,0,sofa.center.z));
+            Debug.Log("[BirthdayLayout] gallery x="+galleryWallX.ToString("F3")+
+                " wallFound="+(!float.IsPositiveInfinity(closest)));
+            FineMesh(gallery,"PhotoWallFabricBackdrop",Vector3.zero,
+                BirthdayFineMesh.GalleryArch(),_fabric,_gold);
             Frame(gallery,"01",-.39f);Frame(gallery,"02",0);Frame(gallery,"03",.39f);
             Words(gallery,"OUR MOMENTS",new Vector3(-.04f,2.10f,0),.010f,90);
             Words(gallery,"HAPPY BIRTHDAY",new Vector3(-.04f,2.39f,0),.013f,90);
@@ -345,6 +381,9 @@ namespace QuestPhoneStream.Spaces
                 new Vector3(-.045f,2.52f,.74f),Vector3.left,.075f,.020f,_gold);
             Balloons(gallery,new Vector3(.02f,1.76f,-.74f),8,.11f);
             Balloons(gallery,new Vector3(.02f,1.76f,.74f),8,.11f);
+            // Two short low-lying sage/rose sprays frame the bottom corners.
+            Bouquet(gallery,new Vector3(-.11f,.39f,-.68f),.20f);
+            Bouquet(gallery,new Vector3(-.11f,.39f,.68f),.18f);
             var coffeeTop=MakeAnchor(environment,"Move_Coffee_Table","SouthCoffeeFlowers",
                 new Vector3(coffee.center.x,coffee.max.y,coffee.center.z));
             Bouquet(coffeeTop,Vector3.zero,.18f);
