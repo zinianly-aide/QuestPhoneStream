@@ -307,3 +307,37 @@ Meta documentation used to plan S2 (not implemented in S0):
   keep the currently installed Vulkan home.bundle, and verify BIRTHDAY_READY,
   Shader/IL2CPP errors and a sustained 72-FPS target. Compare against the last
   known-good app and roll back the APK if the richer decoration drops frames.
+
+## B2.3 · Gallery styling and opt-in foreground Wi-Fi hint (2026-10-23)
+
+- Preserves the real Hefu private room, five furniture anchor transforms, the
+  version-1 birthday preset, the 3 local numbered photo slots and editability.
+- Adds a single lightweight, 18-segment curved *ribbon mesh* at each of the
+  entrance board, dining sideboard and living-room photo gallery. These use
+  shared existing materials, disable shadows, have no colliders and own/destroy
+  their Unity runtime meshes on scene unload. Floral clusters add a few scaled
+  leaves without additional realtime shadow-casting lights. Two existing subtle
+  birthday point lights remain the only B1 realtime lights.
+- Added `QuestForegroundConnectionGuard`: disabled by default, explicitly
+  toggled only in **Settings > Diagnostics > Keep Wi-Fi: OFF/ON** for developer
+  APKs. It stores the user preference, while active requests Unity's
+  `SleepTimeout.NeverSleep` and Android's low-latency foreground Wi-Fi lock.
+  Native Wi-Fi lock needs the Android `WAKE_LOCK` permission, now included in
+  the generated manifest. On application pause, disable or destroy it releases
+  the lock and restores the preceding Unity timeout. If unavailable, it
+  gracefully falls back to the screen hint.
+- This **does not** disable the Horizon OS auto-sleep policy or guarantee ADB
+  will remain online if the headset sleeps or the OS suspends the app. ADB TLS
+  remains owned by the system. The headset's `screen_off_timeout` was already
+  86400000 ms (24h), so raising that system value would not fix OS-level sleep.
+  Keep the option off unless actively debugging; it can consume extra battery.
+- PlayMode regression: **171/171 passed**, including guard lifecycle tests and
+  ribbon mesh count, geometry and collision checks. The B2.3 Developer Tools
+  APK was built with APK Signature v2, WAKE_LOCK granted on Quest, and neither
+  private CAD nor photos were bundled. Quest install returned `Success`, and
+  real scene startup printed `BIRTHDAY_READY anchors=5 decor=155`, without the
+  older Vulkan shader-platform error. With the option off, last 20 runtime
+  VrApi FPS samples averaged 72, minimum 70; startup had transient lower frames.
+  Scene catalog and birthday save SHA256 were unchanged after upgrade.
+- Android-side keep-awake acquire/release logging should additionally be checked
+  after the user explicitly turns the new option **ON** on the headset.

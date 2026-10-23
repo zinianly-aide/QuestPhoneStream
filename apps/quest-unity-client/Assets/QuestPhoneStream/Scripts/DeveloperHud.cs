@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace QuestPhoneStream
 {
     /// <summary>
-    /// Single read-only developer diagnostics page. It consumes QuestDiagnostics only,
-    /// samples at most once per second, and never changes transport/provider state.
+    /// Developer diagnostics and explicit foreground-only power preference.
+    /// Sampling never modifies transport/provider state.
     /// </summary>
     public sealed class DeveloperHud : MonoBehaviour
     {
@@ -17,6 +17,9 @@ namespace QuestPhoneStream
         private Action _onBack;
         private Text _body;
         private Toggle _autoRefresh;
+        private QuestForegroundConnectionGuard _foregroundGuard;
+        private Button _keepAwakeButton;
+        private Text _keepAwakeText;
         private const string ViewPref = "QuestPhoneStream_DiagnosticsView_v1";
         private QuestDiagnosticsView _selectedView = QuestDiagnosticsView.All;
         private readonly Button[] _viewButtons = new Button[5];
@@ -35,6 +38,8 @@ namespace QuestPhoneStream
             _wirelessAdb = wirelessAdb;
             _onBack = onBack;
             _selectedView = SafeView(PlayerPrefs.GetInt(ViewPref, 0));
+            _foregroundGuard = GetComponent<QuestForegroundConnectionGuard>();
+            if (!_foregroundGuard) _foregroundGuard = gameObject.AddComponent<QuestForegroundConnectionGuard>();
             Build();
             _initialized = true;
         }
@@ -44,6 +49,7 @@ namespace QuestPhoneStream
             if (!_initialized) throw new InvalidOperationException("Initialize Developer HUD before showing it");
             _wirelessAdb?.Hide();
             _page.SetActive(true);
+            UpdateKeepAwakeLabel();
             Refresh();
         }
 
@@ -88,6 +94,19 @@ namespace QuestPhoneStream
             if (IsVisible) Refresh();
         }
 
+        private void ToggleKeepAwake()
+        {
+            if (!_foregroundGuard) return;
+            _foregroundGuard.SetEnabled(!_foregroundGuard.Enabled);
+            UpdateKeepAwakeLabel();
+        }
+
+        private void UpdateKeepAwakeLabel()
+        {
+            if (_keepAwakeText != null && _foregroundGuard != null)
+                _keepAwakeText.text = _foregroundGuard.Enabled ? "Keep Wi-Fi: ON" : "Keep Wi-Fi: OFF";
+        }
+
         private void OpenWirelessAdb()
         {
             Hide();
@@ -105,6 +124,8 @@ namespace QuestPhoneStream
             pageRect.anchorMax = new Vector2(0.95f, 0.96f);
             pageRect.sizeDelta = Vector2.zero;
 
+            CreateText(_page.transform, "Keep Wi-Fi works only while this app is active; OS sleep / ADB is separate",
+                11, TextAnchor.MiddleCenter, 0.04f, 0.12f, 0.96f, 0.15f, out _);
             CreateText(_page.transform, "Developer Diagnostics", 28, TextAnchor.MiddleLeft, 0.04f, 0.93f, 0.76f, 0.99f, out _);
             CreateText(_page.transform, "read-only · 1 Hz max", 14, TextAnchor.MiddleRight, 0.70f, 0.93f, 0.96f, 0.99f, out var subtitle);
             subtitle.color = new Color(0.65f, 0.72f, 0.82f, 1f);
@@ -122,21 +143,24 @@ namespace QuestPhoneStream
             SelectView(_selectedView);
 
             CreateButton(_page.transform, "Refresh", 0.04f, 0.05f, 0.18f, 0.12f, Refresh);
-            CreateButton(_page.transform, "Wireless ADB", 0.20f, 0.05f, 0.40f, 0.12f, OpenWirelessAdb);
+            CreateButton(_page.transform, "Wireless ADB", 0.19f, 0.05f, 0.35f, 0.12f, OpenWirelessAdb);
+            _keepAwakeButton = CreateButton(_page.transform, "Keep Wi-Fi: OFF",
+                0.36f, 0.05f, 0.62f, 0.12f, ToggleKeepAwake);
+            _keepAwakeText = _keepAwakeButton.GetComponentInChildren<Text>();
             CreateButton(_page.transform, "Back", 0.82f, 0.05f, 0.96f, 0.12f, () => { Hide(); _onBack?.Invoke(); });
 
             var toggleGo = new GameObject("AutoRefresh");
             toggleGo.transform.SetParent(_page.transform, false);
             var toggleRect = toggleGo.AddComponent<RectTransform>();
-            toggleRect.anchorMin = new Vector2(0.44f, 0.05f);
-            toggleRect.anchorMax = new Vector2(0.76f, 0.12f);
+            toggleRect.anchorMin = new Vector2(0.63f, 0.05f);
+            toggleRect.anchorMax = new Vector2(0.81f, 0.12f);
             toggleRect.sizeDelta = Vector2.zero;
             _autoRefresh = toggleGo.AddComponent<Toggle>();
             var background = toggleGo.AddComponent<Image>();
             background.color = new Color(0.16f, 0.2f, 0.28f, 1f);
             _autoRefresh.targetGraphic = background;
             _autoRefresh.isOn = true;
-            CreateText(toggleGo.transform, "Auto Refresh (1 Hz)", 15, TextAnchor.MiddleCenter, 0, 0, 1, 1, out _);
+            CreateText(toggleGo.transform, "Auto (1 Hz)", 12, TextAnchor.MiddleCenter, 0, 0, 1, 1, out _);
             _page.SetActive(false);
         }
 

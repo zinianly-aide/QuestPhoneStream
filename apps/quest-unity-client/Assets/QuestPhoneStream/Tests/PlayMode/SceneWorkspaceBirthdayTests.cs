@@ -40,8 +40,18 @@ namespace QuestPhoneStream.Tests
             Assert.IsTrue(SceneWorkspaceBirthday.HasRequiredFurniture(_room.transform));
             var created=SceneWorkspaceBirthday.Build(_room.transform,scene);
             Assert.AreEqual(5,created.AnchorCount);
-            Assert.Greater(created.DecorationCount,125,
+            Assert.Greater(created.DecorationCount,150,
                 "Premium birthday preset must retain layered flower/cake/balloon details");
+            var ribbons = 0;
+            foreach (var filter in _room.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (!filter.name.StartsWith("Birthday_Ribbon_")) continue;
+                ribbons++;
+                Assert.IsNotNull(filter.sharedMesh);
+                Assert.AreEqual(38, filter.sharedMesh.vertexCount);
+                Assert.IsNull(filter.GetComponent<Collider>(), "Ribbons must not block VR walking");
+            }
+            Assert.AreEqual(3, ribbons, "Keep one batched ribbon per welcome / cabinet / gallery");
             for(int i=0;i<Names.Length;i++)
                 Assert.AreEqual(before[i],_room.transform.GetChild(i).position);
             foreach(var c in _room.GetComponentsInChildren<Collider>(true))

@@ -16,6 +16,7 @@ namespace QuestPhoneStream.Editor
         private const string SecureSettingsPermission = "android.permission.WRITE_SECURE_SETTINGS";
         private const string NetworkStatePermission = "android.permission.ACCESS_NETWORK_STATE";
         private const string MulticastPermission = "android.permission.CHANGE_WIFI_MULTICAST_STATE";
+        private const string WakeLockPermission = "android.permission.WAKE_LOCK";
         private const string AndroidNs = "http://schemas.android.com/apk/res/android";
 
         public void OnPostGenerateGradleAndroidProject(string path)
@@ -100,7 +101,7 @@ namespace QuestPhoneStream.Editor
 
             // Quest mDNS/NSD discovery and the app-level Quest presence advertisement.
             // Android owns ADB-TLS registration separately; these grants never enable ADB.
-            foreach (var networkPermission in new[] { NetworkStatePermission, MulticastPermission })
+            foreach (var networkPermission in new[] { NetworkStatePermission, MulticastPermission, WakeLockPermission })
             {
                 if (HasNamedElement(manifest, "uses-permission", networkPermission)) continue;
                 var permission = doc.CreateElement("uses-permission");

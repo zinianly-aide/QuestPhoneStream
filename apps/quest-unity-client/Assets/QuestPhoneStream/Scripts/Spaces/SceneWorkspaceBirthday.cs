@@ -16,6 +16,7 @@ namespace QuestPhoneStream.Spaces
         public int DecorationCount { get; private set; }
         public bool LightsOn { get; private set; } = true;
         readonly List<Material> _owned = new List<Material>();
+        readonly List<Mesh> _ownedMeshes = new List<Mesh>();
         readonly List<Renderer> _bulbs = new List<Renderer>();
         readonly List<Light> _lights = new List<Light>();
         Material _ivory, _gold, _rose, _white, _leaves, _glow, _photoMat;
@@ -99,7 +100,10 @@ namespace QuestPhoneStream.Spaces
             go.transform.localScale = scale;
             var collider = go.GetComponent<Collider>();
             if (collider) collider.enabled = false; // No birthday decoration blocks locomotion.
-            go.GetComponent<Renderer>().sharedMaterial = mat;
+            var renderer = go.GetComponent<Renderer>();
+            renderer.sharedMaterial = mat;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
             DecorationCount++;
             return go;
         }
@@ -139,6 +143,12 @@ namespace QuestPhoneStream.Spaces
                 var rose=Ball(p,"Rose",bloom,height*.24f,i%2==0?_rose:_ivory);
                 rose.transform.localScale=new Vector3(height*.24f,height*.17f,height*.24f);
                 Ball(p,"RoseHeart",bloom+Vector3.up*height*.07f,height*.095f,_gold);
+                if (i%2==0)
+                {
+                    var leaf=Ball(p,"RoseLeaf",bloom+new Vector3(height*.09f,-height*.08f,0),
+                        height*.13f,_leaves);
+                    leaf.transform.localScale=new Vector3(height*.16f,height*.045f,height*.09f);
+                }
             }
         }
         void Gift(Transform p, Vector3 pos, float size, bool pink)
@@ -171,6 +181,54 @@ namespace QuestPhoneStream.Spaces
                     Ball(p,"BalloonKnot",pos-Vector3.up*(.133f+(i%3)*.017f),.03f,_gold);
             }
         }
+        /// <summary>
+        /// Single mesh ribbon, 18 curve samples in one draw rather than dozens of cubes.
+        /// Lives on real CAD furniture anchors and shares the existing rose-gold material.
+        /// Does not add any dynamic lights or physical obstacles.
+        /// </summary>
+        void Ribbon(Transform parent, string name, Vector3 start, Vector3 end,
+            Vector3 faceNormal, float rise, float width, Material mat)
+        {
+            const int segments = 18;
+            var positions = new Vector3[segments + 1];
+            for (int i = 0; i <= segments; i++)
+            {
+                float t = (float)i / segments;
+                positions[i] = Vector3.Lerp(start, end, t) + Vector3.up *
+                    (rise * Mathf.Sin(t * Mathf.PI * 3f));
+            }
+            var verts = new Vector3[(segments + 1) * 2];
+            var uv = new Vector2[verts.Length];
+            var triangles = new int[segments * 6];
+            for (int i = 0; i <= segments; i++)
+            {
+                Vector3 tangent = (positions[Mathf.Min(segments, i+1)] -
+                    positions[Mathf.Max(0, i-1)]).normalized;
+                Vector3 perpendicular = Vector3.Cross(faceNormal, tangent).normalized;
+                if (perpendicular.sqrMagnitude < .0001f) perpendicular = Vector3.up;
+                verts[i*2] = positions[i] + perpendicular * width * .5f;
+                verts[i*2+1] = positions[i] - perpendicular * width * .5f;
+                uv[i*2] = new Vector2((float)i/segments, 0);
+                uv[i*2+1] = new Vector2((float)i/segments, 1);
+                if (i == segments) continue;
+                int t = i*6, v=i*2;
+                triangles[t] = v; triangles[t+1] = v+2; triangles[t+2] = v+1;
+                triangles[t+3] = v+1; triangles[t+4] = v+2; triangles[t+5] = v+3;
+            }
+            var mesh = new Mesh { name="BirthdayRibbon_"+name, vertices=verts,
+                triangles=triangles, uv=uv };
+            mesh.RecalculateNormals();
+            _ownedMeshes.Add(mesh);
+            var ribbon = new GameObject("Birthday_Ribbon_" + name);
+            ribbon.transform.SetParent(parent, false);
+            ribbon.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = ribbon.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = mat;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            DecorationCount++;
+        }
+
         void StringLights(Transform p, Vector3 start, Vector3 finish, int count)
         {
             for(int i=0;i<count;i++)
@@ -229,6 +287,8 @@ namespace QuestPhoneStream.Spaces
                 new Vector3(.62f,.68f,.045f),_ivory);
             Words(foyer,"HAPPY\nBIRTHDAY",new Vector3(0,.42f,-.03f),.014f,180);
             Balloons(foyer,new Vector3(-.41f,.64f,0),10,.16f);
+            Ribbon(foyer,"WelcomeSwag",new Vector3(-.32f,.78f,-.048f),
+                new Vector3(.32f,.78f,-.048f), Vector3.back, .055f,.013f,_gold);
             Gift(foyer,new Vector3(.38f,.01f,-.1f),.18f,true);
 
             // Sideboard against northern wall: bouquet + gifts and shelf-level fairy lights.
@@ -238,6 +298,8 @@ namespace QuestPhoneStream.Spaces
             Gift(shelf,new Vector3(.20f,.01f,0),.17f,true);
             Gift(shelf,new Vector3(.41f,.01f,.025f),.13f,false);
             StringLights(shelf,new Vector3(-.5f,.025f,-.12f),new Vector3(.5f,.025f,-.12f),6);
+            Ribbon(shelf,"CabinetSwag",new Vector3(-.50f,.08f,-.14f),
+                new Vector3(.50f,.08f,-.14f),Vector3.back,.045f,.012f,_gold);
 
             // Dining: the cake sits on the actual CAD tabletop.
             var table=MakeAnchor(environment,"Move_Dining_Table","DiningCake",
@@ -263,6 +325,8 @@ namespace QuestPhoneStream.Spaces
             Words(gallery,"HAPPY BIRTHDAY",new Vector3(-.04f,2.39f,0),.013f,90);
             StringLights(gallery,new Vector3(-.03f,2.59f,-.75f),
                 new Vector3(-.03f,2.59f,.75f),8);
+            Ribbon(gallery,"PhotoWallSwag",new Vector3(-.045f,2.52f,-.74f),
+                new Vector3(-.045f,2.52f,.74f),Vector3.left,.075f,.020f,_gold);
             Balloons(gallery,new Vector3(.02f,1.76f,-.74f),8,.11f);
             Balloons(gallery,new Vector3(.02f,1.76f,.74f),8,.11f);
             var coffeeTop=MakeAnchor(environment,"Move_Coffee_Table","SouthCoffeeFlowers",
@@ -290,6 +354,8 @@ namespace QuestPhoneStream.Spaces
         {
             foreach(var mat in _owned)if(mat)
                 {if(Application.isPlaying)Destroy(mat);else DestroyImmediate(mat);}
+            foreach(var mesh in _ownedMeshes)if(mesh)
+                {if(Application.isPlaying)Destroy(mesh);else DestroyImmediate(mesh);}
         }
     }
 }
