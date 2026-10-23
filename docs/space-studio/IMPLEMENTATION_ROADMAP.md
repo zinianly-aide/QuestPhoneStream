@@ -237,3 +237,25 @@ Meta documentation used to plan S2 (not implemented in S0):
 - 159/159 PlayMode tests passing. Private EditorMac CAD smoke verifies B1 + B2 local
   photo textures, saved style/slot, switching original, and reloading the birthday scene.
 - Hand interaction and FPS still require headset testing before release acceptance.
+
+## B2.1 Quest Android birthday material regression (2026-10-23)
+
+- Root cause verified from **real Quest Unity log**: selecting a persisted birthday
+  scene failed with `Missing Unity birthday material shader`. Standard and
+  `Unlit/Color` were accessed only through `Shader.Find`, and Android stripped
+  those unreferenced shaders; `SceneWorkspaceManager` then fell back to another
+  scene. The private room geometry and the 16 CAD furniture records survived.
+- Added `QuestPhoneStream/BirthdayDecor`, a small Android-compatible, stereo-safe
+  textured/color shader, and an explicitly serialized resource material under
+  `Resources/Birthday/BirthdayDecor.mat`. All B1 procedural decorations, B2
+  editable assets, and local photo slots use this packaged material (no stripped
+  `Shader.Find("Standard")` dependency). Scene assembly does not throw merely
+  because a cosmetic material is unavailable.
+- Regression tests verify the material is found in `Resources` and supports both
+  `_Color` and `_MainTex`; Unity PlayMode **168/168 passed**.
+- Verified the built Quest development APK includes **both serialized material
+  and shader binary asset bytes**. On-device confirmation still requires the
+  `BIRTHDAY_READY` diagnostic after installing the repaired APK.
+- All user-specific scene records, assets and rollback copies remain on the
+  user's private Mac and Quest. No private Hefu CAD, photos or scene catalog are
+  committed to this public repository.

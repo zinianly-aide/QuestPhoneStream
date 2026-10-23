@@ -44,9 +44,8 @@ namespace QuestPhoneStream.Spaces
                 if (!ImageConversion.LoadImage(tex, File.ReadAllBytes(path), false) ||
                     tex.width < 16 || tex.height < 16 || tex.width > 2048 || tex.height > 2048)
                     throw new InvalidDataException("Local photo must be JPG/PNG, 16-2048 pixels");
-                var shader = Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
-                if (!shader) throw new InvalidOperationException("Missing photo shader");
-                material = new Material(shader);
+                material = SceneWorkspaceBirthdayMaterial.Create(Color.white);
+                if (!material) throw new InvalidOperationException("Missing photo material");
                 material.mainTexture = tex;
                 renderer.material = material;
                 // Material and texture are owned by this renderer and released on destruction.
@@ -68,9 +67,8 @@ namespace QuestPhoneStream.Spaces
             if (!renderer) return;
             var owner = renderer.GetComponent<SceneWorkspaceBirthdayPhotoOwner>();
             if (owner) owner.Clear();
-            var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Texture");
-            if (!shader) return;
-            var material = new Material(shader) {color = new Color(.29f, .23f, .19f)};
+            var material = SceneWorkspaceBirthdayMaterial.Create(new Color(.29f, .23f, .19f));
+            if (!material) return;
             renderer.material = material;
             if (!owner) owner = renderer.gameObject.AddComponent<SceneWorkspaceBirthdayPhotoOwner>();
             owner.Replace(material, null);

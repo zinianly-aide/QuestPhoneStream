@@ -51,9 +51,9 @@ namespace QuestPhoneStream.Spaces
         }
         Material MakeMaterial(string name, Color color, bool metallic = false)
         {
-            var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
-            if (!shader) throw new InvalidOperationException("Missing Unity birthday material shader");
-            var mat = new Material(shader) { name = "Birthday_" + name, color = color };
+            var mat = SceneWorkspaceBirthdayMaterial.Create(color);
+            if (!mat) return null; // Keep the room even if this material cannot render.
+            mat.name = "Birthday_" + name;
             if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", metallic ? .65f : 0);
             _owned.Add(mat);
             return mat;

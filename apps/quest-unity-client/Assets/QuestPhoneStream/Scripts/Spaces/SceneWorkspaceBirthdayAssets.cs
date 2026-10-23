@@ -24,9 +24,7 @@ namespace QuestPhoneStream.Spaces
         }
         static Material MakeMaterial(Color c)
         {
-            var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
-            if (!shader) throw new InvalidOperationException("Birthday asset shader missing");
-            return new Material(shader) { color = c };
+            return SceneWorkspaceBirthdayMaterial.Create(c);
         }
         static GameObject Mesh(Transform root, PrimitiveType shape, string label,
             Vector3 local, Vector3 size, Color color)
