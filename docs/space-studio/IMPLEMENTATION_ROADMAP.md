@@ -167,3 +167,28 @@ Meta documentation used to plan S2 (not implemented in S0):
 - Verification gates: editor compile/test, Unity Android build, local private
   install, headset testing for calibrated eye height, door hinge directions,
   blocker geometry, UI interactions, controller input ownership.
+
+## B1 · Birthday scene anchored to real Hefu CAD (2026-10-23)
+
+- Distinct `HefuVR Birthday` scene, selectable via Spaces > Birthday scene; switch back via
+  Spaces > Original HefuVR. Original HefuVR room / saved furniture transforms remain intact.
+- Real **north** entrance (`EntranceShoeCabinet`): welcome sign and balloons
+  above cabinet, with no physical decoration collider in the entrance passage.
+- North wall `DiningSideboard`: bouquet, wrapped gifts and LEDs.
+- Dining `Move_Dining_Table`: layered cake and topper positioned
+  from its actual CAD renderer bounds.
+- South living `Move_Sofa` / `Move_Coffee_Table`:
+  photo placeholders, balloon clusters, memory sign and floral centerpiece. Photo gallery
+  faces west toward coffee table, not toward the balcony; offset toward room so it does not
+  disappear into the wall.
+- All B1 decorations are generated locally from primitives and bound to named furniture
+  pivots at runtime. Moving the source furniture carries its decoration; no CAD walls,
+  doors, or origin transforms are moved. `Celebrate lights` toggles local decorative LEDs.
+- Placeholders `PHOTO 01-03` do not contain photos; real photos/audio need a separate
+  local-only opt-in import, never a public GitHub commit, issue, or release.
+- Physical decoration selection, per-ornament editing, media slideshow and automatic
+  party sequence are **not yet implemented**. The B1 preset is static except its lights.
+- Private EditorMac CAD smoke: five anchors verified against private furniture manifest,
+  104 render objects added, scene scale preserved. All personal coordinates, private CAD
+  renderings and local install artifacts remain on the user's Mac, never in the public repo.
+  Android APK build and Quest device test are verified separately.

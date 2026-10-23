@@ -98,6 +98,8 @@ namespace QuestPhoneStream.Spaces
                     if(CreateObject(staged.transform,item)==null)
                         throw new InvalidDataException("Unknown asset: "+item.assetId);
                 }
+                if (record.decorationPreset == "birthday-v1")
+                    SceneWorkspaceBirthday.Build(staged.transform, record);
                 LastError=null;return true;
             }
             catch(Exception ex)
@@ -163,6 +165,55 @@ namespace QuestPhoneStream.Spaces
             Store.SaveScene(copy);Catalog.scenes.Add(copy);Store.SaveCatalog(Catalog);
             _browser?.Refresh();return copy;
         }
+        /// <summary>
+        /// Opt-in private Hefu birthday copy: preserves the original room and furniture,
+        /// and never publishes CAD/photos to git or a network service.
+        /// </summary>
+        public bool SelectBirthdayScene()
+        {
+            if (!_ready || Catalog == null) return false;
+            var existing = Catalog.scenes.Find(x => !x.isDeleted &&
+                x.decorationPreset == "birthday-v1" && x.sourceType == "cad-bundle");
+            if (existing != null) return Select(existing.id);
+
+            var original = Catalog.scenes.Find(x => !x.isDeleted &&
+                x.sourceType == "cad-bundle" && x.assetKey == "hefu/home.bundle" &&
+                string.IsNullOrEmpty(x.decorationPreset));
+            if (original == null)
+            {
+                LastError = "Original HefuVR private scene missing";
+                return false;
+            }
+            var source = Store.LoadScene(original.id) ?? original;
+            if (!SceneWorkspacePrivateImport.TrySeedFurniture(Store, source, out string error))
+            {
+                LastError = error;
+                return false;
+            }
+            Store.SaveScene(source);
+            var copy = Duplicate(original.id);
+            if (copy == null) return false;
+            copy.displayName = "HefuVR Birthday";
+            copy.decorationPreset = "birthday-v1";
+            Store.SaveScene(copy);
+            int at = Catalog.scenes.FindIndex(x => x.id == copy.id);
+            if (at >= 0) Catalog.scenes[at] = copy;
+            Store.SaveCatalog(Catalog);
+            bool loaded = Select(copy.id);
+            if (!loaded) Debug.LogWarning("[Spaces] birthday copy created but scene cannot load: " + LastError);
+            return loaded;
+        }
+
+        public bool SelectOriginalHefu()
+        {
+            if (!_ready || Catalog == null) return false;
+            var original = Catalog.scenes.Find(x => !x.isDeleted &&
+                x.sourceType == "cad-bundle" && x.assetKey == "hefu/home.bundle" &&
+                string.IsNullOrEmpty(x.decorationPreset));
+            if (original == null) { LastError = "Original HefuVR scene unavailable"; return false; }
+            return Select(original.id);
+        }
+
         public bool Rename(string id,string name)
         {
             var record=Catalog.scenes.Find(x=>x.id==id&&!x.isDeleted);

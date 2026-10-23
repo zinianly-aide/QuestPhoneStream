@@ -138,8 +138,22 @@ namespace QuestPhoneStream.Spaces
             Action(_scenePage.transform, "Stick controls", 34, 565, 246, ShowControls);
             Action(_scenePage.transform, "Reset position", 293, 565, 246, () => { _movement?.ResetToSceneStart(); Position(); });
             Action(_scenePage.transform, "Explore room", 552, 565, 272, Explore);
-            Label(_scenePage.transform, "HefuVR private assets remain local · Quest safety boundary stays enabled",
-                18, new Vector2(34, 650), new Vector2(815, 54));
+            Action(_scenePage.transform, "Birthday scene", 34, 634, 246, () => {
+                _spaces.SelectBirthdayScene();
+                Refresh();
+            });
+            Action(_scenePage.transform, "Original HefuVR", 293, 634, 246, () => {
+                _spaces.SelectOriginalHefu();
+                Refresh();
+            });
+            Action(_scenePage.transform, "Celebrate lights", 552, 634, 272, () => {
+                var birthday = _spaces.EnvironmentRoot != null ?
+                    _spaces.EnvironmentRoot.GetComponentInChildren<SceneWorkspaceBirthday>() : null;
+                if (birthday) birthday.ToggleLights();
+                Refresh();
+            });
+            Label(_scenePage.transform, "North entrance → Dining → South living room. Private CAD stays local.",
+                18, new Vector2(34, 707), new Vector2(815, 42));
 
             _controlsPage = Page(root.transform, "StickControlsPage");
             Label(_controlsPage.transform, "Spaces · Stick Controls", 32, new Vector2(30, 20), new Vector2(660, 66));

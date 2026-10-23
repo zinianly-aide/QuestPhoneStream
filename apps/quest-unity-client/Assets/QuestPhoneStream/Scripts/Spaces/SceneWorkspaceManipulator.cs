@@ -98,6 +98,13 @@ namespace QuestPhoneStream.Spaces
             if(!pressed&&_pressed&&Dragging)FinishGrab(true);
             _pressed=pressed;
         }
+        static bool IsBirthdayDecoration(Transform node, Transform editableRoot)
+        {
+            for (var current = node; current != null && current != editableRoot; current = current.parent)
+                if (current.name.StartsWith("Birthday_", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
         static Bounds VisualBounds(Transform root)
         {
             var renderers=root.GetComponentsInChildren<Renderer>(true);
@@ -105,7 +112,8 @@ namespace QuestPhoneStream.Spaces
             bool first=true;
             foreach(var renderer in renderers)
             {
-                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy)continue;
+                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                   IsBirthdayDecoration(renderer.transform,root))continue;
                 if(first){bounds=renderer.bounds;first=false;}else bounds.Encapsulate(renderer.bounds);
             }
             return bounds;
@@ -316,7 +324,8 @@ namespace QuestPhoneStream.Spaces
             bool first=true;
             foreach(var renderer in item.GetComponentsInChildren<Renderer>(true))
             {
-                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy)continue;
+                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                   IsBirthdayDecoration(renderer.transform,item.transform))continue;
                 if(first){b=renderer.bounds;first=false;}else b.Encapsulate(renderer.bounds);
             }
             Vector3 ext=Vector3.Max(b.extents-Vector3.one*.025f,Vector3.one*.015f);

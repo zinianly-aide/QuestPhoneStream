@@ -26,6 +26,7 @@ namespace QuestPhoneStream.Spaces
         public string displayName;
         public string sourceType = "blank"; // blank, cad-bundle, room-scan
         public string assetKey;
+        public string decorationPreset = ""; // empty or birthday-v1
         public int revision = 1;
         public long createdUtcMs;
         public long modifiedUtcMs;
@@ -62,6 +63,10 @@ namespace QuestPhoneStream.Spaces
             if (scene.sourceType != "blank" && scene.sourceType != "cad-bundle" &&
                 scene.sourceType != "room-scan")
                 throw new ArgumentException("Unrecognized scene source");
+            if (!string.IsNullOrEmpty(scene.decorationPreset) &&
+                (scene.decorationPreset != "birthday-v1" || scene.sourceType != "cad-bundle" ||
+                 scene.assetKey != "hefu/home.bundle"))
+                throw new ArgumentException("Invalid decoration preset");
             if (!float.IsNaN(scene.ceilingMeters) && scene.ceilingMeters >= 1.8f &&
                 scene.ceilingMeters <= 8.0f) { }
             else throw new ArgumentException("Invalid ceiling height");
