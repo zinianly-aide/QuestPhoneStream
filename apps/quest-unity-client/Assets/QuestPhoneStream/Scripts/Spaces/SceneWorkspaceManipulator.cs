@@ -36,6 +36,11 @@ namespace QuestPhoneStream.Spaces
             new Dictionary<SceneWorkspaceObject,GameObject>();
         bool _showMarkers = true;
         int _focusedId;
+        int _birthdayAnchorIndex;
+        bool _birthdaySnap = true;
+        Button _anchorButton, _snapButton;
+        readonly List<Button> _birthdayButtons=new List<Button>();
+        static readonly string[] BirthdayAnchors = SceneWorkspaceBirthdayAssets.Anchors;
 
         public void Initialize(SceneWorkspaceManager manager)
         {
@@ -48,13 +53,14 @@ namespace QuestPhoneStream.Spaces
         {
             Selected=null;Dragging=false;SetStatus("Scene changed");
             ClearMarkers();
-            if(Editing)BuildMarkers();
+            if(Editing){BuildMarkers();UpdateBirthdayToolbar();}
         }
         public void Enter(Camera camera)
         {
             if(Workspace?.Active==null || camera==null)return;
             _eye=camera;Editing=true;_pressed=false;
             if(!_toolbar)BuildToolbar();
+            UpdateBirthdayToolbar();
             BuildMarkers();
             EnsureHoverVisuals();
             var horizontal=Vector3.ProjectOnPlane(camera.transform.forward,Vector3.up).normalized;
@@ -199,8 +205,7 @@ namespace QuestPhoneStream.Spaces
             Collider hitCollider=null;
             SceneWorkspaceObject hover=null;
             SceneWorkspaceDoors.Door hoveredDoor=null;
-            if(_right && Physics.Raycast(new Ray(_right.position,_right.forward),out var hit,
-                maxReach,~0,QueryTriggerInteraction.Ignore))
+            if(_right && RaycastSelection(new Ray(_right.position,_right.forward),out var hit))
             {
                 hitCollider=hit.collider;
                 if(hitCollider && hitCollider.transform.IsChildOf(Workspace.EnvironmentRoot))
@@ -221,7 +226,10 @@ namespace QuestPhoneStream.Spaces
                 return;
             }
             var editable=Dragging && Selected || hover && hover.editable;
-            var caption=editable?"EDITABLE · Grip to move":
+            var record=editable && target ? Workspace.GetObjectRecord(
+                Dragging && Selected ? Selected.persistentId : hover ? hover.persistentId : "") : null;
+            var caption=record != null && record.kind == "birthday" ? "BIRTHDAY · Grip to place" :
+                editable?"EDITABLE · Grip to move":
                 hoveredDoor?"DOOR · Trigger to open in Explore":"LOCKED · Structure";
             var color=editable?new Color(.18f,1f,.45f):
                 hoveredDoor?new Color(.20f,.85f,1f):new Color(.65f,.67f,.74f);
@@ -250,11 +258,31 @@ namespace QuestPhoneStream.Spaces
             SetStatus(_showMarkers?"Editable markers ON":"Editable markers OFF");
         }
 
-        // Only closest physical collider wins: phone/window/UI blocks furniture behind it.
+        // Ray interaction with B2 decorations uses trigger colliders so player locomotion
+        // never hits them. The nearest non-trigger surface still blocks click-through.
+        bool RaycastSelection(Ray pointer, out RaycastHit chosen)
+        {
+            chosen = default;
+            var hits = Physics.RaycastAll(pointer,maxReach,~0,QueryTriggerInteraction.Collide);
+            Array.Sort(hits,(a,b) => a.distance.CompareTo(b.distance));
+            foreach(var hit in hits)
+            {
+                if(!hit.collider)continue;
+                if(hit.collider.isTrigger)
+                {
+                    var decor=hit.collider.GetComponentInParent<SceneWorkspaceObject>();
+                    if(decor == null || Workspace.GetObjectRecord(decor.persistentId)?.kind != "birthday")
+                        continue;
+                }
+                chosen=hit;
+                return true;
+            }
+            return false;
+        }
         public bool TrySelect(Ray pointer)
         {
             if(!Editing || Workspace?.EnvironmentRoot==null)return false;
-            if(!Physics.Raycast(pointer,out RaycastHit hit,maxReach,~0,QueryTriggerInteraction.Ignore))return false;
+            if(!RaycastSelection(pointer,out RaycastHit hit))return false;
             var furniture=hit.collider.GetComponentInParent<SceneWorkspaceObject>();
             if(!furniture || !furniture.editable ||
                !furniture.transform.IsChildOf(Workspace.EnvironmentRoot))return false;
@@ -263,20 +291,53 @@ namespace QuestPhoneStream.Spaces
         public bool BeginGrab(Ray pointer)
         {
             if(!TrySelect(pointer))return false;
-            if(!Physics.Raycast(pointer,out RaycastHit hit,maxReach,~0,QueryTriggerInteraction.Ignore))return false;
+            if(!RaycastSelection(pointer,out RaycastHit hit))return false;
             var tr=Selected.transform;
             _depth=hit.distance;_startPoint=hit.point;
             _startWorld=tr.position;_startLocal=tr.localPosition;
             _startRotation=tr.localRotation;_startScale=tr.localScale;
-            Collect(Selected,_existingHits);Dragging=true;return true;
+            if(!IsBirthdayItem(Selected))Collect(Selected,_existingHits);
+            else _existingHits.Clear();
+            Dragging=true;return true;
+        }
+        bool IsBirthdayItem(SceneWorkspaceObject item)
+        {
+            return item != null && Workspace?.GetObjectRecord(item.persistentId)?.kind == "birthday";
         }
         public bool Drag(Ray pointer)
         {
             if(!Dragging||!Selected)return false;
             var next=_startWorld+(pointer.GetPoint(_depth)-_startPoint);
-            next.y=_startWorld.y; // Retain original floor placement.
+            next.y=_startWorld.y; // Furniture remains floor-based; decorations remain surface-based.
             if(Vector3.Distance(next,_startWorld)>maxMove)return false;
             var tr=Selected.transform;var previous=tr.position;
+            if(IsBirthdayItem(Selected))
+            {
+                var anchor=tr.parent;
+                if(!anchor) return false;
+                var record=Workspace.GetObjectRecord(Selected.persistentId);
+                if(record==null || anchor.GetComponent<SceneWorkspaceObject>()?.persistentId != record.anchorId)
+                    return false;
+                Bounds bounds=new Bounds(anchor.position,Vector3.one*.08f);
+                bool hasBounds=false;
+                foreach(var renderer in anchor.GetComponentsInChildren<Renderer>(true))
+                {
+                    if(!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                       IsBirthdayDecoration(renderer.transform,anchor))continue;
+                    if(!hasBounds){bounds=renderer.bounds;hasBounds=true;}
+                    else bounds.Encapsulate(renderer.bounds);
+                }
+                if(!hasBounds)return false;
+                next.x=Mathf.Clamp(next.x,bounds.min.x+.05f,bounds.max.x-.05f);
+                next.z=Mathf.Clamp(next.z,bounds.min.z+.05f,bounds.max.z-.05f);
+                if(_birthdaySnap)
+                {
+                    next.x=Mathf.Round(next.x*20f)/20f;
+                    next.z=Mathf.Round(next.z*20f)/20f;
+                }
+                tr.position=next;
+                return true;
+            }
             tr.position=next;
             if(HasNewCollision()){tr.position=previous;Physics.SyncTransforms();return false;}
             return true;
@@ -344,9 +405,9 @@ namespace QuestPhoneStream.Spaces
         {
             if(!Editing||!Selected||Dragging || Mathf.Abs(degrees)>30f)return false;
             var tr=Selected.transform;var original=tr.localRotation;
-            Collect(Selected,_existingHits);
+            if(!IsBirthdayItem(Selected))Collect(Selected,_existingHits);
             tr.localRotation=Quaternion.Euler(0,degrees,0)*original;
-            bool ok=!HasNewCollision()&&Commit();
+            bool ok=(IsBirthdayItem(Selected)||!HasNewCollision())&&Commit();
             if(!ok)tr.localRotation=original;
             Physics.SyncTransforms();return ok;
         }
@@ -357,9 +418,9 @@ namespace QuestPhoneStream.Spaces
             Vector3 next=original*factor;
             if(next.x<.02f||next.y<.02f||next.z<.02f||
                next.x>10f||next.y>10f||next.z>10f)return false;
-            Collect(Selected,_existingHits);
+            if(!IsBirthdayItem(Selected))Collect(Selected,_existingHits);
             tr.localScale=next;
-            bool ok=!HasNewCollision()&&Commit();
+            bool ok=(IsBirthdayItem(Selected)||!HasNewCollision())&&Commit();
             if(!ok)tr.localScale=original;
             Physics.SyncTransforms();return ok;
         }
@@ -386,7 +447,7 @@ namespace QuestPhoneStream.Spaces
             _toolbar.worldCamera=_eye;_toolbar.sortingOrder=108;
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
             var rect=root.GetComponent<RectTransform>();
-            rect.sizeDelta=new Vector2(650,305);
+            rect.sizeDelta=new Vector2(650,464);
             rect.localScale=Vector3.one*.00125f;
             root.AddComponent<Image>().color=new Color(.045f,.07f,.12f,.95f);
             _status=SceneWorkspaceBrowser.Label(root.transform,"Edit",22,
@@ -402,7 +463,49 @@ namespace QuestPhoneStream.Spaces
             SceneWorkspaceBrowser.Label(root.transform,
                 "Green: editable  /  Cyan: door  /  Gray: locked",
                 19,new Vector2(252,228),new Vector2(395,58));
+            string[] items=SceneWorkspaceBirthdayAssets.Items;
+            for(int i=0;i<items.Length;i++)
+            {
+                string asset=items[i];
+                _birthdayButtons.Add(SceneWorkspaceBrowser.Action(root.transform,"+"+asset,12+i*128,300,118,
+                    ()=>AddBirthday(asset)));
+            }
+            _anchorButton=SceneWorkspaceBrowser.Action(root.transform,"Anchor: Table",15,371,305,
+                CycleBirthdayAnchor);
+            _snapButton=SceneWorkspaceBrowser.Action(root.transform,"Grid snap: ON",330,371,305,
+                ()=>{_birthdaySnap=!_birthdaySnap;UpdateBirthdayToolbar();});
+            SceneWorkspaceBrowser.Label(root.transform,
+                "Birthday: choose furniture anchor + item; Grip to move (5cm grid)",
+                17,new Vector2(18,430),new Vector2(620,30));
         }
+        void CycleBirthdayAnchor()
+        {
+            _birthdayAnchorIndex=(_birthdayAnchorIndex+1)%BirthdayAnchors.Length;
+            UpdateBirthdayToolbar();
+        }
+        void UpdateBirthdayToolbar()
+        {
+            bool active=Workspace?.Active?.decorationPreset=="birthday-v1";
+            foreach(var item in _birthdayButtons)if(item)item.gameObject.SetActive(active);
+            if(_anchorButton)_anchorButton.gameObject.SetActive(active);
+            if(_snapButton)_snapButton.gameObject.SetActive(active);
+            if(!active)return;
+            var names=new []{"Dining table","Sideboard","Coffee table","Shoe cabinet"};
+            if(_anchorButton)_anchorButton.GetComponentInChildren<Text>().text="Anchor: "+names[_birthdayAnchorIndex];
+            if(_snapButton)_snapButton.GetComponentInChildren<Text>().text=
+                "Grid snap: "+(_birthdaySnap?"ON":"OFF");
+        }
+        public bool AddBirthday(string asset)
+        {
+            if(!Editing || Workspace?.Active?.decorationPreset!="birthday-v1")return false;
+            var tag=Workspace.AddBirthdayDecoration(asset,BirthdayAnchors[_birthdayAnchorIndex]);
+            if(!tag){SetStatus("Could not place "+asset+": "+Workspace.LastError);return false;}
+            Selected=tag; BuildMarkers();
+            SetStatus("Birthday "+asset+" added to "+BirthdayAnchors[_birthdayAnchorIndex]+
+                " · Grip to move, Undo/Delete available");
+            return true;
+        }
+
         void OnDestroy()
         {if(Workspace!=null)Workspace.SceneChanged-=OnSceneChanged;}
     }

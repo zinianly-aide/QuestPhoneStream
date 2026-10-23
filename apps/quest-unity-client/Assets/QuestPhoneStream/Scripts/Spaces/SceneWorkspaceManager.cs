@@ -124,6 +124,18 @@ namespace QuestPhoneStream.Spaces
         }
         static GameObject CreateObject(Transform parent,SceneObjectRecord item)
         {
+            if (item.assetId.StartsWith(SceneWorkspaceBirthdayAssets.Prefix, StringComparison.Ordinal))
+            {
+                if (!SceneWorkspaceBirthdayAssets.IsSupported(item.assetId) ||
+                    !SceneWorkspaceBirthdayAssets.IsAnchor(item.anchorId))
+                    throw new InvalidDataException("Unrecognized birthday decoration");
+                SceneWorkspaceObject anchor = null;
+                foreach (var candidate in parent.GetComponentsInChildren<SceneWorkspaceObject>(true))
+                    if (candidate.persistentId == item.anchorId) { anchor = candidate; break; }
+                if (!anchor || !anchor.gameObject.activeInHierarchy)
+                    throw new InvalidDataException("Decoration furniture anchor is missing");
+                return SceneWorkspaceBirthdayAssets.Create(anchor.transform, item);
+            }
             PrimitiveType shape;
             switch(item.assetId)
             {
@@ -247,6 +259,75 @@ namespace QuestPhoneStream.Spaces
             Snapshot();Active.objects.Add(record);_objects[record.id]=obj;
             return SaveActive();
         }
+        /// <summary>Snap one editable birthday asset to a real CAD furniture surface.
+        /// Stored transform is furniture-local so moving furniture carries the decoration.
+        /// </summary>
+        public SceneWorkspaceObject AddBirthdayDecoration(string name, string furniture)
+        {
+            if (Active == null || Active.decorationPreset != "birthday-v1" ||
+                !SceneWorkspaceBirthdayAssets.IsSupported("birthday/" + name) ||
+                !SceneWorkspaceBirthdayAssets.IsAnchor("hefu-" + furniture))
+                return null;
+            // Limit editable additions to protect performance and scene storage.
+            int count = Active.objects.FindAll(x => x.kind == "birthday" && !x.deleted).Count;
+            if (count >= 40) { LastError = "Birthday limit: 40 editable objects"; return null; }
+            SceneWorkspaceObject anchor = null;
+            foreach (var tag in EnvironmentRoot.GetComponentsInChildren<SceneWorkspaceObject>(true))
+                if (tag.persistentId == "hefu-" + furniture) { anchor = tag; break; }
+            if (!anchor || !anchor.gameObject.activeInHierarchy) return null;
+            // Only CAD renderers; ignore already attached birthday decorations.
+            bool first = true;
+            Bounds surface = new Bounds(anchor.transform.position, Vector3.zero);
+            foreach (var mesh in anchor.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!mesh.enabled || !mesh.gameObject.activeInHierarchy) continue;
+                bool decoration = false;
+                for (var node = mesh.transform; node && node != anchor.transform; node = node.parent)
+                    if (node.name.StartsWith("Birthday_", StringComparison.Ordinal)) { decoration = true; break; }
+                if (decoration) continue;
+                if (first) { surface = mesh.bounds; first = false; }
+                else surface.Encapsulate(mesh.bounds);
+            }
+            if (first) return null;
+            // Small X offset keeps new item clear of original birthday hero asset.
+            float offset = Mathf.Clamp(((count % 5) - 2) * .14f, -.28f, .28f);
+            Vector3 desired = new Vector3(Mathf.Clamp(surface.center.x + offset,
+                surface.min.x + .16f, surface.max.x - .16f),
+                surface.max.y + .012f, surface.center.z);
+            // For narrow furniture, clamp can invert. Fall back to true bounds center.
+            if (surface.size.x < .34f) desired.x = surface.center.x;
+            var record = new SceneObjectRecord {
+                id = Guid.NewGuid().ToString("N"), assetId = "birthday/" + name,
+                anchorId = "hefu-" + furniture, label = "Birthday " + name,
+                kind = "birthday", editable = true,
+                localPosition = anchor.transform.InverseTransformPoint(desired),
+                localRotation = Quaternion.identity, localScale = Vector3.one
+            };
+            GameObject item = null;
+            try
+            {
+                SceneWorkspaceValidation.RequireValid(Active);
+                item = CreateObject(EnvironmentRoot, record);
+                Snapshot(); Active.objects.Add(record); _objects[record.id] = item;
+                if (!SaveActive()) throw new InvalidDataException("Cannot save birthday decor");
+                return item.GetComponent<SceneWorkspaceObject>();
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                if (item) DestroySafe(item);
+                _objects.Remove(record.id);
+                Active.objects.Remove(record);
+                Debug.LogWarning("[Spaces] Add birthday decor rejected: " + ex.Message);
+                return null;
+            }
+        }
+
+        public SceneObjectRecord GetObjectRecord(string id)
+        {
+            return Active?.objects.Find(x => x.id == id && !x.deleted);
+        }
+
         public bool UpdateObject(string id,Vector3 localPosition,Quaternion localRotation,Vector3 localScale)
         {
             if(Active==null)return false;

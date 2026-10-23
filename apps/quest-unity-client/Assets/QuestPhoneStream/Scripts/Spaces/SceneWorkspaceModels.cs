@@ -9,6 +9,8 @@ namespace QuestPhoneStream.Spaces
     {
         public string id;
         public string assetId;
+        // For B2 decorations, the anchored Hefu furniture id. Empty for regular objects.
+        public string anchorId;
         public string label;
         public string kind = "furniture";
         public bool editable = true;
@@ -80,7 +82,12 @@ namespace QuestPhoneStream.Spaces
                     !ValidVector(item.localPosition) || !ValidVector(item.localScale) ||
                     item.localScale.x <= 0 || item.localScale.y <= 0 || item.localScale.z <= 0 ||
                     item.localScale.x > 20 || item.localScale.y > 20 || item.localScale.z > 20 ||
-                    !ValidQuaternion(item.localRotation))
+                    !ValidQuaternion(item.localRotation) ||
+                    (item.assetId.StartsWith(SceneWorkspaceBirthdayAssets.Prefix, StringComparison.Ordinal) &&
+                     (scene.decorationPreset != "birthday-v1" ||
+                      !SceneWorkspaceBirthdayAssets.IsSupported(item.assetId) ||
+                      !SceneWorkspaceBirthdayAssets.IsAnchor(item.anchorId) ||
+                      item.kind != "birthday" || !item.editable)))
                     throw new ArgumentException("Invalid scene object");
             }
         }

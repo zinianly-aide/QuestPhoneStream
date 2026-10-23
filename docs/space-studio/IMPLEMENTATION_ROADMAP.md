@@ -192,3 +192,25 @@ Meta documentation used to plan S2 (not implemented in S0):
   104 render objects added, scene scale preserved. All personal coordinates, private CAD
   renderings and local install artifacts remain on the user's Mac, never in the public repo.
   Android APK build and Quest device test are verified separately.
+
+## B2 · Birthday editing on real Hefu furniture (2026-10-23)
+
+- Birthday-only palette in `Spaces > Birthday scene > Edit room`: `+cake`, `+flowers`,
+  `+gift`, `+balloon`, `+frame`. No images are included in frame placeholders.
+- `Anchor` cycles Dining table / Sideboard / Coffee table / Shoe cabinet (real private
+  CAD furniture objects identified by their saved manifest IDs). New items snap
+  onto the true CAD renderer bounds, not an assumed table or room coordinate.
+- Aim at an added ornament and use right Grip to move along the furniture surface;
+  optional 5cm grid snap, with bounds clamping. Rotate +/- 15 degrees, scale +/- 5%,
+  Delete and Undo reuse the existing spatial editor commands.
+- Every added B2 object has an explicit `birthday/` whitelisted asset ID and stored
+  `anchorId` in the same version-1 `.qpsspace` record. The saved transform is local
+  to its furniture; moving furniture carries the ornaments. They are selectable
+  trigger colliders so Quest locomotion isn't obstructed.
+- The B1 backdrop remains unchanged and intentionally isn't freely deletable.
+  `Original HefuVR` is a separate record; adding B2 decorations never alters it.
+- 40-added-object cap; no arbitrary asset strings/paths or remote photo imports.
+- Verified Unity PlayMode 156/156 and private EditorMac CAD integration for
+  Add -> Save -> Switch original -> Reload birthday -> Undo. All private
+  integration harnesses and private model bytes stay outside Git.
+- Still requires Quest headset acceptance (hand ray, UI usability, placement and FPS).

@@ -65,6 +65,11 @@ namespace QuestPhoneStream.Spaces
             foreach (var renderer in parent.GetComponentsInChildren<Renderer>(true))
             {
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                bool attachedDecor = false;
+                for(var node=renderer.transform; node && node!=parent; node=node.parent)
+                    if(node.name.StartsWith("Birthday_", StringComparison.Ordinal))
+                    { attachedDecor=true; break; }
+                if(attachedDecor) continue;
                 if (first) { result = renderer.bounds; first = false; }
                 else result.Encapsulate(renderer.bounds);
             }
