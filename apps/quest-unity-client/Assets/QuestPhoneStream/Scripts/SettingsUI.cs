@@ -52,6 +52,7 @@ namespace QuestPhoneStream
             });
             client.StateChanged += OnStateChanged;
             LoadSettings();
+            RegisterDraftSaving();
             Hide();
             OnStateChanged(client.State);
         }
@@ -163,6 +164,77 @@ namespace QuestPhoneStream
             if (mediaBaseUrlInput != null) mediaBaseUrlInput.text = PlayerPrefs.GetString("QuestPhoneStream_MediaBaseUrl", mediaBaseUrlInput.text);
         }
 
+        /// <summary>
+        /// Save local input edits independently of network connectivity. In particular,
+        /// users must be able to save controller/connection preferences before pairing.
+        /// onEndEdit is triggered by the Quest keyboard when editing completes.
+        /// </summary>
+        private void RegisterDraftSaving()
+        {
+            BindDraftField(signalingUrlInput, "QuestPhoneStream_SignalingUrl_v2", true, true);
+            BindDraftField(tokenInput, "QuestPhoneStream_Token");
+            BindDraftField(questDeviceIdInput, "QuestPhoneStream_QuestDeviceId");
+            BindDraftField(androidDeviceIdInput, "QuestPhoneStream_AndroidDeviceId");
+            BindDraftField(sessionIdInput, "QuestPhoneStream_SessionId");
+            BindDraftField(mediaBaseUrlInput, "QuestPhoneStream_MediaBaseUrl", true);
+        }
+
+        private void BindDraftField(InputField input, string key, bool allowEmpty = false,
+            bool isSignalingEndpoint = false)
+        {
+            if (input == null) return;
+            input.onEndEdit.AddListener(_ => PersistDraftField(input, key, allowEmpty, isSignalingEndpoint));
+        }
+
+        private bool PersistDraftField(InputField input, string key, bool allowEmpty,
+            bool isSignalingEndpoint)
+        {
+            if (!_initialized || input == null) return false;
+            string value = key == "QuestPhoneStream_Token" ? input.text : (input.text ?? "").Trim();
+            if ((!allowEmpty && string.IsNullOrWhiteSpace(value)) ||
+                (isSignalingEndpoint && !CanSaveLocalSignalingUrl(value)))
+            {
+                if (statusText != null)
+                    statusText.text = isSignalingEndpoint ?
+                        "Invalid ws/wss URL. Previous saved endpoint kept." :
+                        "Required field is empty. Previous saved value kept.";
+                return false;
+            }
+            PlayerPrefs.SetString(key, value);
+            PlayerPrefs.Save();
+            return true;
+        }
+
+        public static bool CanSaveLocalSignalingUrl(string url) =>
+            string.IsNullOrWhiteSpace(url) || QuestSignalingClient.IsValidSignalingEndpoint(url);
+
+        private bool ValidateLocalSettings()
+        {
+            if (CanSaveLocalSignalingUrl(signalingUrlInput.text)) return true;
+            statusText.text = "Enter a valid ws/wss URL, or leave it blank for automatic discovery.";
+            return false;
+        }
+
+        private void SaveValidDrafts()
+        {
+            PersistDraftField(signalingUrlInput, "QuestPhoneStream_SignalingUrl_v2", true, true);
+            PersistDraftField(tokenInput, "QuestPhoneStream_Token", false, false);
+            PersistDraftField(questDeviceIdInput, "QuestPhoneStream_QuestDeviceId", false, false);
+            PersistDraftField(androidDeviceIdInput, "QuestPhoneStream_AndroidDeviceId", false, false);
+            PersistDraftField(sessionIdInput, "QuestPhoneStream_SessionId", false, false);
+            PersistDraftField(mediaBaseUrlInput, "QuestPhoneStream_MediaBaseUrl", true, false);
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused && _initialized) SaveValidDrafts();
+        }
+
+        private void OnApplicationQuit()
+        {
+            if (_initialized) SaveValidDrafts();
+        }
+
         private bool ValidateSettings()
         {
             if (!Uri.TryCreate(signalingUrlInput.text.Trim(), UriKind.Absolute, out var uri) ||
@@ -178,10 +250,10 @@ namespace QuestPhoneStream
 
         private void OnSave()
         {
-            if (_isConnecting || signalingClient.IsConnecting || !ValidateSettings()) return;
-            SaveSettings();
+            if (_isConnecting || signalingClient.IsConnecting || !ValidateLocalSettings()) return;
+            SaveValidDrafts();
             receiver?.ResetMediaProbeState();
-            statusText.text = "Settings saved. Connect to apply.";
+            statusText.text = "Settings saved locally. Apply & Reconnect to connect.";
         }
 
         private async void OnConnect()

@@ -103,3 +103,26 @@ XR / Spatial and Caps. The selected section is saved as a local PlayerPrefs valu
 Discovery shows receiver NSD, signaling/WebRTC status, Quest app-level mDNS
 publication and OS wireless-debugging status separately. It is observational;
 selecting a debug view never enables ADB, changes signaling, or activates providers.
+
+## Persistent Quest settings and dynamic ADB ports
+
+- Paired Android wireless ADB advertises `_adb-tls-connect._tcp.` with a **dynamic**
+  port. The port is not an application preference: a reboot/restart may choose a
+  different one. Never store port 42613, 41125 or other temporary ports in APK
+  settings. `scripts/connect-quest-adb-mdns.sh` reads the currently advertised
+  endpoint, optionally filters via `QPS_QUEST_IP`, and connects only with normal
+  authenticated ADB (no elevated permissions or bypasses).
+- Quest OS controls whether Wireless Debugging remains enabled across a full
+  device reboot. The application cannot force that system policy or bypass pairing.
+- Settings UI now saves valid individual fields at keyboard edit completion and
+  when the app pauses/quits. **Save locally** accepts an empty signaling endpoint,
+  so users can retain settings while waiting for mDNS device discovery. Invalid
+  ws/wss URLs are rejected without overwriting the previously saved address.
+  **Apply & Reconnect** still requires a valid endpoint and device/session IDs.
+- Controller mappings, eye height trim and the selected Developer Diagnostics
+  category already persist using `PlayerPrefs`; HefuVR scenes and birthday layouts
+  have their own `.qpsspace` storage under the Quest application's private data.
+  Do not clear app data or uninstall without a scene/prefs backup.
+- Verified on paired Quest 3S that `PlayerPrefs` keys, including Diagnostic view,
+  joystick settings and eye trim, survived application force-stop and relaunch;
+  this does not prove OS Wireless Debugging persists across full headset reboots.
