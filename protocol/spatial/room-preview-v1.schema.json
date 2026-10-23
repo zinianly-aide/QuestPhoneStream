@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zinianly-aide/QuestPhoneStream/protocol/spatial/room-preview-v1.schema.json",
+  "title": "QPS device-private low-fidelity room preview v1",
+  "description": "Interchange format for arbitrary rooms. AABB boxes/semantic surfaces only; not Meta Scene raw mesh, camera images, private photos or anchor UUIDs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schemaVersion", "sceneId", "name", "metersPerUnit", "objects"],
+  "properties": {
+    "format": {"const": "qps-room-preview-v1"},
+    "schemaVersion": {"const": 1},
+    "sceneId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+    "source": {"type": "string", "enum": ["quest-workspace-proxy", "quest-scene-api", "local-import", "synthetic-test"]},
+    "metersPerUnit": {"const": 1},
+    "objects": {
+      "type": "array", "minItems": 1, "maxItems": 512,
+      "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "position", "size"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$"},
+          "kind": {"enum": ["floor", "ceiling", "wall", "furniture", "volume", "box"]},
+          "position": {"$ref": "#/$defs/position"},
+          "size": {"$ref": "#/$defs/size"},
+          "rotation": {"$ref": "#/$defs/quaternion"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "quaternion": {"type":"object", "additionalProperties":false,
+      "required":["x","y","z","w"],
+      "properties":{"x":{"type":"number","minimum":-1,"maximum":1},
+                    "y":{"type":"number","minimum":-1,"maximum":1},
+                    "z":{"type":"number","minimum":-1,"maximum":1},
+                    "w":{"type":"number","minimum":-1,"maximum":1}}},
+    "position": {"type": "object", "additionalProperties": false, "required": ["x","y","z"],
+      "properties": {"x":{"type":"number","minimum":-100,"maximum":100},"y":{"type":"number","minimum":-100,"maximum":100},"z":{"type":"number","minimum":-100,"maximum":100}}},
+    "size": {"type": "object", "additionalProperties": false, "required": ["x","y","z"],
+      "properties": {"x":{"type":"number","exclusiveMinimum":0,"maximum":100},"y":{"type":"number","exclusiveMinimum":0,"maximum":100},"z":{"type":"number","exclusiveMinimum":0,"maximum":100}}}
+  }
+}

@@ -17,6 +17,8 @@ namespace QuestPhoneStream.Spaces
         SceneWorkspaceLocomotion _movement;
         Camera _eye;
         int _blankCounter;
+        SceneWorkspacePreviewShare _roomShare;
+        void OnDestroy() { _roomShare?.Dispose(); _roomShare=null; }
         public bool IsVisible => _canvas != null && _canvas.gameObject.activeInHierarchy;
 
         public void Show(SceneWorkspaceManager spaces, Camera eye)
@@ -152,8 +154,30 @@ namespace QuestPhoneStream.Spaces
                 if (birthday) birthday.ToggleLights();
                 Refresh();
             });
-            Label(_scenePage.transform, "North entrance → Dining → South living room. Private CAD stays local.",
-                18, new Vector2(34, 707), new Vector2(815, 42));
+            Label(_scenePage.transform, "Export is a simplified room proxy, not a raw 3D scan.",
+                17, new Vector2(34, 703), new Vector2(515, 50));
+#if QPS_HAS_MRUK
+            Action(_scenePage.transform, "Export Space Setup", 562, 710, 282, () => {
+                if(SceneWorkspaceMrukPreviewAdapter.TryExportCurrentPhysicalRoom(_spaces,out string status))
+                    _status.text=status;
+                else _status.text=status;
+            });
+#else
+            Action(_scenePage.transform, "Share to phone", 562, 710, 282, () => {
+                try
+                {
+                    // Only the user's explicit button starts this 3-minute offer.
+                    SceneWorkspacePreviewExport.SaveToPrivateFiles(_spaces);
+                    var preview=SceneWorkspacePreviewExport.Capture(_spaces.EnvironmentRoot,
+                        _spaces.Active.displayName,"quest-workspace-proxy");
+                    if(_roomShare==null)_roomShare=new SceneWorkspacePreviewShare();
+                    var endpoint=_roomShare.Start(preview);
+                    _status.text="LAN "+endpoint+"  KEY "+_roomShare.Token+
+                        " (3 min; local HTTP)";
+                }
+                catch(Exception error) { _status.text = "Share error: " + error.Message; }
+            });
+#endif
 
             _controlsPage = Page(root.transform, "StickControlsPage");
             Label(_controlsPage.transform, "Spaces · Stick Controls", 32, new Vector2(30, 20), new Vector2(660, 66));

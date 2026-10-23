@@ -136,6 +136,35 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    private val homeLayoutPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            AlertDialog.Builder(this)
+                .setTitle("Import Hefu Home layout?")
+                .setMessage("Replace only the saved furniture layout in this new app. An existing layout is backed up. Original Hefu Home is not modified.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Import") { _, _ ->
+                    try {
+                        HefuLayoutImport.importDocument(this, uri)
+                        addLog("Hefu layout imported into unified private storage")
+                        openUnitySpaces()
+                    } catch (error: Exception) {
+                        addLog("Layout import rejected: ${error.message}")
+                    }
+                }.show()
+        }
+    }
+
+    private val scenePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try {
+            val id = ScenePreviewStore.importDocument(this, uri)
+            addLog("Imported private scene preview: $id")
+            openUnitySpaces(id)
+        } catch (error: Exception) {
+            addLog("Scene import rejected: ${error.message}")
+            android.widget.Toast.makeText(this, "Invalid room preview JSON", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val uri = result.data?.data ?: return@registerForActivityResult
         try {
@@ -211,6 +240,10 @@ class MainActivity : AppCompatActivity() {
         }
         homeCard.addView(homeScreenActionButton)
 
+        homeCard.addView(actionButton("3D Spaces / Home Design", R.color.colorPrimary) {
+            showScenePreviewPicker()
+        })
+
         homeCard.addView(actionButton("Manage shared media", R.color.colorPrimary) {
             showMediaManager()
         })
@@ -226,6 +259,78 @@ class MainActivity : AppCompatActivity() {
             advancedToggleButton.text = if (show) "Hide advanced settings" else "Advanced settings"
         }
         homeContainer.addView(advancedToggleButton)
+    }
+
+    private fun showScenePreviewPicker() {
+        val scenes = ScenePreviewStore.entries(this)
+        val choices = (listOf("Hefu Home Design", "Receive from Quest (LAN)…", "Import Quest scene JSON…", "Import Hefu layout JSON…") + scenes.map { "Room: $it" }).toTypedArray()
+        AlertDialog.Builder(this).setTitle("3D Spaces")
+            .setItems(choices) { _, choice ->
+                when (choice) {
+                    0 -> openUnitySpaces()
+                    1 -> showQuestRoomReceiveDialog()
+                    2 -> scenePicker.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                    3 -> homeLayoutPicker.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                    else -> openUnitySpaces(scenes[choice - 4])
+                }
+            }.show()
+    }
+
+    private fun showQuestRoomReceiveDialog() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(10), dp(20), dp(8))
+        }
+        val hostField = EditText(this).apply {
+            hint = "Quest IP:port (192.168.1.12:12345)"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+        }
+        val keyField = EditText(this).apply {
+            hint = "32-character one-time key from Quest"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            setSingleLine(true)
+        }
+        root.addView(hostField)
+        root.addView(keyField)
+        root.addView(helperText("On Quest: Spaces → Share to phone. This uses local HTTP, which is not encrypted. Use only a trusted private Wi-Fi network."))
+        AlertDialog.Builder(this).setTitle("Receive private room preview")
+            .setView(root).setNegativeButton("Cancel", null)
+            .setPositiveButton("Receive") { _, _ ->
+                val endpoint = hostField.text.toString().trim()
+                val key = keyField.text.toString().trim()
+                // No network on the UI thread; the service is ephemeral, one-use.
+                Thread({
+                    try {
+                        val sceneId = ScenePreviewLanImport.import(applicationContext, endpoint, key)
+                        runOnUiThread { addLog("Received Quest room: $sceneId"); openUnitySpaces(sceneId) }
+                    } catch (ex: Exception) {
+                        runOnUiThread {
+                            addLog("Quest room receive failed: ${ex.javaClass.simpleName}: ${ex.message}")
+                            android.widget.Toast.makeText(this, "Quest share unavailable or expired", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }, "quest-room-onetime-import").start()
+            }.show()
+    }
+
+    private fun openUnitySpaces(previewSceneId: String? = null) {
+        // No new Android launch package: the private Unity library shares this APK.
+        // Stream/signal services remain managed by Android, not the Unity scene.
+        if (!BuildConfig.HAS_UNITY_HOME) {
+            android.widget.Toast.makeText(this,
+                "This build has no 3D module. Use the integrated build.",
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val intent = Intent().setClassName(packageName, "com.unity3d.player.UnityPlayerActivity")
+            if (previewSceneId != null) intent.putExtra("qps_scene_id", previewSceneId)
+            startActivity(intent)
+            addLog("Opened 3D Spaces within QuestPhoneStream")
+        } catch (error: Exception) {
+            addLog("3D Spaces unavailable: ${error.message}")
+        }
     }
 
     private fun buildAdvanced() {
