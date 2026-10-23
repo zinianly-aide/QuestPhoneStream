@@ -40,8 +40,11 @@ namespace QuestPhoneStream.Tests
             Assert.IsTrue(SceneWorkspaceBirthday.HasRequiredFurniture(_room.transform));
             var created=SceneWorkspaceBirthday.Build(_room.transform,scene);
             Assert.AreEqual(5,created.AnchorCount);
-            Assert.Greater(created.DecorationCount,150,
-                "Premium birthday preset must retain layered flower/cake/balloon details");
+            // Fine detail replaces many separate sphere/cube primitives with a
+            // few properly shaped meshes; geometry quality matters more than count.
+            Assert.That(created.DecorationCount, Is.InRange(105, 145),
+                "Detailed birthday should pool petals instead of spawning dozens of primitive balls");
+            int bouquetMeshes = 0, stringMeshes = 0, icingMeshes = 0, candleMeshes = 0, frameMeshes = 0;
             var ribbons = 0;
             foreach (var filter in _room.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -52,6 +55,27 @@ namespace QuestPhoneStream.Tests
                 Assert.IsNull(filter.GetComponent<Collider>(), "Ribbons must not block VR walking");
             }
             Assert.AreEqual(3, ribbons, "Keep one batched ribbon per welcome / cabinet / gallery");
+            foreach(var f in _room.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if(!f.name.StartsWith("Birthday_Detail_"))continue;
+                Assert.IsNotNull(f.sharedMesh);
+                Assert.IsNull(f.GetComponent<Collider>(),"Premium decorative mesh must not block XR movement");
+                var mr=f.GetComponent<MeshRenderer>();
+                Assert.IsNotNull(mr);
+                Assert.AreEqual(f.sharedMesh.subMeshCount,mr.sharedMaterials.Length,
+                    "Every pooled mesh submesh needs exactly one shared material");
+                if(f.name.Contains("RoseBouquet"))
+                { bouquetMeshes++; Assert.Greater(f.sharedMesh.vertexCount,300); }
+                if(f.name.Contains("BalloonSatinStrings")) stringMeshes++;
+                if(f.name.Contains("CakeIcingScallops")) icingMeshes++;
+                if(f.name.Contains("CakeThreeCandles")) candleMeshes++;
+                if(f.name.Contains("PhotoFrameMoulding")) frameMeshes++;
+            }
+            Assert.AreEqual(3,bouquetMeshes,"Three real folded-rose bouquets, not spheres");
+            Assert.AreEqual(3,stringMeshes,"Each balloon group has one pooled curved-string mesh");
+            Assert.AreEqual(1,icingMeshes,"Scalloped frosting uses one mesh");
+            Assert.AreEqual(1,candleMeshes,"Three candles use one mesh with visible flames");
+            Assert.AreEqual(3,frameMeshes,"Each photo frame has actual moulding with open center");
             for(int i=0;i<Names.Length;i++)
                 Assert.AreEqual(before[i],_room.transform.GetChild(i).position);
             foreach(var c in _room.GetComponentsInChildren<Collider>(true))

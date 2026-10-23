@@ -341,3 +341,14 @@ Meta documentation used to plan S2 (not implemented in S0):
   Scene catalog and birthday save SHA256 were unchanged after upgrade.
 - Android-side keep-awake acquire/release logging should additionally be checked
   after the user explicitly turns the new option **ON** on the headset.
+
+## Birthday B2.4 – premium geometric detailing (2026-10-24)
+
+- Preserve `birthday-v1` scene/schema, 17 persisted CAD furniture transforms, private numbered photo slots and existing independent birthday object records. No CAD/photos bundled into public APK or repository.
+- Replace five sphere-like flower heads per bouquet with a pooled mesh of curled rose petal rings, folded bud centers, foliage and joined stems. Three bouquets now share three materials each rather than dozens of primitive renderers.
+- Add a scalloped cake-icing mesh and a single three-candle mesh with warm tips. Keep the existing cake plate, pearled top and birthday writing.
+- Replace full photo-frame boxes with four real moulding rails merged into one mesh per frame. The center remains open so numbered local photo surfaces remain visible. Balloon clusters receive one curved satin-string mesh each.
+- All new meshes are collider-free, disable shadow casting/receiving, reuse the existing birthday materials and are explicitly destroyed on scene teardown. Runtime point-light count stays at two.
+- Quest PlayMode: 174/174 PASS, including assertion for 11 pooled detail meshes, ribbon meshes, no XR-blocking colliders, shared-material count and unchanged furniture transforms. Quest Vulkan development APK built, signed and safely installed over USB; catalog + active ZUK-synced scene SHA-256 unchanged. Runtime FPS remains **not validated** because the headset was at Oculus sensor lock/Guardian after installation.
+- Hefu Home mobile: version 0.3.17 (API 24) generated, signed, B2.4 editor smoke QA PASS with five anchors, 112 visual render objects, 17 movable furniture records and zero persistent scene leakage. Integrated QuestPhoneStream Android + Unity library debug APK built successfully, 24/24 Android unit tests. Mobile APK not installed on Quest or Android 10+ test handset.
+- Three private Hefu editor snapshot angles were captured under `/Volumes/ssd/HefuVR-Android/Builds/BirthdayB24QA/`; do not commit the screenshots or user-home files.

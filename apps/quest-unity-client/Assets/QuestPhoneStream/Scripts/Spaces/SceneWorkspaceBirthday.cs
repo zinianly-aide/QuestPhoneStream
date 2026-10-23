@@ -107,6 +107,22 @@ namespace QuestPhoneStream.Spaces
             DecorationCount++;
             return go;
         }
+        GameObject FineMesh(Transform parent, string name, Vector3 localPosition,
+            Mesh mesh, params Material[] materials)
+        {
+            if (!mesh) throw new InvalidOperationException("Birthday detail mesh missing: " + name);
+            _ownedMeshes.Add(mesh);
+            var go = new GameObject("Birthday_Detail_" + name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPosition;
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterials = materials;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            DecorationCount++;
+            return go;
+        }
         void Box(Transform p, string n, Vector3 pos, Vector3 size, Material m) =>
             Shape(p, PrimitiveType.Cube, n, pos, size, m);
         GameObject Ball(Transform p, string n, Vector3 pos, float size, Material m) =>
@@ -131,25 +147,14 @@ namespace QuestPhoneStream.Spaces
         }
         void Bouquet(Transform p, Vector3 pos, float height)
         {
+            // One procedural cluster contains the folded rose petals, stems and
+            // leaves. 3 material slots replace ~19 sphere/cube renderers per vase.
             Cylinder(p, "FlowerVase", pos + Vector3.up * height * .23f,
                 new Vector3(height*.22f, height*.23f, height*.22f), _gold);
-            for (int i=0; i<5; i++)
-            {
-                float a=i*1.256637f;
-                Vector3 offset=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a))*height*.24f;
-                Box(p,"Stem",pos+offset*.5f+Vector3.up*height*.5f,
-                    new Vector3(.009f,height*.43f,.009f),_leaves);
-                Vector3 bloom=pos+offset+Vector3.up*height*(.81f+.05f*(i%2));
-                var rose=Ball(p,"Rose",bloom,height*.24f,i%2==0?_rose:_ivory);
-                rose.transform.localScale=new Vector3(height*.24f,height*.17f,height*.24f);
-                Ball(p,"RoseHeart",bloom+Vector3.up*height*.07f,height*.095f,_gold);
-                if (i%2==0)
-                {
-                    var leaf=Ball(p,"RoseLeaf",bloom+new Vector3(height*.09f,-height*.08f,0),
-                        height*.13f,_leaves);
-                    leaf.transform.localScale=new Vector3(height*.16f,height*.045f,height*.09f);
-                }
-            }
+            Cylinder(p, "VaseLip", pos + Vector3.up * height * .455f,
+                new Vector3(height*.235f,height*.018f,height*.235f),_ivory);
+            FineMesh(p,"RoseBouquet_FoldedPetals",pos,BirthdayFineMesh.Bouquet(height),
+                _rose,_ivory,_leaves);
         }
         void Gift(Transform p, Vector3 pos, float size, bool pink)
         {
@@ -166,12 +171,14 @@ namespace QuestPhoneStream.Spaces
         }
         void Balloons(Transform p, Vector3 center, int count, float spread)
         {
+            var tiePositions = new Vector3[count];
             for(int i=0;i<count;i++)
             {
                 float a=i*2.39996f;
                 float radial=spread*(.3f+.7f*Mathf.Sqrt((i+1f)/count));
                 Vector3 pos=center+new Vector3(Mathf.Cos(a)*radial,(i%4)*.12f,
                     Mathf.Sin(a)*radial*.5f);
+                tiePositions[i] = pos;
                 var balloon=Ball(p,"Balloons_"+i,pos,.20f+(i%3)*.035f,
                     i%3==0?_gold:i%3==1?_ivory:_rose);
                 balloon.transform.localScale=new Vector3(.21f+(i%3)*.028f,
@@ -180,6 +187,9 @@ namespace QuestPhoneStream.Spaces
                 if ((i&1)==0)
                     Ball(p,"BalloonKnot",pos-Vector3.up*(.133f+(i%3)*.017f),.03f,_gold);
             }
+            // One merged swaying-string mesh for the whole balloon cluster.
+            FineMesh(p,"BalloonSatinStrings",Vector3.zero,
+                BirthdayFineMesh.BalloonStrings(tiePositions),_gold);
         }
         /// <summary>
         /// Single mesh ribbon, 18 curve samples in one draw rather than dozens of cubes.
@@ -242,8 +252,10 @@ namespace QuestPhoneStream.Spaces
         }
         void Frame(Transform p, string number, float z)
         {
-            Box(p,"PhotoBorder_"+number,new Vector3(0,1.65f,z),
-                new Vector3(.035f,.40f,.31f),_gold);
+            // Four true picture-moulding rails in one mesh; the center remains open
+            // so private photo pixels are never covered by a solid gold rectangle.
+            FineMesh(p,"PhotoFrameMoulding_"+number,new Vector3(0,1.65f,z),
+                BirthdayFineMesh.FrameMoulding(.31f,.40f),_gold);
             var placeholder=Shape(p,PrimitiveType.Cube,"PrivatePhotoPlaceholder_"+number,
                 new Vector3(-.024f,1.65f,z),new Vector3(.011f,.34f,.25f),_photoMat);
             var label=Words(p,"PHOTO " + number,new Vector3(-.035f,1.65f,z),.0065f,90);
@@ -307,6 +319,10 @@ namespace QuestPhoneStream.Spaces
             Cylinder(table,"CakePlate",new Vector3(0,.016f,0),new Vector3(.25f,.016f,.25f),_gold);
             Cylinder(table,"CakeBase",new Vector3(0,.115f,0),new Vector3(.19f,.10f,.19f),_white);
             Cylinder(table,"CakeCreamTop",new Vector3(0,.23f,0),new Vector3(.15f,.052f,.15f),_ivory);
+            FineMesh(table,"CakeIcingScallops",Vector3.zero,
+                BirthdayFineMesh.CakeIcing(.152f,.240f),_ivory);
+            FineMesh(table,"CakeThreeCandles",Vector3.zero,
+                BirthdayFineMesh.CandleTrio(),_white,_glow);
             for(int i=0;i<10;i++)
             {
                 float a=i*Mathf.PI*2/10f;
