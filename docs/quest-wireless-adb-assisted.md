@@ -90,3 +90,16 @@ resolved `_qps-quest._tcp.` with `platform=quest`, and the Mac Node presence wat
 received the new service. ADB OS service reappeared independently with a different
 port after headset boot. mDNS requires QuestPhoneStream app to be foreground/resumed;
 its presence alone cannot reconnect to Android's secure ADB service.
+
+## Selectable Developer Diagnostics views (2026-10-23)
+
+The Quest diagnostics UI is behind the existing `QPS_DEV_TOOLS || DEVELOPMENT_BUILD`
+compile gate. **Standard `BuildAndroid` deliberately omits this developer page**.
+When testing developer UI, use
+`QuestPhoneStream.Editor.QuestPhoneStreamBuild.BuildAndroidDevelopmentTools`, not the
+production `BuildAndroid` method; this also retains the prior Wireless ADB helper.
+The HUD now offers XR-selectable read-only sections: All, Discovery, Streaming,
+XR / Spatial and Caps. The selected section is saved as a local PlayerPrefs value.
+Discovery shows receiver NSD, signaling/WebRTC status, Quest app-level mDNS
+publication and OS wireless-debugging status separately. It is observational;
+selecting a debug view never enables ADB, changes signaling, or activates providers.

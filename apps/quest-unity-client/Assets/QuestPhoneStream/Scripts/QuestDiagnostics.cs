@@ -5,6 +5,9 @@ using UnityEngine.XR;
 
 namespace QuestPhoneStream
 {
+    // Selectable read-only views of the same diagnostics snapshot; never change device state.
+    public enum QuestDiagnosticsView { All = 0, Discovery = 1, Streaming = 2, Spatial = 3, Capabilities = 4 }
+
     [Serializable]
     public sealed class QuestDiagnosticsSnapshot
     {
@@ -12,6 +15,9 @@ namespace QuestPhoneStream
         public string selectedAndroidDeviceId;
         public string spatialVersion;
         public string nsdState;
+        public string questPresenceState;
+        public int questPresencePort;
+        public string wirelessAdbState;
         public string selectedDevice;
         public string serviceType;
         public string capabilities;
@@ -96,6 +102,12 @@ namespace QuestPhoneStream
                 selectedAndroidDeviceId = receiver == null ? string.Empty : receiver.SelectedAndroidDeviceId,
                 spatialVersion = "1",
                 nsdState = receiver == null || receiver.mediaDiscovery == null ? "Unavailable" : receiver.mediaDiscovery.State,
+                questPresenceState = receiver == null || receiver.GetComponent<QuestPresencePublisher>() == null
+                    ? "Unavailable" : receiver.GetComponent<QuestPresencePublisher>().State,
+                questPresencePort = receiver == null || receiver.GetComponent<QuestPresencePublisher>() == null
+                    ? 0 : receiver.GetComponent<QuestPresencePublisher>().Port,
+                wirelessAdbState = WirelessAdbHelper.ReadWirelessDebuggingEnabled() == true ? "Enabled" :
+                    WirelessAdbHelper.ReadWirelessDebuggingEnabled() == false ? "Disabled" : "Unknown",
                 selectedDevice = selected == null ? "None" : selected.name,
                 serviceType = selected == null ? string.Empty : selected.serviceType,
                 capabilities = selected == null ? string.Empty : selected.capabilities,
@@ -162,29 +174,44 @@ namespace QuestPhoneStream
             return snapshot;
         }
 
-        public string ToDisplayText()
+        public string ToDisplayText() => ToDisplayText(QuestDiagnosticsView.All);
+
+        public string ToDisplayText(QuestDiagnosticsView view)
         {
+            if (!Enum.IsDefined(typeof(QuestDiagnosticsView), view)) view = QuestDiagnosticsView.All;
             var text = new StringBuilder(2600);
-            AddSection(text, "Device", $"Quest deviceId: {questDeviceId}\nSelected Android: {selectedAndroidDeviceId}\nSpatial: v{spatialVersion}");
-            AddSection(text, "Discovery", $"NSD: {nsdState}\nSelected: {selectedDevice}\nService: {serviceType}\nCaps: {capabilities}\nStream: {streamId}\nSignaling: {signalingEndpoint}");
-            AddSection(text, "Network", $"Signaling: {signalingState}\nSession: {sessionId}\nNegotiation: {negotiationId}\nWebRTC peer: {peerState}\nControl DataChannel: {controlState}\nMedia HTTP: {mediaHttpState}");
-            AddSection(text, "Video", $"Frame received: {videoFrameReceived}\nResolution: {videoWidth}x{videoHeight}\nSource: {videoSource}\nProfile: {projection} / {fov} / {stereo} / {eyeOrder}\nRenderer: {rendererBackend}");
-            AddSection(text, "XR", $"OpenXR active: {xrActive}\nHMD tracking: {hmdTracking}\nHMD pose: {hmdPoseAvailable}\nHands: {handState}");
-            AddSection(text, "Spatial Data Plane",
-                $"Pose: {poseStreamHz:0} Hz\nFast channel: {(spatialFastOpen ? "open" : "closed")} · dropped={spatialDroppedFrames} · lastSeq={spatialLastSequence}\n" +
-                $"Reliable channel: {(spatialReliableOpen ? "open" : "closed")} · dropped={reliableDroppedFrames} · lastSeq={reliableLastSequence}");
-            AddSection(text, "Vision / AI", $"Camera: {cameraState}\nAI: {aiState}\nAI latency: {aiLatencyMs} ms");
-            AddSection(text, "P3",
-                $"Anchors: {anchorState} (count={anchorCount}, subscribers={anchorSubscribers})\n" +
-                $"Depth: {depthState} (subscribers={depthSubscribers})\n" +
-                $"Interaction: {interactionState} (subscribers={interactionSubscribers})\n" +
-                $"6DoF: {sixDofState}\n" +
-                $"3DGS: {gaussianState} · splats={gaussianSplatCount} · load={gaussianLoadMs} ms" +
-                (string.IsNullOrEmpty(gaussianError) ? string.Empty : $"\n3DGS error: {gaussianError}"));
-            text.AppendLine("Capabilities");
-            if (capabilitiesState != null)
-                foreach (var capability in capabilitiesState)
-                    text.AppendLine($"{capability.name}: available={capability.available} authorized={capability.authorized} active={capability.active} transport={capability.transport}");
+            if (view == QuestDiagnosticsView.All || view == QuestDiagnosticsView.Discovery)
+            {
+                AddSection(text, "Device", $"Quest deviceId: {questDeviceId}\nSelected Android: {selectedAndroidDeviceId}\nSpatial: v{spatialVersion}");
+                AddSection(text, "Discovery", $"NSD: {nsdState}\nSelected: {selectedDevice}\nService: {serviceType}\nCaps: {capabilities}\nStream: {streamId}\nSignaling: {signalingEndpoint}\nQuest mDNS: {questPresenceState} (port {questPresencePort})\nWireless ADB: {wirelessAdbState}");
+                AddSection(text, "Network", $"Signaling: {signalingState}\nSession: {sessionId}\nNegotiation: {negotiationId}\nWebRTC peer: {peerState}\nControl DataChannel: {controlState}\nMedia HTTP: {mediaHttpState}");
+            }
+            if (view == QuestDiagnosticsView.All || view == QuestDiagnosticsView.Streaming)
+            {
+                AddSection(text, "Video", $"Frame received: {videoFrameReceived}\nResolution: {videoWidth}x{videoHeight}\nSource: {videoSource}\nProfile: {projection} / {fov} / {stereo} / {eyeOrder}\nRenderer: {rendererBackend}");
+                AddSection(text, "Spatial Data Plane",
+                    $"Pose: {poseStreamHz:0} Hz\nFast channel: {(spatialFastOpen ? "open" : "closed")} · dropped={spatialDroppedFrames} · lastSeq={spatialLastSequence}\n" +
+                    $"Reliable channel: {(spatialReliableOpen ? "open" : "closed")} · dropped={reliableDroppedFrames} · lastSeq={reliableLastSequence}");
+            }
+            if (view == QuestDiagnosticsView.All || view == QuestDiagnosticsView.Spatial)
+            {
+                AddSection(text, "XR", $"OpenXR active: {xrActive}\nHMD tracking: {hmdTracking}\nHMD pose: {hmdPoseAvailable}\nHands: {handState}");
+                AddSection(text, "Vision / AI", $"Camera: {cameraState}\nAI: {aiState}\nAI latency: {aiLatencyMs} ms");
+                AddSection(text, "P3",
+                    $"Anchors: {anchorState} (count={anchorCount}, subscribers={anchorSubscribers})\n" +
+                    $"Depth: {depthState} (subscribers={depthSubscribers})\n" +
+                    $"Interaction: {interactionState} (subscribers={interactionSubscribers})\n" +
+                    $"6DoF: {sixDofState}\n" +
+                    $"3DGS: {gaussianState} · splats={gaussianSplatCount} · load={gaussianLoadMs} ms" +
+                    (string.IsNullOrEmpty(gaussianError) ? string.Empty : $"\n3DGS error: {gaussianError}"));
+            }
+            if (view == QuestDiagnosticsView.All || view == QuestDiagnosticsView.Capabilities)
+            {
+                text.AppendLine("Capabilities");
+                if (capabilitiesState != null)
+                    foreach (var capability in capabilitiesState)
+                        text.AppendLine($"{capability.name}: available={capability.available} authorized={capability.authorized} active={capability.active} transport={capability.transport}");
+            }
             return text.ToString();
         }
 

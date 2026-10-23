@@ -17,6 +17,10 @@ namespace QuestPhoneStream
         private Action _onBack;
         private Text _body;
         private Toggle _autoRefresh;
+        private const string ViewPref = "QuestPhoneStream_DiagnosticsView_v1";
+        private QuestDiagnosticsView _selectedView = QuestDiagnosticsView.All;
+        private readonly Button[] _viewButtons = new Button[5];
+        private static readonly string[] ViewLabels = { "All", "Discovery", "Streaming", "XR / Spatial", "Caps" };
         private float _nextRefresh;
         private bool _initialized;
 
@@ -30,6 +34,7 @@ namespace QuestPhoneStream
             _diagnostics = diagnostics;
             _wirelessAdb = wirelessAdb;
             _onBack = onBack;
+            _selectedView = SafeView(PlayerPrefs.GetInt(ViewPref, 0));
             Build();
             _initialized = true;
         }
@@ -50,7 +55,7 @@ namespace QuestPhoneStream
         public void Refresh()
         {
             if (!IsVisible) return;
-            _body.text = _diagnostics != null ? _diagnostics.CaptureSnapshot().ToDisplayText() : "Diagnostics unavailable";
+            _body.text = _diagnostics != null ? _diagnostics.CaptureSnapshot().ToDisplayText(_selectedView) : "Diagnostics unavailable";
             LayoutRebuilder.ForceRebuildLayoutImmediate(_body.rectTransform);
             _nextRefresh = Time.unscaledTime + 1f;
         }
@@ -59,6 +64,28 @@ namespace QuestPhoneStream
         {
             if (IsVisible && _autoRefresh != null && _autoRefresh.isOn && Time.unscaledTime >= _nextRefresh)
                 Refresh();
+        }
+
+        public QuestDiagnosticsView SelectedView => _selectedView;
+
+        public static QuestDiagnosticsView SafeView(int value) =>
+            value >= (int)QuestDiagnosticsView.All && value <= (int)QuestDiagnosticsView.Capabilities
+                ? (QuestDiagnosticsView)value : QuestDiagnosticsView.All;
+
+        public void SelectView(QuestDiagnosticsView view)
+        {
+            _selectedView = SafeView((int)view);
+            PlayerPrefs.SetInt(ViewPref, (int)_selectedView);
+            PlayerPrefs.Save();
+            for (int i = 0; i < _viewButtons.Length; i++)
+            {
+                if (!_viewButtons[i]) continue;
+                var image = _viewButtons[i].GetComponent<Image>();
+                if (image) image.color = i == (int)_selectedView
+                    ? new Color(0.17f, 0.51f, 0.77f, 1f)
+                    : new Color(0.18f, 0.24f, 0.32f, 1f);
+            }
+            if (IsVisible) Refresh();
         }
 
         private void OpenWirelessAdb()
@@ -81,7 +108,18 @@ namespace QuestPhoneStream
             CreateText(_page.transform, "Developer Diagnostics", 28, TextAnchor.MiddleLeft, 0.04f, 0.93f, 0.76f, 0.99f, out _);
             CreateText(_page.transform, "read-only · 1 Hz max", 14, TextAnchor.MiddleRight, 0.70f, 0.93f, 0.96f, 0.99f, out var subtitle);
             subtitle.color = new Color(0.65f, 0.72f, 0.82f, 1f);
+            // Large world-space category buttons remain ray/poke selectable with XR.
+            const float left = 0.04f, right = 0.96f, spacing = 0.009f;
+            float cellWidth = (right - left - spacing * 4f) / 5f;
+            for (int i = 0; i < ViewLabels.Length; i++)
+            {
+                int index = i;
+                float x = left + (cellWidth + spacing) * i;
+                _viewButtons[i] = CreateButton(_page.transform, ViewLabels[i], x, 0.83f,
+                    x + cellWidth, 0.90f, () => SelectView((QuestDiagnosticsView)index));
+            }
             BuildScrollableBody();
+            SelectView(_selectedView);
 
             CreateButton(_page.transform, "Refresh", 0.04f, 0.05f, 0.18f, 0.12f, Refresh);
             CreateButton(_page.transform, "Wireless ADB", 0.20f, 0.05f, 0.40f, 0.12f, OpenWirelessAdb);
@@ -108,7 +146,7 @@ namespace QuestPhoneStream
             scrollGo.transform.SetParent(_page.transform, false);
             var scrollRectTransform = scrollGo.AddComponent<RectTransform>();
             scrollRectTransform.anchorMin = new Vector2(0.04f, 0.15f);
-            scrollRectTransform.anchorMax = new Vector2(0.96f, 0.91f);
+            scrollRectTransform.anchorMax = new Vector2(0.96f, 0.81f);
             scrollRectTransform.sizeDelta = Vector2.zero;
             var scroll = scrollGo.AddComponent<ScrollRect>();
             scroll.horizontal = false;
@@ -165,7 +203,7 @@ namespace QuestPhoneStream
             rect.sizeDelta = Vector2.zero;
         }
 
-        private static void CreateButton(Transform parent, string label, float minX, float minY,
+        private static Button CreateButton(Transform parent, string label, float minX, float minY,
             float maxX, float maxY, UnityEngine.Events.UnityAction action)
         {
             var go = new GameObject("Button_" + label);
@@ -180,6 +218,7 @@ namespace QuestPhoneStream
             rect.anchorMax = new Vector2(maxX, maxY);
             rect.sizeDelta = Vector2.zero;
             CreateText(go.transform, label, 15, TextAnchor.MiddleCenter, 0, 0, 1, 1, out _);
+            return button;
         }
     }
 }
