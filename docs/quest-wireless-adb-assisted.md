@@ -64,3 +64,29 @@ addresses as shell commands, and never bypasses device authentication.
 
 Mac CI tests and TypeScript build pass; Quest Unity tests, Horizon OS privilege
 support, real cold-boot pairing and an installable APK remain unverified.
+
+## Restored application mDNS presence (2026-10-23)
+
+Historical sources:
+- Android sender registers `_qps-device._tcp.` plus legacy `_qps-media._tcp.` with `MediaNsdRegistration.kt`.
+- macOS sender publishes `_qps-device._tcp.` through `bonjour-service`; its Oct 14 ADB assistant observes the **OS** `_adb-tls-connect._tcp.` only after official TLS pairing.
+- Older Quest Unity `MediaDeviceDiscovery` browsed these services, but did not register any Quest-owned advertisement.
+
+Quest Unity now registers an explicit, separate `_qps-quest._tcp.` service using Android
+`NsdManager` while QuestPhoneStream is open and resumed. TXT contains `v=1`, a locally
+persisted random UUID, `name=QuestPhoneStream Quest`, `platform=quest`, `caps=scene`.
+Its ephemeral TCP presence socket closes connections without reading payloads; it offers
+**no ADB proxy, remote commands, credentials, or signaling endpoint**. The lifecycle
+unregisters and closes the socket on pause/destroy. Network/multicast permissions are
+added to the generated Android manifest.
+
+The Mac sender now browses `_qps-quest._tcp.` separately and labels app presence
+independently from authenticated ADB. It does not invoke `adb connect` using untrusted
+broadcast ports, and still uses Android's official authenticated TLS ADB mDNS.
+
+Verification: Unity PlayMode 161/161 and macOS sender 42/42 tests, Mac TypeScript build,
+Quest 3S B2.1 upgraded via paired ADB without clearing HefuVR scene data; macOS `dns-sd`
+resolved `_qps-quest._tcp.` with `platform=quest`, and the Mac Node presence watcher
+received the new service. ADB OS service reappeared independently with a different
+port after headset boot. mDNS requires QuestPhoneStream app to be foreground/resumed;
+its presence alone cannot reconnect to Android's secure ADB service.

@@ -14,6 +14,8 @@ namespace QuestPhoneStream.Editor
         private const string OverlayKeyboardFeature = "oculus.software.overlay_keyboard";
         private const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
         private const string SecureSettingsPermission = "android.permission.WRITE_SECURE_SETTINGS";
+        private const string NetworkStatePermission = "android.permission.ACCESS_NETWORK_STATE";
+        private const string MulticastPermission = "android.permission.CHANGE_WIFI_MULTICAST_STATE";
         private const string AndroidNs = "http://schemas.android.com/apk/res/android";
 
         public void OnPostGenerateGradleAndroidProject(string path)
@@ -94,6 +96,18 @@ namespace QuestPhoneStream.Editor
                 manifest.AppendChild(permissionElement);
                 changed = true;
                 Debug.Log("[AndroidManifestPostProcessor] Added HEADSET_CAMERA permission declaration");
+            }
+
+            // Quest mDNS/NSD discovery and the app-level Quest presence advertisement.
+            // Android owns ADB-TLS registration separately; these grants never enable ADB.
+            foreach (var networkPermission in new[] { NetworkStatePermission, MulticastPermission })
+            {
+                if (HasNamedElement(manifest, "uses-permission", networkPermission)) continue;
+                var permission = doc.CreateElement("uses-permission");
+                AppendAndroidAttribute(doc, permission, "name", networkPermission);
+                manifest.AppendChild(permission);
+                changed = true;
+                Debug.Log("[AndroidManifestPostProcessor] Added NSD permission " + networkPermission);
             }
 
             // BuildOptions.Development does NOT always update the Editor UI

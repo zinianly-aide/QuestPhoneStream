@@ -13,7 +13,7 @@ import {
   persistentDeviceId,
   hostname
 } from "./config";
-import { SignalingDiscovery } from "./discovery";
+import { SignalingDiscovery, QuestPresenceDiscovery } from "./discovery";
 import { WirelessAdbAutoConnect } from "./adbAutoConnect";
 import { displayIdFromSource, mapClickToDisplay, parseClickCommand } from "./remoteControl";
 
@@ -104,6 +104,7 @@ class UnifiedDeviceAdvertisement {
 
 let advertisement: UnifiedDeviceAdvertisement | null = null;
 let discovery: SignalingDiscovery | null = null;
+let questPresence: QuestPresenceDiscovery | null = null;
 let wirelessAdb: WirelessAdbAutoConnect | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentConfig: SenderConfig;
@@ -190,6 +191,14 @@ app.whenReady().then(async () => {
   discovery.onCandidate = applyDiscoveredSignaling;
   discovery.start();
   log("discovery started");
+  questPresence = new QuestPresenceDiscovery();
+  questPresence.onChange = items => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send("qps:quest-presence", items);
+    log("Quest app presence (not ADB):", items.map(x => x.name + " " + x.addresses.join(",")).join("; ") || "none");
+  };
+  questPresence.start();
+  ipcMain.handle("qps:quest-presence", () => questPresence?.snapshot() ?? []);
 
   // ADB manages TLS pairing and auto-connect itself; we only start/observe it.
   wirelessAdb = new WirelessAdbAutoConnect(snapshot => {
@@ -333,12 +342,14 @@ app.whenReady().then(async () => {
   }
   broadcastConfigState();
   mainWindow.webContents.send("qps:adb-state", wirelessAdb.current());
+  mainWindow.webContents.send("qps:quest-presence", questPresence?.snapshot() ?? []);
 });
 
 app.on("before-quit", () => {
   wirelessAdb?.stop();
   advertisement?.stop();
   discovery?.stop();
+  questPresence?.stop();
 });
 app.on("window-all-closed", () => app.quit());
 

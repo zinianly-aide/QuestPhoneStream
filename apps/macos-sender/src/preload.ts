@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld("qps", {
   controlEnable: (enabled: boolean) => ipcRenderer.invoke("qps:control-enable", enabled),
   controlClick: (payload: Record<string, unknown>) => ipcRenderer.invoke("qps:control-click", payload),
   adbStatus: () => ipcRenderer.invoke("qps:adb-status"),
+  questPresence: () => ipcRenderer.invoke("qps:quest-presence"),
+  onQuestPresence: (cb: (state: unknown) => void) => {
+    ipcRenderer.on("qps:quest-presence", (_event, state) => cb(state));
+  },
   adbRefresh: () => ipcRenderer.invoke("qps:adb-refresh"),
   onAdbState: (cb: (state: Record<string, unknown>) => void) => {
     ipcRenderer.on("qps:adb-state", (_event, state) => cb(state));

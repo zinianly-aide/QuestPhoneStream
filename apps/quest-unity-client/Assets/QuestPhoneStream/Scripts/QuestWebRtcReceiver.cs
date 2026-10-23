@@ -221,6 +221,9 @@ namespace QuestPhoneStream
             xrUiRig.Initialize(xrCamera, this);
             EnsureMediaPlaybackPanel();
             EnsureMediaDiscovery();
+            // Restore LAN-visible Quest presence independently of device discovery or ADB.
+            if (!GetComponent<QuestPresencePublisher>())
+                gameObject.AddComponent<QuestPresencePublisher>();
             EnsureHomeUI();
             signaling.MessageReceived += OnSignalMessage;
             signaling.NegotiationInvalidated += ResetPeer;

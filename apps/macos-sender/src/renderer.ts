@@ -10,6 +10,13 @@ import { SpatialSubscriptionTracker } from "./subscriptions";
 import { captureSourceOptions } from "./sourceOptions";
 import { decodeControlPayload, parseClickCommand } from "./remoteControl";
 
+interface QuestPresence {
+  id: string;
+  name: string;
+  addresses: string[];
+  port: number;
+}
+
 interface AdbSnapshot {
   available: boolean;
   services: string[];
@@ -25,6 +32,8 @@ declare global {
       controlEnable(enabled: boolean): Promise<{ enabled: boolean; message: string }>;
       controlClick(payload: Record<string, unknown>): Promise<{ ok: boolean; message: string }>;
       adbStatus(): Promise<AdbSnapshot>;
+      questPresence(): Promise<QuestPresence[]>;
+      onQuestPresence(cb: (items: QuestPresence[]) => void): void;
       adbRefresh(): Promise<AdbSnapshot>;
       onAdbState(cb: (state: AdbSnapshot) => void): void;
       listSources(): Promise<{ sources: Array<{ id: string; name: string; thumbnail: string }>;
@@ -108,6 +117,7 @@ const el = {
   status: () => document.getElementById("status") as HTMLElement,
   detail: () => document.getElementById("detail") as HTMLElement,
   adbStatus: () => document.getElementById("adb-status") as HTMLElement,
+  questPresence: () => document.getElementById("quest-presence") as HTMLElement,
   adbRefresh: () => document.getElementById("adb-refresh") as HTMLButtonElement,
   controlButton: () => document.getElementById("control-enable") as HTMLButtonElement,
   controlStatus: () => document.getElementById("control-status") as HTMLElement,
@@ -647,6 +657,15 @@ function showConfigState(state: { config: SenderConfig; source: string }): void 
   }
 }
 
+function showQuestPresence(items: QuestPresence[]): void {
+  const active = items?.filter(item => typeof item.name === "string" && Array.isArray(item.addresses)) ?? [];
+  el.questPresence().textContent = active.length
+    ? "Quest app mDNS: " + active.slice(0, 4).map(item =>
+        item.name + " (" + (item.addresses[0] || "address resolving") + ")").join(" · ") +
+      " — app presence only, not ADB TLS"
+    : "Quest app mDNS: not discovered (launch the Quest app; ADB is a separate system service)";
+}
+
 function showAdbSnapshot(state: AdbSnapshot): void {
   const lines = [state.message];
   if (state.services?.length) lines.push("TLS mDNS: " + state.services.join(", "));
@@ -738,6 +757,9 @@ function wireCoreControls(): void {
     if (config) connectSignaling();
   });
   window.qps.onAdbState(showAdbSnapshot);
+  window.qps.onQuestPresence(showQuestPresence);
+  void window.qps.questPresence().then(showQuestPresence).catch(() =>
+    { el.questPresence().textContent = "Quest app presence discovery unavailable"; });
   el.adbRefresh().addEventListener("click", () => {
     const button = el.adbRefresh();
     const status = el.adbStatus();
