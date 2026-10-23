@@ -172,6 +172,17 @@ namespace QuestPhoneStream.Spaces
                 new Vector3(.011f,.34f,.25f),_photoMat);
             // Images are not included: replace these placeholders with LOCAL photos later.
             Words(p,"PHOTO " + number,new Vector3(-.035f,1.65f,z),.0065f,90);
+            // B1 memory gallery reads explicit numbered local photo slots on launch.
+            var photo=GameObject.CreatePrimitive(PrimitiveType.Quad);
+            photo.name="Birthday_LocalMemoryPhoto_"+number;
+            photo.transform.SetParent(p,false);
+            photo.transform.localPosition=new Vector3(-.041f,1.65f,z);
+            photo.transform.localRotation=Quaternion.Euler(0,-90f,0);
+            photo.transform.localScale=new Vector3(.25f,.32f,1);
+            var col=photo.GetComponent<Collider>();if(col)col.enabled=false;
+            var view=photo.GetComponent<Renderer>();
+            int slot=int.Parse(number);
+            view.enabled=SceneWorkspaceBirthdayPhotoSlots.TryApply(view,slot);
         }
         void Create(Transform environment)
         {

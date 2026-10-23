@@ -214,3 +214,26 @@ Meta documentation used to plan S2 (not implemented in S0):
   Add -> Save -> Switch original -> Reload birthday -> Undo. All private
   integration harnesses and private model bytes stay outside Git.
 - Still requires Quest headset acceptance (hand ray, UI usability, placement and FPS).
+
+## B2.1 · Better ornaments, local photos, palette, 1cm nudge (2026-10-23)
+
+- Improved editable birthday geometries: two-layer cake with sugar pearls and stylized LED
+  candle, more detailed roses/stems/vase, gift ribbon loops, balloon knot/base, photo frame
+  with a correctly oriented front-facing photo Quad. These are still **lightweight
+  procedural primitives**, not commercial-grade photorealistic 3D assets.
+- Saved color accents per editable decoration: Blush / Champagne / Lavender / Sage.
+  The frame can store an optional `birthdayPhotoSlot` from 0 (none) to 3.
+- Photo slots read **only** app-private
+  `SceneWorkspaces/Photos/slot-01.jpg` ... `slot-03.jpg` (PNG suffix also accepted).
+  The B1 living-room gallery maps to the same slots. Missing slots show B1/B2 placeholders.
+  Byte cap 4 MB/file, accepted image dimensions 16-2048 px, no URL or gallery permission.
+  The filenames, image bytes and private CAD are never added to public Git.
+- Fine adjustment UI adds X/Z ±1cm buttons on top of 5cm snap Grip dragging.
+  Position edits clamp to the furniture's physical CAD surface and auto-save.
+  Color/style and selected photo slot persist with B2 transforms in existing scene JSON.
+- Local-only setup helper lives in the **private HefuVR project**, not QuestPhoneStream:
+  `Scripts/install_birthday_photo_slot.sh {1|2|3} '/absolute/photo/path.jpg'`.
+  It reduces photo to 1600px JPEG and pushes only after exactly one authorized ADB target.
+- 159/159 PlayMode tests passing. Private EditorMac CAD smoke verifies B1 + B2 local
+  photo textures, saved style/slot, switching original, and reloading the birthday scene.
+- Hand interaction and FPS still require headset testing before release acceptance.

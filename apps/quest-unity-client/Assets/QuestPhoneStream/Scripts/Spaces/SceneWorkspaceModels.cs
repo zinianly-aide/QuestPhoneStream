@@ -11,6 +11,9 @@ namespace QuestPhoneStream.Spaces
         public string assetId;
         // For B2 decorations, the anchored Hefu furniture id. Empty for regular objects.
         public string anchorId;
+        // B2.1 display-only metadata; defaults preserve B2 layout files.
+        public int birthdayStyle;
+        public int birthdayPhotoSlot;
         public string label;
         public string kind = "furniture";
         public bool editable = true;
@@ -87,7 +90,10 @@ namespace QuestPhoneStream.Spaces
                      (scene.decorationPreset != "birthday-v1" ||
                       !SceneWorkspaceBirthdayAssets.IsSupported(item.assetId) ||
                       !SceneWorkspaceBirthdayAssets.IsAnchor(item.anchorId) ||
-                      item.kind != "birthday" || !item.editable)))
+                      item.kind != "birthday" || !item.editable ||
+                      item.birthdayStyle < 0 || item.birthdayStyle > 3 ||
+                      !SceneWorkspaceBirthdayPhotoSlots.ValidSlot(item.birthdayPhotoSlot) ||
+                      (item.birthdayPhotoSlot > 0 && item.assetId != "birthday/frame"))))
                     throw new ArgumentException("Invalid scene object");
             }
         }

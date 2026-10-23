@@ -323,6 +323,36 @@ namespace QuestPhoneStream.Spaces
             }
         }
 
+        /// <summary>Transactional, per-scene birthday palette and private photo slot metadata.</summary>
+        public bool ChangeBirthdayPresentation(string id, int style, int slot)
+        {
+            if (Active == null || Active.decorationPreset != "birthday-v1" ||
+                style < 0 || style >= SceneWorkspaceBirthdayAssets.StyleCount ||
+                !SceneWorkspaceBirthdayPhotoSlots.ValidSlot(slot))
+                return false;
+            var record=GetObjectRecord(id);
+            if (record == null || record.kind != "birthday" ||
+                (slot > 0 && record.assetId != "birthday/frame") ||
+                !_objects.TryGetValue(id,out GameObject obj))
+                return false;
+            int beforeStyle=record.birthdayStyle, beforeSlot=record.birthdayPhotoSlot;
+            if (beforeStyle==style && beforeSlot==slot) return true;
+            record.birthdayStyle=style;record.birthdayPhotoSlot=slot;
+            try{SceneWorkspaceValidation.RequireValid(Active);}
+            catch{record.birthdayStyle=beforeStyle;record.birthdayPhotoSlot=beforeSlot;return false;}
+            record.birthdayStyle=beforeStyle;record.birthdayPhotoSlot=beforeSlot;
+            Snapshot();
+            record.birthdayStyle=style;record.birthdayPhotoSlot=slot;
+            if (!SaveActive())
+            {
+                record.birthdayStyle=beforeStyle;record.birthdayPhotoSlot=beforeSlot;
+                SceneWorkspaceBirthdayAssets.ApplyPresentation(obj,record);
+                return false;
+            }
+            SceneWorkspaceBirthdayAssets.ApplyPresentation(obj,record);
+            return true;
+        }
+
         public SceneObjectRecord GetObjectRecord(string id)
         {
             return Active?.objects.Find(x => x.id == id && !x.deleted);

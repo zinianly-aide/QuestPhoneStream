@@ -38,7 +38,7 @@ namespace QuestPhoneStream.Spaces
         int _focusedId;
         int _birthdayAnchorIndex;
         bool _birthdaySnap = true;
-        Button _anchorButton, _snapButton;
+        Button _anchorButton, _snapButton, _styleButton, _photoButton;
         readonly List<Button> _birthdayButtons=new List<Button>();
         static readonly string[] BirthdayAnchors = SceneWorkspaceBirthdayAssets.Anchors;
 
@@ -286,7 +286,8 @@ namespace QuestPhoneStream.Spaces
             var furniture=hit.collider.GetComponentInParent<SceneWorkspaceObject>();
             if(!furniture || !furniture.editable ||
                !furniture.transform.IsChildOf(Workspace.EnvironmentRoot))return false;
-            Selected=furniture;SetStatus("Selected: "+furniture.name);return true;
+            Selected=furniture;UpdateBirthdayToolbar();
+            SetStatus("Selected: "+furniture.name);return true;
         }
         public bool BeginGrab(Ray pointer)
         {
@@ -447,7 +448,7 @@ namespace QuestPhoneStream.Spaces
             _toolbar.worldCamera=_eye;_toolbar.sortingOrder=108;
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
             var rect=root.GetComponent<RectTransform>();
-            rect.sizeDelta=new Vector2(650,464);
+            rect.sizeDelta=new Vector2(650,590);
             rect.localScale=Vector3.one*.00125f;
             root.AddComponent<Image>().color=new Color(.045f,.07f,.12f,.95f);
             _status=SceneWorkspaceBrowser.Label(root.transform,"Edit",22,
@@ -474,9 +475,15 @@ namespace QuestPhoneStream.Spaces
                 CycleBirthdayAnchor);
             _snapButton=SceneWorkspaceBrowser.Action(root.transform,"Grid snap: ON",330,371,305,
                 ()=>{_birthdaySnap=!_birthdaySnap;UpdateBirthdayToolbar();});
+            _styleButton=SceneWorkspaceBrowser.Action(root.transform,"Color: Blush",15,436,305,()=>{CycleBirthdayColor();});
+            _photoButton=SceneWorkspaceBrowser.Action(root.transform,"Photo: None",330,436,305,()=>{CycleBirthdayPhoto();});
+            SceneWorkspaceBrowser.Action(root.transform,"X -1cm",15,505,145,()=>NudgeSelected(-.01f,0));
+            SceneWorkspaceBrowser.Action(root.transform,"X +1cm",169,505,145,()=>NudgeSelected(.01f,0));
+            SceneWorkspaceBrowser.Action(root.transform,"Z -1cm",324,505,145,()=>NudgeSelected(0,-.01f));
+            SceneWorkspaceBrowser.Action(root.transform,"Z +1cm",478,505,145,()=>NudgeSelected(0,.01f));
             SceneWorkspaceBrowser.Label(root.transform,
-                "Birthday: choose furniture anchor + item; Grip to move (5cm grid)",
-                17,new Vector2(18,430),new Vector2(620,30));
+                "Birthday: choose furniture anchor + item; Grip to move, 1cm fine tune.",
+                17,new Vector2(18,565),new Vector2(620,24));
         }
         void CycleBirthdayAnchor()
         {
@@ -489,18 +496,83 @@ namespace QuestPhoneStream.Spaces
             foreach(var item in _birthdayButtons)if(item)item.gameObject.SetActive(active);
             if(_anchorButton)_anchorButton.gameObject.SetActive(active);
             if(_snapButton)_snapButton.gameObject.SetActive(active);
+            var selectedRecord=Selected ? Workspace.GetObjectRecord(Selected.persistentId) : null;
+            bool selectedBirthday=active && selectedRecord != null && selectedRecord.kind == "birthday";
+            if(_styleButton)_styleButton.gameObject.SetActive(selectedBirthday);
+            if(_photoButton)_photoButton.gameObject.SetActive(selectedBirthday &&
+                selectedRecord.assetId == "birthday/frame");
+            if(selectedBirthday)
+            {
+                string[] styleNames={"Blush","Champagne","Lavender","Sage"};
+                if(_styleButton)_styleButton.GetComponentInChildren<Text>().text=
+                    "Color: "+styleNames[Mathf.Clamp(selectedRecord.birthdayStyle,0,3)];
+                if(_photoButton)_photoButton.GetComponentInChildren<Text>().text=
+                    selectedRecord.birthdayPhotoSlot==0?"Photo: None":
+                    "Photo: slot-0"+selectedRecord.birthdayPhotoSlot;
+            }
             if(!active)return;
             var names=new []{"Dining table","Sideboard","Coffee table","Shoe cabinet"};
             if(_anchorButton)_anchorButton.GetComponentInChildren<Text>().text="Anchor: "+names[_birthdayAnchorIndex];
             if(_snapButton)_snapButton.GetComponentInChildren<Text>().text=
                 "Grid snap: "+(_birthdaySnap?"ON":"OFF");
         }
+        public bool CycleBirthdayColor()
+        {
+            if (!Editing || Dragging || !IsBirthdayItem(Selected))return false;
+            var record=Workspace.GetObjectRecord(Selected.persistentId);
+            if(!Workspace.ChangeBirthdayPresentation(record.id,
+                (record.birthdayStyle+1)%SceneWorkspaceBirthdayAssets.StyleCount,record.birthdayPhotoSlot))
+                return false;
+            UpdateBirthdayToolbar();SetStatus("Saved birthday color style");
+            return true;
+        }
+        public bool CycleBirthdayPhoto()
+        {
+            if (!Editing || Dragging || !IsBirthdayItem(Selected))return false;
+            var record=Workspace.GetObjectRecord(Selected.persistentId);
+            if(record.assetId!="birthday/frame")return false;
+            int slot=(record.birthdayPhotoSlot+1)%(SceneWorkspaceBirthdayPhotoSlots.MaxSlot+1);
+            if(!Workspace.ChangeBirthdayPresentation(record.id,record.birthdayStyle,slot))
+                return false;
+            UpdateBirthdayToolbar();
+            SetStatus(slot>0 && SceneWorkspaceBirthdayPhotoSlots.FindSlotFile(slot)==null ?
+                "Photo slot selected; copy slot-0"+slot+".jpg to Quest app-private Photos":
+                "Birthday photo slot saved");
+            return true;
+        }
+        public bool NudgeSelected(float dx,float dz)
+        {
+            if (!Editing || Dragging || !IsBirthdayItem(Selected) ||
+                Mathf.Abs(dx)>.0101f || Mathf.Abs(dz)>.0101f) return false;
+            var record=Workspace.GetObjectRecord(Selected.persistentId);
+            if(record==null) return false;
+            var furniture=Selected.transform.parent;
+            if(!furniture || furniture.GetComponent<SceneWorkspaceObject>()?.persistentId!=record.anchorId)
+                return false;
+            // Meter-scale 1cm offsets relative to the furniture's local axes.
+            Vector3 candidate=record.localPosition+new Vector3(dx,0,dz);
+            var targetWorld=furniture.TransformPoint(candidate);
+            bool first=true;Bounds surface=new Bounds(furniture.position,Vector3.one*.08f);
+            foreach(var renderer in furniture.GetComponentsInChildren<Renderer>(true))
+            {
+                if(!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                   IsBirthdayDecoration(renderer.transform,furniture)) continue;
+                if(first){surface=renderer.bounds;first=false;}else surface.Encapsulate(renderer.bounds);
+            }
+            if(first || targetWorld.x<surface.min.x+.03f || targetWorld.x>surface.max.x-.03f ||
+               targetWorld.z<surface.min.z+.03f || targetWorld.z>surface.max.z-.03f)return false;
+            if(!Workspace.UpdateObject(record.id,candidate,record.localRotation,record.localScale))
+                return false;
+            SetStatus("Moved birthday item by 1 cm · saved");
+            return true;
+        }
+
         public bool AddBirthday(string asset)
         {
             if(!Editing || Workspace?.Active?.decorationPreset!="birthday-v1")return false;
             var tag=Workspace.AddBirthdayDecoration(asset,BirthdayAnchors[_birthdayAnchorIndex]);
             if(!tag){SetStatus("Could not place "+asset+": "+Workspace.LastError);return false;}
-            Selected=tag; BuildMarkers();
+            Selected=tag; BuildMarkers();UpdateBirthdayToolbar();
             SetStatus("Birthday "+asset+" added to "+BirthdayAnchors[_birthdayAnchorIndex]+
                 " · Grip to move, Undo/Delete available");
             return true;
