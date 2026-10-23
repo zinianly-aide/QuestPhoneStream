@@ -83,6 +83,30 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(1,icingMeshes,"Scalloped frosting uses one mesh");
             Assert.AreEqual(1,candleMeshes,"Three candles use one mesh with visible flames");
             Assert.AreEqual(3,frameMeshes,"Each photo frame has actual moulding with open center");
+            // Text must be in front of the actual panels and face the intended viewer.
+            var welcome=_room.transform.Find("EntranceShoeCabinet/Birthday_NorthWelcome");
+            Assert.IsNotNull(welcome);
+            var welcomeText=welcome.Find("BirthdayText_HAPPY\nBIRTHDAY");
+            Assert.IsNotNull(welcomeText);
+            Assert.Less(welcomeText.localPosition.z,-.049f,
+                "Text must not be buried behind the ivory welcome board");
+            Assert.Greater(Vector3.Dot(welcomeText.localRotation*Vector3.forward,Vector3.forward),.95f);
+            var gallery=_room.transform.Find("Move_Sofa/Birthday_SouthLivingGallery");
+            Assert.IsNotNull(gallery);
+            foreach(var title in new[]{"OUR MOMENTS", "HAPPY BIRTHDAY"})
+            {
+                var text=gallery.Find("BirthdayText_"+title);
+                Assert.IsNotNull(text);
+                Assert.Less(text.localPosition.x,-.055f);
+                Assert.Greater(Vector3.Dot(text.localRotation*Vector3.forward,Vector3.right),.95f);
+            }
+            foreach(var id in new[]{"01","02","03"})
+            {
+                var text=gallery.Find("BirthdayText_PHOTO "+id);
+                Assert.IsNotNull(text);
+                Assert.Less(text.localPosition.x,-.04f);
+                Assert.Greater(Vector3.Dot(text.localRotation*Vector3.forward,Vector3.right),.95f);
+            }
             for(int i=0;i<Names.Length;i++)
                 Assert.AreEqual(before[i],_room.transform.GetChild(i).position);
             foreach(var c in _room.GetComponentsInChildren<Collider>(true))

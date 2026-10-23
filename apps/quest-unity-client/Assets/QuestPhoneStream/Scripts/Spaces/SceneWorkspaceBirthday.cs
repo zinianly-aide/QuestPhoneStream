@@ -19,6 +19,8 @@ namespace QuestPhoneStream.Spaces
         readonly List<Mesh> _ownedMeshes = new List<Mesh>();
         readonly List<Renderer> _bulbs = new List<Renderer>();
         readonly List<Light> _lights = new List<Light>();
+        BirthdayAmbientMotion _ambientMotion;
+        int _balloonGroupSerial;
         Material _ivory, _gold, _rose, _white, _leaves, _glow, _photoMat;
         Material _fabric, _sage;
 
@@ -147,7 +149,11 @@ namespace QuestPhoneStream.Spaces
             txt.fontSize = 52;
             txt.anchor = TextAnchor.MiddleCenter;
             txt.alignment = TextAlignment.Center;
-            txt.color = _gold.color;
+            // A dark bronze welcome caption reads clearly on the ivory sign;
+            // light lettering is reserved for missing-photo placeholders.
+            txt.color = value == "HAPPY\nBIRTHDAY" ? new Color(.31f,.19f,.13f) :
+                value.StartsWith("PHOTO ", StringComparison.Ordinal) ? new Color(.95f,.84f,.64f) :
+                _gold.color;
             DecorationCount++;
             return go;
         }
@@ -177,6 +183,12 @@ namespace QuestPhoneStream.Spaces
         }
         void Balloons(Transform p, Vector3 center, int count, float spread)
         {
+            // Animate the balloons AND their tied strings as one anchored cluster.
+            // The anchor and the furniture remain stationary and persistent.
+            var root = new GameObject("Birthday_AnimatedBalloonCluster_" + _balloonGroupSerial++);
+            root.transform.SetParent(p, false);
+            root.transform.localPosition = center;
+            _ambientMotion.RegisterCluster(root.transform);
             var tiePositions = new Vector3[count];
             for(int i=0;i<count;i++)
             {
@@ -184,17 +196,18 @@ namespace QuestPhoneStream.Spaces
                 float radial=spread*(.3f+.7f*Mathf.Sqrt((i+1f)/count));
                 Vector3 pos=center+new Vector3(Mathf.Cos(a)*radial,(i%4)*.12f,
                     Mathf.Sin(a)*radial*.5f);
+                pos -= center; // coordinates now local to the generated cluster
                 tiePositions[i] = pos;
-                var balloon=Ball(p,"Balloons_"+i,pos,.20f+(i%3)*.035f,
+                var balloon=Ball(root.transform,"Balloons_"+i,pos,.20f+(i%3)*.035f,
                     i%3==0?_gold:i%3==1?_ivory:_rose);
                 balloon.transform.localScale=new Vector3(.21f+(i%3)*.028f,
                     .25f+(i%3)*.035f,.20f+(i%3)*.027f);
                 // Subtle tie knots on alternate balloons avoid 26 additional draw calls.
                 if ((i&1)==0)
-                    Ball(p,"BalloonKnot",pos-Vector3.up*(.133f+(i%3)*.017f),.03f,_gold);
+                    Ball(root.transform,"BalloonKnot",pos-Vector3.up*(.133f+(i%3)*.017f),.03f,_gold);
             }
             // One merged swaying-string mesh for the whole balloon cluster.
-            FineMesh(p,"BalloonSatinStrings",Vector3.zero,
+            FineMesh(root.transform,"BalloonSatinStrings",Vector3.zero,
                 BirthdayFineMesh.BalloonStrings(tiePositions),_gold);
         }
         /// <summary>
@@ -264,7 +277,7 @@ namespace QuestPhoneStream.Spaces
                 BirthdayFineMesh.FrameMoulding(.31f,.40f),_gold);
             var placeholder=Shape(p,PrimitiveType.Cube,"PrivatePhotoPlaceholder_"+number,
                 new Vector3(-.024f,1.65f,z),new Vector3(.011f,.34f,.25f),_photoMat);
-            var label=Words(p,"PHOTO " + number,new Vector3(-.035f,1.65f,z),.0065f,90);
+            var label=Words(p,"PHOTO " + number,new Vector3(-.055f,1.65f,z),.0115f,90);
             // B1 memory gallery reads explicit numbered local photo slots on launch.
             var photo=GameObject.CreatePrimitive(PrimitiveType.Quad);
             photo.name="Birthday_LocalMemoryPhoto_"+number;
@@ -285,6 +298,7 @@ namespace QuestPhoneStream.Spaces
         }
         void Create(Transform environment)
         {
+            _ambientMotion = gameObject.AddComponent<BirthdayAmbientMotion>();
             _ivory=MakeMaterial("Ivory",new Color(.96f,.90f,.78f));
             _gold=MakeMaterial("Champagne",new Color(.78f,.54f,.23f),true);
             _rose=MakeMaterial("Blush",new Color(.94f,.7f,.74f));
@@ -311,7 +325,7 @@ namespace QuestPhoneStream.Spaces
                 BirthdayFineMesh.WelcomeArch(),_fabric,_gold);
             Box(foyer,"WelcomeBoard",new Vector3(0,.39f,-.043f),
                 new Vector3(.52f,.53f,.012f),_ivory);
-            Words(foyer,"HAPPY\nBIRTHDAY",new Vector3(0,.42f,-.03f),.014f,180);
+            Words(foyer,"HAPPY\nBIRTHDAY",new Vector3(0,.42f,-.074f),.0215f,0);
             Balloons(foyer,new Vector3(-.41f,.64f,0),10,.16f);
             Ribbon(foyer,"WelcomeSwag",new Vector3(-.32f,.78f,-.048f),
                 new Vector3(.32f,.78f,-.048f), Vector3.back, .055f,.013f,_gold);
@@ -373,8 +387,8 @@ namespace QuestPhoneStream.Spaces
             FineMesh(gallery,"PhotoWallFabricBackdrop",Vector3.zero,
                 BirthdayFineMesh.GalleryArch(),_fabric,_gold);
             Frame(gallery,"01",-.39f);Frame(gallery,"02",0);Frame(gallery,"03",.39f);
-            Words(gallery,"OUR MOMENTS",new Vector3(-.04f,2.10f,0),.010f,90);
-            Words(gallery,"HAPPY BIRTHDAY",new Vector3(-.04f,2.39f,0),.013f,90);
+            Words(gallery,"OUR MOMENTS",new Vector3(-.075f,2.10f,0),.026f,90);
+            Words(gallery,"HAPPY BIRTHDAY",new Vector3(-.075f,2.39f,0),.032f,90);
             StringLights(gallery,new Vector3(-.03f,2.59f,-.75f),
                 new Vector3(-.03f,2.59f,.75f),8);
             Ribbon(gallery,"PhotoWallSwag",new Vector3(-.045f,2.52f,-.74f),
@@ -398,6 +412,7 @@ namespace QuestPhoneStream.Spaces
             var l=go.AddComponent<Light>();l.type=LightType.Point;
             l.range=range;l.intensity=intensity;l.color=new Color(1f,.76f,.46f);
             _lights.Add(l);
+            _ambientMotion.RegisterGlow(l);
         }
         public void ToggleLights(){LightsOn=!LightsOn;ApplyLights();}
         void ApplyLights()
