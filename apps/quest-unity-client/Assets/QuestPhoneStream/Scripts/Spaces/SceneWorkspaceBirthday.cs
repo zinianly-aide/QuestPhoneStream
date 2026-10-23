@@ -49,6 +49,9 @@ namespace QuestPhoneStream.Spaces
             go.transform.SetParent(root, false);
             var instance = go.AddComponent<SceneWorkspaceBirthday>();
             instance.Create(root);
+            // Frame sampling is local to the generated birthday scene. Destroying or
+            // switching rooms removes it automatically without touching saved data.
+            go.AddComponent<BirthdayFrameDiagnostics>();
             Debug.Log("[Spaces] BIRTHDAY_READY anchors=" + instance.AnchorCount +
                 " decor=" + instance.DecorationCount + " north entry, south lounge");
             return instance;
