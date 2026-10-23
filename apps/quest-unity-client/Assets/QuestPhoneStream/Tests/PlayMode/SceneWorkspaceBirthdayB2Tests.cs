@@ -80,6 +80,28 @@ namespace QuestPhoneStream.Tests
                 hit.collider.GetComponentInParent<SceneWorkspaceObject>());
         }
         [Test]
+        public void ElaborateDecorUsesSharedMaterialsAndReleasesWithItsRoot()
+        {
+            var anchor=new GameObject("DiningSideboard");
+            anchor.transform.SetParent(_root.transform,false);
+            var tag=anchor.AddComponent<SceneWorkspaceObject>();
+            tag.persistentId="hefu-DiningSideboard";
+            var record=Record("flowers","DiningSideboard");
+            var decor=SceneWorkspaceBirthdayAssets.Create(anchor.transform,record);
+            var pool=decor.GetComponent<SceneWorkspaceBirthdayMaterialPool>();
+            Assert.IsNotNull(pool);
+            var renderers=decor.GetComponentsInChildren<Renderer>();
+            Assert.Greater(renderers.Length,8);
+            Assert.Less(pool.MaterialCount,renderers.Length);
+            Assert.LessOrEqual(pool.MaterialCount,4);
+            var first=renderers[0].sharedMaterial;
+            Assert.IsNotNull(first);
+            SceneWorkspaceBirthdayAssets.ApplyPresentation(decor,record);
+            Assert.AreSame(first,renderers[0].sharedMaterial,
+                "Palette changes must not instantiate materials per renderer");
+        }
+
+        [Test]
         public void SceneRecordRoundTripsBirthdayFurnitureRelativePoseInPrivateStore()
         {
             var store=new SceneWorkspaceStore(_dataRoot);

@@ -109,7 +109,7 @@ namespace QuestPhoneStream.Spaces
             Shape(p, PrimitiveType.Sphere, n, pos, Vector3.one * size, m);
         void Cylinder(Transform p, string n, Vector3 pos, Vector3 size, Material m) =>
             Shape(p, PrimitiveType.Cylinder, n, pos, size, m);
-        void Words(Transform p, string value, Vector3 pos, float size, float rotationY)
+        GameObject Words(Transform p, string value, Vector3 pos, float size, float rotationY)
         {
             var go = new GameObject("BirthdayText_" + value);
             go.transform.SetParent(p, false);
@@ -123,6 +123,7 @@ namespace QuestPhoneStream.Spaces
             txt.alignment = TextAlignment.Center;
             txt.color = _gold.color;
             DecorationCount++;
+            return go;
         }
         void Bouquet(Transform p, Vector3 pos, float height)
         {
@@ -134,8 +135,10 @@ namespace QuestPhoneStream.Spaces
                 Vector3 offset=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a))*height*.24f;
                 Box(p,"Stem",pos+offset*.5f+Vector3.up*height*.5f,
                     new Vector3(.009f,height*.43f,.009f),_leaves);
-                Ball(p,"Rose",pos+offset+Vector3.up*height*(.81f+.05f*(i%2)),
-                    height*.24f,i%2==0?_rose:_ivory);
+                Vector3 bloom=pos+offset+Vector3.up*height*(.81f+.05f*(i%2));
+                var rose=Ball(p,"Rose",bloom,height*.24f,i%2==0?_rose:_ivory);
+                rose.transform.localScale=new Vector3(height*.24f,height*.17f,height*.24f);
+                Ball(p,"RoseHeart",bloom+Vector3.up*height*.07f,height*.095f,_gold);
             }
         }
         void Gift(Transform p, Vector3 pos, float size, bool pink)
@@ -143,6 +146,13 @@ namespace QuestPhoneStream.Spaces
             Box(p,"GiftBox",pos+Vector3.up*size*.5f,Vector3.one*size,pink?_rose:_ivory);
             Box(p,"GoldRibbon",pos+Vector3.up*size*.5f,new Vector3(.025f,size*1.04f,size*1.02f),_gold);
             Box(p,"CrossRibbon",pos+Vector3.up*size*.5f,new Vector3(size*1.02f,size*1.04f,.025f),_gold);
+            for (int i=0; i<2; i++)
+            {
+                var bow=Ball(p,"BowLoop",pos+new Vector3((i==0?-1:1)*size*.18f,size*1.055f,0),
+                    size*.27f,_gold);
+                bow.transform.localScale=new Vector3(size*.29f,size*.10f,size*.15f);
+                bow.transform.localRotation=Quaternion.Euler(0,0,(i==0?-1:1)*18f);
+            }
         }
         void Balloons(Transform p, Vector3 center, int count, float spread)
         {
@@ -152,8 +162,13 @@ namespace QuestPhoneStream.Spaces
                 float radial=spread*(.3f+.7f*Mathf.Sqrt((i+1f)/count));
                 Vector3 pos=center+new Vector3(Mathf.Cos(a)*radial,(i%4)*.12f,
                     Mathf.Sin(a)*radial*.5f);
-                Ball(p,"Balloons_"+i,pos,.20f+(i%3)*.035f,
-                    i%3==0?_gold:i%3==1?_ivory:_white);
+                var balloon=Ball(p,"Balloons_"+i,pos,.20f+(i%3)*.035f,
+                    i%3==0?_gold:i%3==1?_ivory:_rose);
+                balloon.transform.localScale=new Vector3(.21f+(i%3)*.028f,
+                    .25f+(i%3)*.035f,.20f+(i%3)*.027f);
+                // Subtle tie knots on alternate balloons avoid 26 additional draw calls.
+                if ((i&1)==0)
+                    Ball(p,"BalloonKnot",pos-Vector3.up*(.133f+(i%3)*.017f),.03f,_gold);
             }
         }
         void StringLights(Transform p, Vector3 start, Vector3 finish, int count)
@@ -171,10 +186,9 @@ namespace QuestPhoneStream.Spaces
         {
             Box(p,"PhotoBorder_"+number,new Vector3(0,1.65f,z),
                 new Vector3(.035f,.40f,.31f),_gold);
-            Box(p,"PrivatePhotoPlaceholder_"+number,new Vector3(-.024f,1.65f,z),
-                new Vector3(.011f,.34f,.25f),_photoMat);
-            // Images are not included: replace these placeholders with LOCAL photos later.
-            Words(p,"PHOTO " + number,new Vector3(-.035f,1.65f,z),.0065f,90);
+            var placeholder=Shape(p,PrimitiveType.Cube,"PrivatePhotoPlaceholder_"+number,
+                new Vector3(-.024f,1.65f,z),new Vector3(.011f,.34f,.25f),_photoMat);
+            var label=Words(p,"PHOTO " + number,new Vector3(-.035f,1.65f,z),.0065f,90);
             // B1 memory gallery reads explicit numbered local photo slots on launch.
             var photo=GameObject.CreatePrimitive(PrimitiveType.Quad);
             photo.name="Birthday_LocalMemoryPhoto_"+number;
@@ -186,6 +200,12 @@ namespace QuestPhoneStream.Spaces
             var view=photo.GetComponent<Renderer>();
             int slot=int.Parse(number);
             view.enabled=SceneWorkspaceBirthdayPhotoSlots.TryApply(view,slot);
+            if (view.enabled)
+            {
+                // A loaded memory photo must not have PHOTO 01 lettering in front of it.
+                label.SetActive(false);
+                placeholder.GetComponent<Renderer>().enabled=false;
+            }
         }
         void Create(Transform environment)
         {
@@ -225,10 +245,11 @@ namespace QuestPhoneStream.Spaces
             Cylinder(table,"CakePlate",new Vector3(0,.016f,0),new Vector3(.25f,.016f,.25f),_gold);
             Cylinder(table,"CakeBase",new Vector3(0,.115f,0),new Vector3(.19f,.10f,.19f),_white);
             Cylinder(table,"CakeCreamTop",new Vector3(0,.23f,0),new Vector3(.15f,.052f,.15f),_ivory);
-            for(int i=0;i<5;i++)
+            for(int i=0;i<10;i++)
             {
-                float a=i*Mathf.PI*2/5f;
-                Ball(table,"CakeBerry",new Vector3(Mathf.Cos(a)*.10f,.29f,Mathf.Sin(a)*.10f),.06f,_rose);
+                float a=i*Mathf.PI*2/10f;
+                Ball(table,"CakePearl",new Vector3(Mathf.Cos(a)*.125f,.281f,Mathf.Sin(a)*.125f),
+                    .030f,i%2==0?_rose:_gold);
             }
             Words(table,"HAPPY BIRTHDAY",new Vector3(0,.42f,0),.005f,180);
             Bouquet(table,new Vector3(-.38f,0,.03f),.15f);

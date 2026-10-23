@@ -40,7 +40,8 @@ namespace QuestPhoneStream.Tests
             Assert.IsTrue(SceneWorkspaceBirthday.HasRequiredFurniture(_room.transform));
             var created=SceneWorkspaceBirthday.Build(_room.transform,scene);
             Assert.AreEqual(5,created.AnchorCount);
-            Assert.Greater(created.DecorationCount,50);
+            Assert.Greater(created.DecorationCount,125,
+                "Premium birthday preset must retain layered flower/cake/balloon details");
             for(int i=0;i<Names.Length;i++)
                 Assert.AreEqual(before[i],_room.transform.GetChild(i).position);
             foreach(var c in _room.GetComponentsInChildren<Collider>(true))

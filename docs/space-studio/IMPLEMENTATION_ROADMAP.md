@@ -284,3 +284,26 @@ Meta documentation used to plan S2 (not implemented in S0):
   rendering/performance acceptance before replacing the preceding known-good APK.
   Android wireless ADB can disappear when the headset suspends; never assume a
   streamed install succeeded without the device's actual `Success` response.
+
+## B2.2 · Birthday art refinement and material pooling (2026-10-23)
+
+- Adds more detailed, but still Quest-lightweight, geometric decoration to the existing
+  birthday-v1 preset: elongated pink/ivory/gold balloons with tie knots, ribbon bow
+  loops on gifts, rose hearts and alternating icing pearls on the dining-table cake.
+  Furniture transforms, original CAD, scene records and locomotion remain unchanged.
+- B2 edit-mode assets reuse their per-decoration `SceneWorkspaceBirthdayMaterialPool`
+  keyed by quantized color, rather than generating a unique `Material` for every
+  primitive. Style changes still use `MaterialPropertyBlock`; the pool cleans up
+  shared material instances with the decoration root on scene unload.
+- B1 memory-gallery placeholders and `PHOTO 01` text are hidden only when the local
+  photo slot loads successfully. Images are neither read from remote URLs nor
+  copied into the public repository.
+- Unity PlayMode tests: 169/169 passed, including a regression verifying flower
+  renderers share at most four materials. Quest Developer Tools Android APK built,
+  signed and contains the B2.2 material pool and diagnostics components; private
+  CAD and photos are not bundled. The **new** richer visual preset is not yet
+  verified on Quest due to the headset's wireless ADB service disappearing.
+- On next authenticated ADB connection, install the prebuilt B2.2 APK with `-r`,
+  keep the currently installed Vulkan home.bundle, and verify BIRTHDAY_READY,
+  Shader/IL2CPP errors and a sustained 72-FPS target. Compare against the last
+  known-good app and roll back the APK if the richer decoration drops frames.

@@ -22,16 +22,6 @@ namespace QuestPhoneStream.Spaces
             foreach (var a in Anchors) if (id == "hefu-" + a) return true;
             return false;
         }
-        static Material MakeMaterial(Color c)
-        {
-            var mat = SceneWorkspaceBirthdayMaterial.Create(c);
-            if (!mat) return null;
-            // A restrained glossy finish on warm-gold details, softer matte fabric elsewhere.
-            bool warmGold = c.r > .7f && c.g > .48f && c.g < .68f && c.b < .40f;
-            if(mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic",warmGold ? .72f : 0f);
-            if(mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness",warmGold ? .75f : .33f);
-            return mat;
-        }
         static GameObject Mesh(Transform root, PrimitiveType shape, string label,
             Vector3 local, Vector3 size, Color color)
         {
@@ -40,7 +30,9 @@ namespace QuestPhoneStream.Spaces
             go.transform.SetParent(root,false);
             go.transform.localPosition=local;
             go.transform.localScale=size;
-            var r=go.GetComponent<Renderer>();if(r)r.material=MakeMaterial(color);
+            var r=go.GetComponent<Renderer>();
+            var pool=root.GetComponentInParent<SceneWorkspaceBirthdayMaterialPool>();
+            if(r && pool) r.sharedMaterial=pool.Get(color);
             // Trigger colliders can be targeted by edit ray, never block locomotion.
             var col=go.GetComponent<Collider>();
             if(col) { if(shape==PrimitiveType.Quad) col.enabled=false; else col.isTrigger=true; }
@@ -105,6 +97,7 @@ namespace QuestPhoneStream.Spaces
             go.transform.SetParent(anchor,false);
             go.transform.SetLocalPositionAndRotation(record.localPosition,record.localRotation);
             go.transform.localScale=record.localScale;
+            go.AddComponent<SceneWorkspaceBirthdayMaterialPool>();
             var ivory=new Color(.96f,.90f,.79f);
             var gold=new Color(.80f,.59f,.28f);
             var blush=new Color(.97f,.67f,.72f);
