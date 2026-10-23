@@ -54,7 +54,10 @@ namespace QuestPhoneStream.Spaces
             var mat = SceneWorkspaceBirthdayMaterial.Create(color);
             if (!mat) return null; // Keep the room even if this material cannot render.
             mat.name = "Birthday_" + name;
-            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", metallic ? .65f : 0);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", metallic ? .75f : 0);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", metallic ? .78f : .32f);
+            if (name == "LED" && mat.HasProperty("_EmissionColor"))
+                mat.SetColor("_EmissionColor", new Color(.42f,.24f,.07f));
             _owned.Add(mat);
             return mat;
         }

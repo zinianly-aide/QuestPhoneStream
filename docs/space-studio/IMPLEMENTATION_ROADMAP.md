@@ -259,3 +259,28 @@ Meta documentation used to plan S2 (not implemented in S0):
 - All user-specific scene records, assets and rollback copies remain on the
   user's private Mac and Quest. No private Hefu CAD, photos or scene catalog are
   committed to this public repository.
+
+## Quest render compatibility and lightweight birthday material polish (2026-10-23)
+
+- Verified a real Quest 3S error `Desired shader compiler platform 18 is not available
+  in shader blob`. Root cause: original private Hefu CAD AssetBundle was exported
+  with Android OpenGL ES, while QuestPhoneStream runs Android Vulkan. Both use the
+  same Unity Editor version. This was a material compatibility issue, not missing
+  scene furniture or the B1 birthday generator.
+- Private Hefu VR export now offers a *separate* Vulkan-only Android AssetBundle.
+  Graphics API settings are restored in `finally`, keeping the standalone HefuVR
+  phone project's OpenGL ES configuration. The new bundle has an identical manifest
+  (all 16 movable furniture IDs and transforms; ceiling 2.7 m), and lives outside
+  the public repo; original Quest CAD, scene and catalog files were backed up first.
+- Confirmed on the actual Quest that the Vulkan bundle loads, prints
+  `BIRTHDAY_READY anchors=5 decor=104`, restores 8 door interactions and no longer
+  emits the graphics platform mismatch. Quest runtime stayed around 72/72 FPS.
+- Improved the Quest's *serialized, Android-safe* birthday material shader with
+  one analytic soft key light, diffuse shading, restrained specular for rose-gold
+  accents and emission on birthday LEDs. This needs no extra realtime cast-shadow
+  lights. Private photos use `_Unlit=1` to avoid unintended tint/brightness changes.
+  Existing layout and scene protocol remain unchanged. 168/168 PlayMode tests pass.
+- New Quest *developer* APK was built and verified, but must pass on-device
+  rendering/performance acceptance before replacing the preceding known-good APK.
+  Android wireless ADB can disappear when the headset suspends; never assume a
+  streamed install succeeded without the device's actual `Success` response.

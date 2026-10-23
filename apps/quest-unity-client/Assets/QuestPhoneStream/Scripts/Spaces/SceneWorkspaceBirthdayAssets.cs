@@ -24,7 +24,13 @@ namespace QuestPhoneStream.Spaces
         }
         static Material MakeMaterial(Color c)
         {
-            return SceneWorkspaceBirthdayMaterial.Create(c);
+            var mat = SceneWorkspaceBirthdayMaterial.Create(c);
+            if (!mat) return null;
+            // A restrained glossy finish on warm-gold details, softer matte fabric elsewhere.
+            bool warmGold = c.r > .7f && c.g > .48f && c.g < .68f && c.b < .40f;
+            if(mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic",warmGold ? .72f : 0f);
+            if(mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness",warmGold ? .75f : .33f);
+            return mat;
         }
         static GameObject Mesh(Transform root, PrimitiveType shape, string label,
             Vector3 local, Vector3 size, Color color)

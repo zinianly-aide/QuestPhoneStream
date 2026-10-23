@@ -47,6 +47,7 @@ namespace QuestPhoneStream.Spaces
                 material = SceneWorkspaceBirthdayMaterial.Create(Color.white);
                 if (!material) throw new InvalidOperationException("Missing photo material");
                 material.mainTexture = tex;
+                if (material.HasProperty("_Unlit")) material.SetFloat("_Unlit", 1f);
                 renderer.material = material;
                 // Material and texture are owned by this renderer and released on destruction.
                 var owner = renderer.GetComponent<SceneWorkspaceBirthdayPhotoOwner>();

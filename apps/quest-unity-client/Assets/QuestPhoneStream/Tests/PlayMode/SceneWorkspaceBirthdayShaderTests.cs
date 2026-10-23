@@ -15,6 +15,10 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(SceneWorkspaceBirthdayMaterial.ShaderName, baseMaterial.shader.name);
             Assert.IsTrue(baseMaterial.HasProperty("_MainTex"));
             Assert.IsTrue(baseMaterial.HasProperty("_Color"));
+            Assert.IsTrue(baseMaterial.HasProperty("_Metallic"));
+            Assert.IsTrue(baseMaterial.HasProperty("_Smoothness"));
+            Assert.IsTrue(baseMaterial.HasProperty("_EmissionColor"));
+            Assert.IsTrue(baseMaterial.HasProperty("_Unlit"));
         }
         [Test]
         public void BirthdayAndPhotoMaterialPreservesPaletteAndTexture()
