@@ -155,3 +155,19 @@ photogrammetry or offline path-traced lightmaps. Current mobile device FPS and
 appearance still need on-device comparison against the render reference.
 
 Native-only CI builds retain versionCode 1 / versionName 0.1.0.
+
+## 2026-10-25: v3.2.8 mobile outdoor / glazing atmosphere preview
+
+The opt-in Unity-integrated Android version `3.2.8` (code 5) uses the same
+signing identity as v3.2.4–v3.2.7 and preserves the native-only CI version
+(`0.1.0`, code 1). The local HefuVR Unity export gains transparent CAD window
+materials, an interactive transparent kitchen door on CAD wall 26, 2 transparent
+balcony-slider panes, a south-oriented directional sun with bounded shadows,
+procedural skybox, five low-poly Blender trees and nine abstract distant
+buildings *outside* the southern window plane. These last objects are generic
+illustrative placeholders, not the user's actual outside environment.
+
+Reference implementation and non-private source assets live under
+`assets/public/hefu-cad/atmosphere/`; detailed plan and staged QA in
+`docs/space-studio/hefu-realtime-realism-plan-2026-10-25.md`. Device rendering,
+WebRTC and FPS remain pending until an Android device is connected.
