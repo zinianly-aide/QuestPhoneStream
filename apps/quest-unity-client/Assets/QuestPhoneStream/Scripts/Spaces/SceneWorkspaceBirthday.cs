@@ -336,6 +336,8 @@ namespace QuestPhoneStream.Spaces
             // A matte textile arch with real trim instead of a plain square sign.
             FineMesh(foyer,"WelcomeTextileArch",new Vector3(0,0,.02f),
                 BirthdayFineMesh.WelcomeArch(),_fabric,_gold);
+            FineMesh(foyer,"WelcomeBotanicalCrest",Vector3.zero,
+                BirthdayFineMesh.WelcomeBotanicalCrest(),_sage,_gold,_ivory);
             Box(foyer,"WelcomeBoard",new Vector3(0,.39f,-.043f),
                 new Vector3(.52f,.53f,.012f),_ivory);
             Words(foyer,"HAPPY\nBIRTHDAY",new Vector3(0,.42f,-.074f),.0215f,0);
@@ -350,6 +352,8 @@ namespace QuestPhoneStream.Spaces
             Bouquet(shelf,new Vector3(-.28f,0,0),.28f);
             Gift(shelf,new Vector3(.20f,.01f,0),.17f,true);
             Gift(shelf,new Vector3(.41f,.01f,.025f),.13f,false);
+            FineMesh(shelf,"SideboardCandleTray",Vector3.zero,
+                BirthdayFineMesh.SideboardCandleTray(),_ivory,_gold,_glow);
             StringLights(shelf,new Vector3(-.5f,.025f,-.12f),new Vector3(.5f,.025f,-.12f),6);
             Ribbon(shelf,"CabinetSwag",new Vector3(-.50f,.08f,-.14f),
                 new Vector3(.50f,.08f,-.14f),Vector3.back,.045f,.012f,_gold);
@@ -405,6 +409,8 @@ namespace QuestPhoneStream.Spaces
                 BirthdayFineMesh.GalleryArch(),_fabric,_gold);
             FineMesh(gallery,"PhotoWallInnerCreamReveal",Vector3.zero,
                 BirthdayFineMesh.GalleryInnerLayer(),_ivory,_gold);
+            FineMesh(gallery,"GalleryBrassSconces",Vector3.zero,
+                BirthdayFineMesh.GalleryBrassSconces(),_gold,_ivory,_glow);
             FineMesh(gallery,"OrganicBalloonGarlandLeft",Vector3.zero,
                 BirthdayFineMesh.GalleryOrganicGarland(true),_rose,_ivory,_gold);
             FineMesh(gallery,"OrganicBalloonGarlandRight",Vector3.zero,

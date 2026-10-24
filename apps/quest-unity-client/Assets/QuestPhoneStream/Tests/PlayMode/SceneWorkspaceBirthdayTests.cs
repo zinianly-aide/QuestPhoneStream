@@ -47,6 +47,7 @@ namespace QuestPhoneStream.Tests
             int bouquetMeshes = 0, stringMeshes = 0, icingMeshes = 0, candleMeshes = 0, frameMeshes = 0;
             int galleryBackdrops = 0, welcomeArches = 0, diningRunners = 0;
             int galleryInner=0, garlands=0, cakeCream=0, ceramics=0;
+            int botanical=0, candles=0, sconces=0;
             var ribbons = 0;
             foreach (var filter in _room.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -82,6 +83,9 @@ namespace QuestPhoneStream.Tests
                 }
                 if(f.name.Contains("CakePipedCream")) cakeCream++;
                 if(f.name.Contains("DiningCeramicsAndGlass")) ceramics++;
+                if(f.name.Contains("WelcomeBotanicalCrest")) botanical++;
+                if(f.name.Contains("SideboardCandleTray")) candles++;
+                if(f.name.Contains("GalleryBrassSconces")) sconces++;
             }
             Assert.AreEqual(5,bouquetMeshes,"Five fine floral clusters, including gallery corners");
             Assert.AreEqual(1,galleryBackdrops);
@@ -91,6 +95,9 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(2,garlands,"Two asymmetrical batched organic garlands");
             Assert.AreEqual(1,cakeCream);
             Assert.AreEqual(1,ceramics);
+            Assert.AreEqual(1,botanical,"Entrance gets one pooled botanical crest");
+            Assert.AreEqual(1,candles,"Sideboard decoration must be one pooled mesh");
+            Assert.AreEqual(1,sconces,"Both gallery sconces must share one pooled mesh");
             Assert.AreEqual(3,stringMeshes,"Each balloon group has one pooled curved-string mesh");
             Assert.AreEqual(1,icingMeshes,"Scalloped frosting uses one mesh");
             Assert.AreEqual(1,candleMeshes,"Three candles use one mesh with visible flames");
@@ -160,6 +167,44 @@ namespace QuestPhoneStream.Tests
             Assert.AreEqual(.18f,portrait.x,.0001f);
             Assert.AreEqual(.32f,portrait.y,.0001f);
             Assert.AreEqual(Vector2.zero,SceneWorkspaceBirthdayPhotoSlots.FitPhoto(0,0,.25f,.32f));
+        }
+
+        [Test]
+        public void SideboardCandlesRestOnTrayWithoutPenetration()
+        {
+            // Regresses the easy-to-miss half-extent mistake in Builder.Box:
+            // the wax must begin at the insert's top (.025m), not below it.
+            var mesh = BirthdayFineMesh.SideboardCandleTray();
+            try
+            {
+                Assert.AreEqual(3, mesh.subMeshCount);
+                var wax = mesh.GetTriangles(0);
+                var vertices = mesh.vertices;
+                foreach (var pair in new[] {
+                    new Vector2(-.069f,.068f), new Vector2(-.020f,.092f),
+                    new Vector2(.029f,.079f) })
+                {
+                    float min = float.PositiveInfinity, max = float.NegativeInfinity;
+                    int matches = 0;
+                    foreach (int index in wax)
+                    {
+                        var v = vertices[index];
+                        // Tray has a different Z extent, so these vertices
+                        // identify the individual candle wax prism.
+                        if (Mathf.Abs(Mathf.Abs(v.x-pair.x)-.017f) > .0001f ||
+                            Mathf.Abs(Mathf.Abs(v.z)-.017f) > .0001f) continue;
+                        min = Mathf.Min(min, v.y);
+                        max = Mathf.Max(max, v.y);
+                        matches++;
+                    }
+                    Assert.Greater(matches, 0, "Missing candle wax geometry");
+                    Assert.AreEqual(.025f, min, .0001f,
+                        "Candle wax must rest on the ceramic tray without overlap");
+                    Assert.AreEqual(.025f+pair.y, max, .0001f,
+                        "Candle height must use half-extents correctly");
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(mesh); }
         }
 
         [Test]

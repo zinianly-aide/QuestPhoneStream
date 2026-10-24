@@ -299,6 +299,74 @@ namespace QuestPhoneStream.Spaces
             return b.Finish("Birthday_Cake_PipedCreamAndGoldAccents");
         }
 
+        // B3.1: a small botanical emblem sits in the upper part of the existing
+        // entry arch, above the greeting. It uses no photo assets or colliders.
+        public static Mesh WelcomeBotanicalCrest()
+        {
+            var b = new Builder(3); // sage leaves, champagne line, ivory medallion
+            b.Box(1, new Vector3(0,.827f,-.107f), new Vector3(.095f,.004f,.006f));
+            for (int side = -1; side <= 1; side += 2)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    float x = side * (.085f + i * .051f);
+                    float y = .839f + (i % 2) * .029f;
+                    AddEllipsoid(b, 0, new Vector3(x,y,-.113f),
+                        new Vector3(.035f,.013f,.007f), 4, 7);
+                }
+            }
+            b.Box(1, new Vector3(0,.838f,-.120f), new Vector3(.025f,.025f,.006f));
+            b.Box(2, new Vector3(0,.838f,-.129f), new Vector3(.015f,.015f,.003f));
+            return b.Finish("Birthday_Welcome_BotanicalCrest");
+        }
+
+        // A compact tabletop styling piece between the real sideboard's
+        // flowers and gifts. Everything is grouped into just three submeshes.
+        public static Mesh SideboardCandleTray()
+        {
+            var b = new Builder(3); // ivory ceramic, champagne tray, warm accents
+            // All three wax cylinders rest on the ceramic insert. Earlier B3.1
+            // used h/2 for their mesh height and spaced the first beyond the rim.
+            b.Box(1, new Vector3(-.02f,.012f,0),new Vector3(.153f,.016f,.085f));
+            b.Box(0, new Vector3(-.02f,.022f,0),new Vector3(.137f,.006f,.071f));
+            for(int i=0;i<3;i++)
+            {
+                float x = -.069f+i*.049f;
+                float h = i == 1 ? .092f : (i == 0 ? .068f : .079f);
+                // Builder.Box accepts HALF-extents: wax bottom must equal
+                // insert top (.025m), rather than intersecting the tabletop.
+                b.Box(0,new Vector3(x,.025f+h*.5f,0),
+                    new Vector3(.017f,h*.5f,.017f));
+                b.Box(1,new Vector3(x,.025f+h+.0015f,0),
+                    new Vector3(.018f,.003f,.018f));
+                b.Box(2,new Vector3(x,.025f+h+.008f,0),
+                    new Vector3(.007f,.011f,.007f));
+            }
+            return b.Finish("Birthday_Sideboard_ThreeCandles");
+        }
+
+        // Two slim decorative brass wall lamps frame the memory gallery.
+        // They are purely emissive detail, NOT realtime Lights or shadow casters.
+        // Stay outside all three photo-frame footprints (|z| <= 0.545m).
+        public static Mesh GalleryBrassSconces()
+        {
+            var b = new Builder(3); // champagne, ivory glass, warm center
+            foreach (float z in new [] { -.66f, .66f })
+            {
+                b.Box(0, new Vector3(-.105f,1.53f,z),
+                    new Vector3(.010f,.172f,.031f));
+                b.Box(1, new Vector3(-.128f,1.49f,z),
+                    new Vector3(.015f,.107f,.025f));
+                b.Box(2, new Vector3(-.146f,1.49f,z),
+                    new Vector3(.003f,.068f,.010f));
+                b.Box(0, new Vector3(-.130f,1.655f,z),
+                    new Vector3(.022f,.008f,.041f));
+                b.Box(0, new Vector3(-.130f,1.323f,z),
+                    new Vector3(.022f,.008f,.041f));
+            }
+            return b.Finish("Birthday_Gallery_BrassWallSconces");
+        }
+
         public static Mesh BalloonStrings(Vector3[] points)
         {
             var b=new Builder(1);

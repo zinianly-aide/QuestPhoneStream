@@ -48,7 +48,7 @@ namespace QuestPhoneStream.Tests
             Assert.IsNotNull(motion);
             Assert.AreEqual(3, motion.ClusterCount);
             Assert.AreEqual(2, motion.GlowCount);
-            Assert.AreEqual(126, decor.DecorationCount); // +5 pooled B2.9/B3.0 meshes
+            Assert.AreEqual(129, decor.DecorationCount); // B3.0: 126, plus three pooled B3.1 styling meshes
             Transform cluster = null;
             foreach (var tr in decor.transform.parent.GetComponentsInChildren<Transform>(true))
                 if (tr.name == "Birthday_AnimatedBalloonCluster_0") { cluster = tr; break; }
