@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Required by UnityPlayer Android surface accessibility initialization.
+         Exported UnityLibrary omits the string; Unity's standalone launcher
+         supplies it. Missing it makes Resources.getString(0) throw on startup. -->
+    <string name="game_view_content_description">3D room view</string>
+</resources>

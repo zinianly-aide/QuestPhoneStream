@@ -16,6 +16,12 @@ android {
     if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) {
         sourceSets.getByName("debug").manifest.srcFile("src/unityOverlay/AndroidManifest.xml")
         sourceSets.getByName("release").manifest.srcFile("src/unityOverlay/AndroidManifest.xml")
+        // Unity 2022 places game_view_content_description in its standalone
+        // launcher/src/main/res/values/strings.xml, not in exported unityLibrary.
+        // The integrated :app is now the launcher: include only the required
+        // host string, without importing Unity's private app label or icons.
+        sourceSets.getByName("debug").res.srcDir("src/unityOverlay/res")
+        sourceSets.getByName("release").res.srcDir("src/unityOverlay/res")
     }
 
     buildFeatures { buildConfig = true }

@@ -70,3 +70,43 @@ scripts/diagnose-android-3d-crash.sh <phone-adb-serial>
 Do not use Quest's system FPS or launch results as proof of Android phone
 stability. Keep private Hefu Unity scenes, screenshots and built APK out of
 public Git commits.
+
+## 2026-10-24: actual phone crash root cause and verified fix (B3.2.2)
+
+Device: OnePlus PJX110 / Android 16, ADB USB (phone serial intentionally not committed).
+Previous v3.2 unified APK actually crashed twice at 11:15:09 and 11:15:23;
+Android `FATAL EXCEPTION: main`, `UnityPlayerActivity.onCreate(40)`,
+`UnityPlayer.<init>` → `Resources.getString(0)` →
+`Resources$NotFoundException: String resource ID #0x0`.
+
+Root cause: Unity 2022 standalone `launcher/src/main/res/values/strings.xml`
+provides `game_view_content_description`; Unity-as-a-Library exports this
+resource **only in the launcher**, not in `unityLibrary`. The integrated Android
+sender does not use that launcher. The missing string makes UnityPlayer's
+Android Surface initialization fail before rendering. This was not caused by
+furniture model complexity or device memory.
+
+Fix: the optional Android `src/unityOverlay/res/values/strings.xml` supplies
+`game_view_content_description` to the **integrated build only**, via the same
+Gradle build-conditional `sourceSets` as `:spaces` activity manifest overlay.
+Do not copy the private launcher assets or overwrite `app_name`/app icons.
+
+Validation:
+- `:app:testDebugUnitTest :app:assembleDebug`: 24/24 PASS; AAPT verifies that
+  `com.questphonestream.agent:string/game_view_content_description` has a
+  non-zero resource ID in packaged APK; APK signature verified.
+- USB `adb install -r` succeeded, no uninstall/data clear. Prior installed APK
+  backed up privately outside this public repo.
+- Actual device `am start .MainActivity --ez qps_debug_open_3d true` opens
+  internal Unity Activity, which remains foreground. Independent
+  `com.questphonestream.agent:spaces` plus main process both alive.
+- Unity engine initialized on `Adreno 750 / OpenGL ES 3.2` and emitted
+  `[HefuPhone] BIRTHDAY_READY anchors=5 decor=126 preset=birthday-v1` and
+  `[QPS3D] Unity Hefu Home initialized`; main Android process received
+  `Unity Hefu scene ready; handoff complete`.
+- ADB screenshot shows Hefu mobile home's overhead 3D geometry and on-screen
+  controls. No repeated resource exception or fatal crash during smoke test.
+- Native-only build compatibility also checked separately: conditional Unity
+  launcher resources/activities must not appear without `QPS_UNITY_LIBRARY_DIR`.
+- Private home layout files, original phone APK and runtime screenshots remain
+  local; no CAD, user photos or personal app data committed to GitHub.
