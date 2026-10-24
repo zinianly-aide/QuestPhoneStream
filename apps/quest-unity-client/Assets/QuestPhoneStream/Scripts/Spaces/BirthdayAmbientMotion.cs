@@ -23,6 +23,18 @@ namespace QuestPhoneStream.Spaces
         }
         readonly List<Cluster> _clusters = new List<Cluster>(3);
         readonly List<Glow> _glows = new List<Glow>(2);
+        float _glowScale=1f;
+        public float GlowScale => _glowScale;
+        public void SetGlowScale(float value)
+        {
+            _glowScale=Mathf.Clamp(value,.35f,2f);
+            RestoreGlow();
+        }
+        void RestoreGlow()
+        {
+            foreach(var entry in _glows)
+                if(entry.light)entry.light.intensity=entry.initialIntensity*_glowScale;
+        }
         public bool MotionEnabled { get; private set; } = true;
         public int ClusterCount => _clusters.Count;
         public int GlowCount => _glows.Count;
@@ -74,7 +86,7 @@ namespace QuestPhoneStream.Spaces
                 if (!entry.light) continue;
                 // Warm, slow candle pulse using existing lights only. Never
                 // change enabled (the user controls that via ToggleLights).
-                entry.light.intensity = entry.initialIntensity *
+                entry.light.intensity = entry.initialIntensity * _glowScale *
                     (0.985f + 0.015f * Mathf.Sin(seconds * 1.2f + i));
             }
         }
@@ -87,8 +99,7 @@ namespace QuestPhoneStream.Spaces
                 entry.transform.localPosition = entry.initialPosition;
                 entry.transform.localRotation = entry.initialRotation;
             }
-            foreach (var entry in _glows)
-                if (entry.light) entry.light.intensity = entry.initialIntensity;
+            RestoreGlow();
         }
         void OnDisable() { Restore(); }
         void OnDestroy() { Restore(); }

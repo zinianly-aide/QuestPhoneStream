@@ -148,11 +148,22 @@ namespace QuestPhoneStream.Spaces
                 _spaces.SelectOriginalHefu();
                 Refresh();
             });
-            Action(_scenePage.transform, "Celebrate lights", 552, 634, 272, () => {
+            Action(_scenePage.transform, "Fairy lights", 552, 634, 128, () => {
                 var birthday = _spaces.EnvironmentRoot != null ?
                     _spaces.EnvironmentRoot.GetComponentInChildren<SceneWorkspaceBirthday>() : null;
                 if (birthday) birthday.ToggleLights();
                 Refresh();
+            });
+            Action(_scenePage.transform, "Day / Night", 692, 634, 132, () => {
+                var birthday = _spaces.EnvironmentRoot != null ?
+                    _spaces.EnvironmentRoot.GetComponentInChildren<SceneWorkspaceBirthday>() : null;
+                if (birthday) {
+                    birthday.ToggleTheme();
+                    PlayerPrefs.SetInt("QPS_BirthdayThemeMode_v1",
+                        birthday.ThemeMode==SceneWorkspaceBirthday.BirthdayThemeMode.Night?1:0);
+                    PlayerPrefs.Save();
+                    _status.text="Birthday ambience: "+birthday.ThemeMode;
+                }
             });
             Label(_scenePage.transform, "Export is a simplified room proxy, not a raw 3D scan.",
                 17, new Vector2(34, 703), new Vector2(515, 50));

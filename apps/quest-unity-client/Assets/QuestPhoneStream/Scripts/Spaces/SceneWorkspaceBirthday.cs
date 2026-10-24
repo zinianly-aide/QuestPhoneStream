@@ -15,6 +15,8 @@ namespace QuestPhoneStream.Spaces
         public int AnchorCount { get; private set; }
         public int DecorationCount { get; private set; }
         public bool LightsOn { get; private set; } = true;
+        public enum BirthdayThemeMode { Day, Night }
+        public BirthdayThemeMode ThemeMode { get; private set; } = BirthdayThemeMode.Day;
         readonly List<Material> _owned = new List<Material>();
         readonly List<Mesh> _ownedMeshes = new List<Mesh>();
         readonly List<Renderer> _bulbs = new List<Renderer>();
@@ -49,6 +51,9 @@ namespace QuestPhoneStream.Spaces
             go.transform.SetParent(root, false);
             var instance = go.AddComponent<SceneWorkspaceBirthday>();
             instance.Create(root);
+            // Device-local display preference; no scene/catalog schema changes.
+            instance.SetTheme(PlayerPrefs.GetInt("QPS_BirthdayThemeMode_v1",0)==1 ?
+                BirthdayThemeMode.Night : BirthdayThemeMode.Day);
             // Frame sampling is local to the generated birthday scene. Destroying or
             // switching rooms removes it automatically without touching saved data.
             go.AddComponent<BirthdayFrameDiagnostics>();
@@ -294,6 +299,11 @@ namespace QuestPhoneStream.Spaces
             view.enabled=SceneWorkspaceBirthdayPhotoSlots.TryApply(view,slot);
             if (view.enabled)
             {
+                var image=view.sharedMaterial ? view.sharedMaterial.mainTexture : null;
+                if(image) {
+                    var fit=SceneWorkspaceBirthdayPhotoSlots.FitPhoto(image.width,image.height,.25f,.32f);
+                    photo.transform.localScale=new Vector3(fit.x,fit.y,1);
+                }
                 // A loaded memory photo must not have PHOTO 01 lettering in front of it.
                 label.SetActive(false);
                 placeholder.GetComponent<Renderer>().enabled=false;
@@ -356,6 +366,10 @@ namespace QuestPhoneStream.Spaces
                 BirthdayFineMesh.CakeIcing(.152f,.240f),_ivory);
             FineMesh(table,"CakeThreeCandles",Vector3.zero,
                 BirthdayFineMesh.CandleTrio(),_white,_glow);
+            FineMesh(table,"CakePipedCream",Vector3.zero,
+                BirthdayFineMesh.CakePipedRosettes(),_ivory,_gold);
+            FineMesh(table,"DiningCeramicsAndGlass",Vector3.zero,
+                BirthdayFineMesh.DiningCeramicsAndGlass(),_white,_gold,_ivory);
             for(int i=0;i<10;i++)
             {
                 float a=i*Mathf.PI*2/10f;
@@ -389,6 +403,12 @@ namespace QuestPhoneStream.Spaces
                 " wallFound="+(!float.IsPositiveInfinity(closest)));
             FineMesh(gallery,"PhotoWallFabricBackdrop",Vector3.zero,
                 BirthdayFineMesh.GalleryArch(),_fabric,_gold);
+            FineMesh(gallery,"PhotoWallInnerCreamReveal",Vector3.zero,
+                BirthdayFineMesh.GalleryInnerLayer(),_ivory,_gold);
+            FineMesh(gallery,"OrganicBalloonGarlandLeft",Vector3.zero,
+                BirthdayFineMesh.GalleryOrganicGarland(true),_rose,_ivory,_gold);
+            FineMesh(gallery,"OrganicBalloonGarlandRight",Vector3.zero,
+                BirthdayFineMesh.GalleryOrganicGarland(false),_ivory,_sage,_rose);
             Frame(gallery,"01",-.39f);Frame(gallery,"02",0);Frame(gallery,"03",.39f);
             Words(gallery,"OUR MOMENTS",new Vector3(-.075f,2.10f,0),.026f,90);
             Words(gallery,"HAPPY BIRTHDAY",new Vector3(-.075f,2.39f,0),.032f,90);
@@ -406,7 +426,7 @@ namespace QuestPhoneStream.Spaces
             Bouquet(coffeeTop,Vector3.zero,.18f);
             AddGlow(table,new Vector3(0,.45f,0),1.1f,.18f);
             AddGlow(gallery,new Vector3(-.30f,1.90f,0),2.2f,.14f);
-            ApplyLights();
+            ApplyTheme();
         }
         void AddGlow(Transform parent,Vector3 pos,float range,float intensity)
         {
@@ -418,6 +438,27 @@ namespace QuestPhoneStream.Spaces
             _ambientMotion.RegisterGlow(l);
         }
         public void ToggleLights(){LightsOn=!LightsOn;ApplyLights();}
+        public void ToggleTheme() => SetTheme(ThemeMode == BirthdayThemeMode.Day ?
+            BirthdayThemeMode.Night : BirthdayThemeMode.Day);
+        public void SetTheme(BirthdayThemeMode mode)
+        {
+            ThemeMode = mode == BirthdayThemeMode.Night ?
+                BirthdayThemeMode.Night : BirthdayThemeMode.Day;
+            ApplyTheme();
+        }
+        void ApplyTheme()
+        {
+            // Only generated decorations change; no RenderSettings, room lights,
+            // shared CAD material or scene workspace JSON is modified.
+            bool night=ThemeMode==BirthdayThemeMode.Night;
+            if(_ambientMotion) _ambientMotion.SetGlowScale(night?1.6f:.65f);
+            if(_glow && _glow.HasProperty("_EmissionColor"))
+                _glow.SetColor("_EmissionColor",night ?
+                    new Color(.65f,.34f,.09f) : new Color(.20f,.105f,.030f));
+            if(_gold && _gold.HasProperty("_Smoothness"))
+                _gold.SetFloat("_Smoothness",night?.77f:.67f);
+            ApplyLights();
+        }
         void ApplyLights()
         {
             foreach(var light in _lights)if(light)light.enabled=LightsOn;

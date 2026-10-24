@@ -225,6 +225,80 @@ namespace QuestPhoneStream.Spaces
             return b.Finish("Birthday_DiningRunner_DessertPlates");
         }
 
+
+        // B2.9: asymmetrical organic garland, entire cluster is one 3-material mesh.
+        // Per-side counts vary, keeping the photograph centers and XR ray interaction clear.
+        public static Mesh GalleryOrganicGarland(bool left)
+        {
+            var b=new Builder(3);
+            int count=left?19:13;
+            for(int i=0;i<count;i++)
+            {
+                float t=(i+.5f)/count;
+                float wave=Mathf.Sin(i*2.39996f);
+                float z=(left?-1f:1f)*(.78f+.064f*Mathf.Sin(i*1.77f));
+                float y=.61f+1.72f*t+(i%3-1)*.043f;
+                float x=-.14f-.044f*Mathf.Cos(i*1.41f);
+                float r=.065f+.018f*(i%4)+.011f*Mathf.Abs(wave);
+                AddEllipsoid(b,i%3,new Vector3(x,y,z),new Vector3(r*.88f,r*1.21f,r),7,10);
+            }
+            return b.Finish(left?"Birthday_OrganicGarland_Left19":"Birthday_OrganicGarland_Right13");
+        }
+        static void AddEllipsoid(Builder b,int material,Vector3 c,Vector3 r,int latitude,int longitude)
+        {
+            for(int j=0;j<latitude;j++)
+            {
+                float p0=-Mathf.PI/2f+Mathf.PI*j/latitude;
+                float p1=-Mathf.PI/2f+Mathf.PI*(j+1)/latitude;
+                for(int k=0;k<longitude;k++)
+                {
+                    float a=2f*Mathf.PI*k/longitude, a1=2f*Mathf.PI*(k+1)/longitude;
+                    Func<float,float,Vector3> v=(p,angle)=> c+new Vector3(
+                        r.x*Mathf.Cos(p)*Mathf.Cos(angle),r.y*Mathf.Sin(p),
+                        r.z*Mathf.Cos(p)*Mathf.Sin(angle));
+                    b.Quad(material,v(p0,a),v(p0,a1),v(p1,a1),v(p1,a));
+                }
+            }
+        }
+        public static Mesh GalleryInnerLayer()
+        {
+            // Behind all photo quads at X=-.041; in front of existing outer panel
+            // X=.055. This adds reveal and rolled piping without hiding photos.
+            return Arch(.68f,.49f,1.96f,.18f,.015f,true,
+                "Birthday_Gallery_InnerCreamReveal");
+        }
+        public static Mesh DiningCeramicsAndGlass()
+        {
+            var b=new Builder(3); // porcelain, champagne rim, frosted glass
+            for(int i=0;i<2;i++)
+            {
+                float s=i==0?-1f:1f;
+                Vector3 center=new Vector3(s*.48f,.03f,-.11f);
+                // Small porcelain platter, gold rim, and sturdy frosted goblet.
+                AddEllipsoid(b,0,center,new Vector3(.082f,.009f,.064f),3,12);
+                AddEllipsoid(b,1,center+Vector3.up*.012f,new Vector3(.069f,.003f,.055f),3,12);
+                var basePt=new Vector3(s*.51f,.055f,-.24f);
+                b.Box(1,basePt,new Vector3(.029f,.004f,.029f));
+                b.Box(2,basePt+Vector3.up*.037f,new Vector3(.005f,.039f,.005f));
+                AddEllipsoid(b,2,basePt+Vector3.up*.093f,new Vector3(.044f,.045f,.044f),5,12);
+                AddEllipsoid(b,1,basePt+Vector3.up*.134f,new Vector3(.043f,.004f,.043f),3,12);
+            }
+            return b.Finish("Birthday_Table_CeramicDessertAndFrostedGlasses");
+        }
+        public static Mesh CakePipedRosettes()
+        {
+            var b=new Builder(2); // cream swirls and champagne beading
+            for(int i=0;i<18;i++)
+            {
+                float a=i*Mathf.PI*2f/18f;
+                var center=new Vector3(Mathf.Cos(a)*.144f,.277f,Mathf.Sin(a)*.144f);
+                AddEllipsoid(b,0,center,new Vector3(.020f,.012f,.020f),3,8);
+                if(i%3==0)AddEllipsoid(b,1,center+Vector3.up*.014f,
+                    new Vector3(.009f,.008f,.009f),3,7);
+            }
+            return b.Finish("Birthday_Cake_PipedCreamAndGoldAccents");
+        }
+
         public static Mesh BalloonStrings(Vector3[] points)
         {
             var b=new Builder(1);

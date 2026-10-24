@@ -13,6 +13,12 @@ namespace QuestPhoneStream.Spaces
         public static string DirectoryPath =>
             PrivateDirectoryOverrideForTests ??
             Path.Combine(Application.persistentDataPath, "SceneWorkspaces", "Photos");
+        public static Vector2 FitPhoto(int width,int height,float maxWidth,float maxHeight)
+        {
+            if(width<=0 || height<=0 || maxWidth<=0 || maxHeight<=0) return Vector2.zero;
+            float ratio=Mathf.Min(maxWidth/width,maxHeight/height);
+            return new Vector2(width*ratio,height*ratio);
+        }
         public static bool ValidSlot(int slot) => slot >= 0 && slot <= MaxSlot;
         public static string SlotFileName(int slot, bool png = false)
         {

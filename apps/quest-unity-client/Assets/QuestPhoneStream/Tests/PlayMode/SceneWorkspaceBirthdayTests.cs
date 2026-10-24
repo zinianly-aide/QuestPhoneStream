@@ -46,6 +46,7 @@ namespace QuestPhoneStream.Tests
                 "Detailed birthday should pool petals instead of spawning dozens of primitive balls");
             int bouquetMeshes = 0, stringMeshes = 0, icingMeshes = 0, candleMeshes = 0, frameMeshes = 0;
             int galleryBackdrops = 0, welcomeArches = 0, diningRunners = 0;
+            int galleryInner=0, garlands=0, cakeCream=0, ceramics=0;
             var ribbons = 0;
             foreach (var filter in _room.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -74,11 +75,22 @@ namespace QuestPhoneStream.Tests
                 if(f.name.Contains("PhotoWallFabricBackdrop")) galleryBackdrops++;
                 if(f.name.Contains("WelcomeTextileArch")) welcomeArches++;
                 if(f.name.Contains("DiningTextileAndMacarons")) diningRunners++;
+                if(f.name.Contains("PhotoWallInnerCreamReveal")) galleryInner++;
+                if(f.name.Contains("OrganicBalloonGarland")) {
+                    garlands++;
+                    Assert.Greater(f.sharedMesh.vertexCount,1000,"Organic balloon cluster must be batched");
+                }
+                if(f.name.Contains("CakePipedCream")) cakeCream++;
+                if(f.name.Contains("DiningCeramicsAndGlass")) ceramics++;
             }
             Assert.AreEqual(5,bouquetMeshes,"Five fine floral clusters, including gallery corners");
             Assert.AreEqual(1,galleryBackdrops);
             Assert.AreEqual(1,welcomeArches);
             Assert.AreEqual(1,diningRunners);
+            Assert.AreEqual(1,galleryInner,"Inner reveal provides depth behind photographs");
+            Assert.AreEqual(2,garlands,"Two asymmetrical batched organic garlands");
+            Assert.AreEqual(1,cakeCream);
+            Assert.AreEqual(1,ceramics);
             Assert.AreEqual(3,stringMeshes,"Each balloon group has one pooled curved-string mesh");
             Assert.AreEqual(1,icingMeshes,"Scalloped frosting uses one mesh");
             Assert.AreEqual(1,candleMeshes,"Three candles use one mesh with visible flames");
@@ -116,6 +128,40 @@ namespace QuestPhoneStream.Tests
             created.ToggleLights();
             Assert.IsFalse(created.LightsOn);
         }
+        [Test]
+        public void ThemesChangeOnlyDecorationLightingNotFurnitureOrGlobalScene()
+        {
+            var before=new Vector3[Names.Length];
+            for(int i=0;i<Names.Length;i++)before[i]=_room.transform.GetChild(i).position;
+            var scene=SceneWorkspaceStore.Create("Birthday","cad-bundle","hefu/home.bundle");
+            scene.decorationPreset="birthday-v1";
+            var birthday=SceneWorkspaceBirthday.Build(_room.transform,scene);
+            var motion=birthday.GetComponent<BirthdayAmbientMotion>();
+            Assert.IsNotNull(motion);
+            birthday.SetTheme(SceneWorkspaceBirthday.BirthdayThemeMode.Day);
+            Assert.AreEqual(.65f,motion.GlowScale,.001f);
+            birthday.SetTheme(SceneWorkspaceBirthday.BirthdayThemeMode.Night);
+            Assert.AreEqual(1.6f,motion.GlowScale,.001f);
+            Assert.AreEqual(SceneWorkspaceBirthday.BirthdayThemeMode.Night,birthday.ThemeMode);
+            birthday.ToggleLights();
+            Assert.IsFalse(birthday.LightsOn);
+            birthday.SetTheme(SceneWorkspaceBirthday.BirthdayThemeMode.Day);
+            Assert.IsFalse(birthday.LightsOn,"Theme switch must honor manual lights-off");
+            Assert.AreEqual(2,motion.GlowCount,"No extra realtime point lights");
+            for(int i=0;i<Names.Length;i++)Assert.AreEqual(before[i],_room.transform.GetChild(i).position);
+        }
+        [Test]
+        public void PhotoAspectFitsWithoutStretchingOrUpScaling()
+        {
+            Vector2 horizontal=SceneWorkspaceBirthdayPhotoSlots.FitPhoto(1600,900,.25f,.32f);
+            Assert.AreEqual(.25f,horizontal.x,.0001f);
+            Assert.AreEqual(.140625f,horizontal.y,.0001f);
+            Vector2 portrait=SceneWorkspaceBirthdayPhotoSlots.FitPhoto(900,1600,.25f,.32f);
+            Assert.AreEqual(.18f,portrait.x,.0001f);
+            Assert.AreEqual(.32f,portrait.y,.0001f);
+            Assert.AreEqual(Vector2.zero,SceneWorkspaceBirthdayPhotoSlots.FitPhoto(0,0,.25f,.32f));
+        }
+
         [Test]
         public void BirthdayRequiresSupportedPrivateCADSourceAndAllAnchors()
         {
