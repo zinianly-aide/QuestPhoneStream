@@ -128,3 +128,15 @@ applies to unreviewed builds; this individually audited, owner-authorized
 v3.2.5 preview may be published as a clearly labeled **pre-release**. Do not
 publish scene saves, raw DWG or private photos. Phone physical QA and WebRTC
 regression remain pending until an Android 10+ device is available.
+
+## 2026-10-24: v3.2.6 material fidelity and scene cleanup
+
+The opt-in Unity-enabled Android pre-release now has code 3 / version 3.2.6.
+HefuVR Android's obsolete `DECOR_Accent_Color_Swatch` was deleted from the
+prepared phone scene (not from CAD); the small preview rug was moved beneath
+living-room seating and assigned a woven material. Procedural 384px colour
+textures, UVs, refined glossy/metallic values, and bounded soft directional
+shadows improve leather, walnut, oak and upholstered furniture. The textures
+are synthetic; this is a stylised realtime preview, not photorealistic PBR.
+The native-only CI build retains code 1 / version 0.1.0. Physical device
+rendering and frame rate still require testing.
