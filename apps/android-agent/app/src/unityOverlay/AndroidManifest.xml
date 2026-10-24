@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Unity native code runs outside the WebRTC / native sender UI process.
+             Keep app-private storage shared under the same package UID. -->
+        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+            android:process=":spaces" tools:node="merge" />
+    </application>
+</manifest>

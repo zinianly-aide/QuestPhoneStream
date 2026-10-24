@@ -3,6 +3,8 @@ package com.questphonestream.agent
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -17,6 +19,8 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.Log
+import android.content.pm.PackageManager
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -220,6 +224,10 @@ class MainActivity : AppCompatActivity() {
         updateScreenCaptureStatus()
         updateHomeStatus()
         addLog("App started")
+        // adb-only isolated smoke test on a temporary package installation.
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("qps_debug_open_3d", false) == true) {
+            window.decorView.post { openUnitySpaces() }
+        }
     }
 
     private fun buildHome() {
@@ -262,7 +270,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showScenePreviewPicker() {
-        val scenes = ScenePreviewStore.entries(this)
+        val scenes = try {
+            ScenePreviewStore.entries(this)
+        } catch (error: Exception) {
+            Log.e("QPS3D", "Scene list unavailable", error)
+            addLog("3D scene list unavailable; can still open Hefu Home")
+            emptyList()
+        }
         val choices = (listOf("Hefu Home Design", "Receive from Quest (LAN)…", "Import Quest scene JSON…", "Import Hefu layout JSON…") + scenes.map { "Room: $it" }).toTypedArray()
         AlertDialog.Builder(this).setTitle("3D Spaces")
             .setItems(choices) { _, choice ->
@@ -315,21 +329,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openUnitySpaces(previewSceneId: String? = null) {
-        // No new Android launch package: the private Unity library shares this APK.
-        // Stream/signal services remain managed by Android, not the Unity scene.
         if (!BuildConfig.HAS_UNITY_HOME) {
             android.widget.Toast.makeText(this,
                 "This build has no 3D module. Use the integrated build.",
                 android.widget.Toast.LENGTH_LONG).show()
             return
         }
+        val activity = "com.unity3d.player.UnityPlayerActivity"
         try {
-            val intent = Intent().setClassName(packageName, "com.unity3d.player.UnityPlayerActivity")
-            if (previewSceneId != null) intent.putExtra("qps_scene_id", previewSceneId)
+            // Fail early with an actionable error, rather than launching a
+            // manifest entry whose Java class was removed from an APK.
+            @Suppress("DEPRECATION")
+            packageManager.getActivityInfo(
+                android.content.ComponentName(packageName, activity), 0
+            )
+            val intent = Intent().setClassName(packageName, activity)
+            previewSceneId?.let { intent.putExtra("qps_scene_id", it) }
+            val prefs = getSharedPreferences("qps_spaces_launch", MODE_PRIVATE)
+            prefs.edit().putBoolean("pending", true)
+                .putLong("started_elapsed", android.os.SystemClock.elapsedRealtime())
+                .putLong("started_wall", System.currentTimeMillis())
+                .apply()
+            Log.i("QPS3D", "Launching isolated Unity process, scene=" +
+                (if (previewSceneId == null) "Hefu Home" else "private room"))
             startActivity(intent)
-            addLog("Opened 3D Spaces within QuestPhoneStream")
-        } catch (error: Exception) {
-            addLog("3D Spaces unavailable: ${error.message}")
+            addLog("Starting 3D Spaces in isolated process")
+        } catch (error: Throwable) {
+            getSharedPreferences("qps_spaces_launch", MODE_PRIVATE)
+                .edit().putBoolean("pending", false).apply()
+            Log.e("QPS3D", "Unable to launch Unity activity", error)
+            addLog("3D unavailable: ${error.javaClass.simpleName}")
+            android.widget.Toast.makeText(this,
+                "3D startup failed (${error.javaClass.simpleName}); sender is unaffected",
+                android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -682,6 +714,38 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         isStreaming = ScreenStreamService.isCaptureRunning
         updateScreenCaptureStatus()
+        if (BuildConfig.HAS_UNITY_HOME) {
+            val prefs = getSharedPreferences("qps_spaces_launch", MODE_PRIVATE)
+            if (prefs.getBoolean("pending", false)) {
+                // MainActivity resumed without the Unity scene's Start() ready
+                // handshake: native initialization likely failed or was interrupted.
+                prefs.edit().putBoolean("pending", false).apply()
+                val exitReason = recentUnityExitReason(prefs.getLong("started_wall", 0L))
+                Log.e("QPS3D", "3D returned before Unity ready, exitReason=" + exitReason)
+                addLog("3D renderer did not finish startup (" + exitReason + "); sender remains usable")
+                android.widget.Toast.makeText(this,
+                    "3D renderer failed to start (" + exitReason + "). Sender remains available.",
+                    android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun recentUnityExitReason(startedWall: Long): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || startedWall <= 0L) return "unknown"
+        return runCatching {
+            val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            val recent = activityManager.getHistoricalProcessExitReasons(packageName, 0, 8)
+                .filter { it.processName == "$packageName:spaces" && it.timestamp >= startedWall - 1000L }
+                .maxByOrNull { it.timestamp }
+            when (recent?.reason) {
+                ApplicationExitInfo.REASON_CRASH_NATIVE -> "native crash"
+                ApplicationExitInfo.REASON_CRASH -> "Java crash"
+                ApplicationExitInfo.REASON_ANR -> "not responding"
+                ApplicationExitInfo.REASON_LOW_MEMORY -> "low memory"
+                null -> "unknown"
+                else -> "exit code ${recent?.reason}"
+            }
+        }.getOrDefault("unknown")
     }
 
     // ─── Certificate help ───

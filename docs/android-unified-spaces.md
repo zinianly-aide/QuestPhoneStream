@@ -34,3 +34,39 @@
 
 - Quest PlayMode tests: 174/174, including one-time LAN token rejection/consumption test and arbitrary room export.
 - Native Android/Unity merged debug APK: Gradle `BUILD SUCCESSFUL` and APK Signature v2 verification (~66 MB). Additional native LAN endpoint tests now included. Its real on-device Unity/WebRTC lifecycle, on-device LAN receive, and Meta Space Setup scan have **not** yet been tested on Android 10+ and Quest 3S.
+
+## 2026-10-24: B3.2.1 Android Unity launch resilience
+
+The Android sender previously launched Unity in the same OS process as WebRTC.
+On supported Android 10+ devices, the optional private Unity renderer now runs
+in `com.questphonestream.agent:spaces`, using an **optional manifest overlay**
+activated only when `QPS_UNITY_LIBRARY_DIR` is set. The native-only APK's
+manifest remains free of Unity activity references. Internal launches remain
+`exported=false`; the same app UID retains access to its own private scene files.
+
+`MainActivity` catches scene-list and Activity launch exceptions, persists a
+startup-pending marker, and on return queries Android 11+ process exit
+reasons (Java crash / native crash / ANR / low memory). Private runtime code
+signals Unity ready through an explicit non-exported `SpacesReadyReceiver`,
+so the main process owns the preferences state rather than relying on unsupported
+multi-process SharedPreferences caching. Existing screen-share, signaling,
+scene JSON, furniture layout and all stored Quest assets are unmodified.
+
+**Verification so far:** optional-integrated Android build + 24 unit tests
+pass, Unity activity declared in `:spaces`, native-only Android build and tests
+pass, and package signing matches the prior debug build. No handset ADB was
+connected, so **the specific original phone crash stack is still unknown**.
+The Quest-based temporary package smoke test could not reach Unity because the
+Meta SensorLock dialog blocked 2D app launch; the temporary package was removed
+without changing the existing QuestPhoneStream Quest package.
+
+For actual crash forensics, enable USB or Wireless Debugging on the Android
+phone, retry the 3D Spaces launch, then run:
+
+```bash
+scripts/diagnose-android-3d-crash.sh <phone-adb-serial>
+```
+
+Do not use Quest's system FPS or launch results as proof of Android phone
+stability. Keep private Hefu Unity scenes, screenshots and built APK out of
+public Git commits.

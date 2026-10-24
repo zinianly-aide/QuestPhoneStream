@@ -10,6 +10,14 @@ android {
     ndkVersion = "23.1.7779620"
     buildToolsVersion = "36.1.0"
 
+    // Optional private Unity is isolated in a separate Android process to keep
+    // WebRTC signaling/capture/UI alive if Unity's native renderer crashes.
+    // The native-only CI APK does not receive the Unity activity overlay.
+    if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) {
+        sourceSets.getByName("debug").manifest.srcFile("src/unityOverlay/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/unityOverlay/AndroidManifest.xml")
+    }
+
     buildFeatures { buildConfig = true }
 
     defaultConfig {
