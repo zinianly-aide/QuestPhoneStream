@@ -140,3 +140,18 @@ shadows improve leather, walnut, oak and upholstered furniture. The textures
 are synthetic; this is a stylised realtime preview, not photorealistic PBR.
 The native-only CI build retains code 1 / version 0.1.0. Physical device
 rendering and frame rate still require testing.
+
+## 2026-10-24: v3.2.7 effect-image-derived material preview
+
+Opt-in Unity-enabled Android APK version 3.2.7 (versionCode 4). New mobile
+scene assets under the local HefuVR Android Unity project blend isolated colour
+samples extracted from an approved AI-generated design render with tileable
+procedural high-frequency detail. UV coordinates are world-space projected
+onto a **copy** of the CAD living/dining floor mesh at 0.78 m per porcelain
+tile; the original imported FBX and collider are not altered. Normal maps and
+material roughness/smoothness are tuned for floor, walnut, oak and olive
+leather. It is not a full-scene image projection and does not create real
+photogrammetry or offline path-traced lightmaps. Current mobile device FPS and
+appearance still need on-device comparison against the render reference.
+
+Native-only CI builds retain versionCode 1 / versionName 0.1.0.
