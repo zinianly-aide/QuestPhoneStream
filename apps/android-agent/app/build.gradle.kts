@@ -30,8 +30,10 @@ android {
         applicationId = "com.questphonestream.agent"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Bundled Unity furniture demo is an opt-in developer build; native-only
+        // CI retains its original package version for stable downstream users.
+        versionCode = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) 2 else 1
+        versionName = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) "3.2.5" else "0.1.0"
         buildConfigField("boolean", "HAS_UNITY_HOME", (System.getenv("QPS_UNITY_LIBRARY_DIR") != null).toString())
     }
 

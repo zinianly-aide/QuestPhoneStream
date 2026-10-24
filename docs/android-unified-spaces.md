@@ -110,3 +110,21 @@ Validation:
   launcher resources/activities must not appear without `QPS_UNITY_LIBRARY_DIR`.
 - Private home layout files, original phone APK and runtime screenshots remain
   local; no CAD, user photos or personal app data committed to GitHub.
+
+## 2026-10-24: v3.2.5 photo-reference furniture
+
+The opt-in integrated Unity phone build (`QPS_UNITY_LIBRARY_DIR` set) now
+advertises `versionName=3.2.5`, `versionCode=2`, allowing upgrades from
+v3.2.4. Native-only CI builds retain their original `0.1.0`/code 1 version.
+
+Owner-approved public reference furniture refinements (warm-white four-door
+fridge, olive-leather three-seat sofa, walnut dual-drawer coffee table) are
+built from the local HefuVR Unity project without embedding reference photos.
+The original CAD movable identities/colliders, optimized dining furniture,
+scene persistence, screen streaming and Birthday layout remain unchanged.
+
+The earlier blanket warning against publishing *personal* debug APKs still
+applies to unreviewed builds; this individually audited, owner-authorized
+v3.2.5 preview may be published as a clearly labeled **pre-release**. Do not
+publish scene saves, raw DWG or private photos. Phone physical QA and WebRTC
+regression remain pending until an Android 10+ device is available.
