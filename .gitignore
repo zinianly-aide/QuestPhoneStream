@@ -18,7 +18,8 @@ Logs/
 UserSettings/
 .tools/
 
-# PRIVATE personal spatial data / home geometry. Never publish in repository or CI.
+# Private runtime spatial data, media and original home source files are excluded.
+# Exception: owner-approved public reference geometry under assets/public/hefu-cad/.
 apps/quest-unity-client/Assets/StreamingAssets/SceneWorkspaces/Private/
 apps/quest-unity-client/Assets/StreamingAssets/SceneWorkspaces/Private.meta
 apps/quest-unity-client/Assets/QuestPhoneStream/PrivateHomes/
