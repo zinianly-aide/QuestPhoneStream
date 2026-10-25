@@ -286,3 +286,27 @@ BuildPipeline run within the same process. Do `Prepare`, `Bake`, `QA`,
 `ExportPrepared` in separate editor executions to keep the lightmaps and
 scene synchronized. See `assets/public/hefu-cad/ceiling-gi/README.md` for
 source and exact restrictions. Real phone frame-time is unverified.
+
+## 2026-10-25: Android Spaces v3.3.5 — Indoor daylight exposure and cabinetry PBR
+
+Opt-in embedded Unity `versionName=3.3.5`, `versionCode=12`. The prior
+2 unshadowed point fill lights are brightened to 1.15/.92 with ranges 5.2/5.4m,
+and neutral ambient is raised without adding a light or expensive shadows. The
+original Luoyang afternoon sun remains at the same orientation; its intensity
+changes to 1.04. Real GI is rebaked after Prepare in a separate Unity process:
+1 lightmap and 46 probes remain in the shipping mobile scene. Original 17
+furniture IDs, camera cutaway, windows, glass and WebRTC native client remain.
+
+A geometry-overlay builder adds ~3mm shallow chamfered front faces on **60
+cabinet doors/wardrobe leaves** in six pooled root-attached meshes and repeatable
+pale lacquer woodgrain at 48cm physical tiles. Eight dining sideboard walnut
+niche/worktop surfaces receive true metre-scale, projected 48cm walnut UVs.
+The original cabinet mesh, colliders, layout and original supplier dimensions
+are not changed.
+
+Actual Unity GPU fixed-view dining/living luminance rises from YAVG
+91.32→127.50 and 89.13→121.64 respectively; see
+`docs/space-studio/qa/v3.3.5/`, public source:
+`assets/public/hefu-cad/daylight-cabinet-pbr/`. This is an 8-bit image
+statistic, not a measured lux or photo-reconstruction score. ADB phone test
+remains required.
