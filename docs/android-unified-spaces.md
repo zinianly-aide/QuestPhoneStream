@@ -171,3 +171,24 @@ Reference implementation and non-private source assets live under
 `assets/public/hefu-cad/atmosphere/`; detailed plan and staged QA in
 `docs/space-studio/hefu-realtime-realism-plan-2026-10-25.md`. Device rendering,
 WebRTC and FPS remain pending until an Android device is connected.
+
+## 2026-10-25: v3.2.9 P1 Blender furniture & P2 interior light preview
+
+The opt-in mobile Unity-integrated `v3.2.9` (code 6) adds two **visual-only**
+Blender meshes, preserving the `Move_Sofa` and `Move_Coffee_Table` identities,
+legacy visual renderer as hidden fallback, and original CAD collision. The
+three-dimensional sofa has per-seat cushion silhouettes and piping; the
+walnut table has physically modelled two drawer fronts, small bevels, brass
+pulls and legs. Two non-shadow-casting warm fill lights (living/dining) and
+skybox-based ambient specular reflection supplement the existing single
+south-directed shadowed daylight source. No global illumination or reflection
+probe baking has been implemented; these remain P2 future work.
+
+`HefuP1P2RegressionSuite.Validate` ran 6 local Unity editor QA routines PASS,
+covering alignment/mesh/lighting plus original interior, CAD orientation,
+glass, material, and nine photo viewpoints. Native Kotlin 24-unit Gradle tests
+and full Android APK build must run for each new release. Phone live visuals,
+framerate, layout persistence and WebRTC still need physical device QA.
+
+Blender source, FBX and Unity integration code:
+`assets/public/hefu-cad/interior-p1p2/`.

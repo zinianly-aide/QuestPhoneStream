@@ -97,3 +97,15 @@
 - 主仓库 `feat/scene-workspace` 仍是部署/设计资料入口；本机源工程 `/Volumes/ssd/HefuVR-Android` 独立于该 Git 仓库。通过 `assets/public/hefu-cad/atmosphere/` 公布可复现源码/资产，不包含个人场景记录。
 - `AGENTS.md` 与既有 XR/OpenXR 修改不能被“优化画质”任务复位或纳入提交；只提交本轮的文档和显式白名单源码。
 - 不合并 `main`；不更改 QuestPhoneStream signaling、WebRTC 和 Android control 协议。Quest 端独立实施前需检查它的渲染后端对天空盒、透明材质、AssetBundle 的支持。
+
+## 9. 2026-10-25 P1/P2 第一轮执行记录（v3.2.9）
+
+**已落地**：Blender 4.5.3 中生成沙发和双抽茶几的可编辑 `.blend` 及 2 个 FBX，包含软包几何、局部圆角、扶手/抱枕、茶几抽屉拉手；作为原 `Move_Sofa`、`Move_Coffee_Table` 的 visual-only 子层安装，并隐藏旧 B 类程序化网格。新模型复用原 PBR 纹理材质；原 FBX CAD 不改、17 个移动 ID/碰撞不变。
+
+**P2 局部落地**：餐桌和客厅各增加 1 盏非投影暖色点光源，低强度、有限范围；手机使用 skybox 环境反射，**尚未执行室内光照烘焙、局部 ReflectionProbe 捕获或跨平台 HDRP**。新增光源固定在室内，移动桌子/沙发不会使灯具跟着移动。
+
+**测试事实**：`HefuP1P2RegressionSuite.Validate` 复用六组 Editor QA，成功验证 Blender 模型 bounds/UV/material、旧视觉隐藏、厨房/窗户、光照、17 件家具与 9 个预置视角。俯视 `top_n` 的效果不应替代 `living`/`balcony`/`kitchen` 人眼视角验收。设备当前不在线，不能声称实机 FPS 达标。
+
+**下一轮 P2 待办**：静态 CAD 室内（墙面/固定柜体）的间接光 bake / light probes（不能将可移动家具当 Static），少量低成本 ReflectionProbe 的烘焙和手机实测；再执行现有帧时、发热、玻璃透明排序回归。优先根据新手机实机截图调整材质和曝光，不添加无益摆件。
+
+[可编辑 Blender、Unity 与复现说明](../../assets/public/hefu-cad/interior-p1p2/README.md)
