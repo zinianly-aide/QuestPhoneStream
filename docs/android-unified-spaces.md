@@ -192,3 +192,26 @@ framerate, layout persistence and WebRTC still need physical device QA.
 
 Blender source, FBX and Unity integration code:
 `assets/public/hefu-cad/interior-p1p2/`.
+
+## 2026-10-25: v3.3.0 sofa seating and south window visibility
+
+This opt-in Unity-integrated Android build uses versionName `3.3.0`, code `7`
+(native-only remains `0.1.0` / code 1). It keeps `Move_Sofa` and its collider
+intact but visually rotates only the Blender sofa child so the three seats
+face west toward the TV rather than showing a blank back panel.
+
+For the 2 south-facing CAD window groups, 4 duplicate outer tint renderers are
+now disabled while all 6 original meshes/material slots remain in the scene;
+each center pane uses a single Fade glass sheet, alpha 0.075. Other 12 CAD
+windows plus kitchen/slider glass keep transparency; both door interactions
+are unchanged. Outside Blender tree import scale and axis conversion are
+preserved instead of overwritten, placing correctly upright model trees beyond
+the south glass without colliders. Generated window scenery remains entirely
+illustrative, not the real surrounding neighborhood.
+
+The six-gate Unity regression suite now also explicitly asserts the sofa's
+front orientation and correctly scaled window trees. Metal-powered Unity
+Editor rendered the three test viewpoints plus sofa before/after comparison,
+see `docs/space-studio/qa/v3.3.0/`. These Editor renderings alone cannot
+establish similarity to the approved effect reference or mobile GPU performance;
+phone live rendering still must be tested.

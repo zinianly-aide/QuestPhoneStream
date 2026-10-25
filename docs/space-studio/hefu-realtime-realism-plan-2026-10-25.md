@@ -109,3 +109,20 @@
 **下一轮 P2 待办**：静态 CAD 室内（墙面/固定柜体）的间接光 bake / light probes（不能将可移动家具当 Static），少量低成本 ReflectionProbe 的烘焙和手机实测；再执行现有帧时、发热、玻璃透明排序回归。优先根据新手机实机截图调整材质和曝光，不添加无益摆件。
 
 [可编辑 Blender、Unity 与复现说明](../../assets/public/hefu-cad/interior-p1p2/README.md)
+
+## 10. 2026-10-25 P3 真实 Unity 对比整改（v3.3.0）
+
+用户提供手机 `corridor` / `top_n` 画面，暴露沙发“没有座”、南窗一片灰蓝两个关键问题；不能用原先的几何存在性 QA 假定画面可见。
+
+- **沙发**：Metal Editor 从电视位置渲染发现 TV 面向的是整块沙发背部；将 FBX 子层转向 180°，不旋转 `Move_Sofa` 根。新渲染证明 3 个座包可见。新 `HEFU_SOFA_SEAT_FRONT_QA_PASS` 针对导入朝向增加防回归断言。
+- **南窗**：CAD 的 21/22/23、27/28/29 每组为三片玻璃，旧材质叠加导致偏蓝不透明。保持 18 片窗玻璃对象，南窗仅中心 22/28 参与绘制并用 alpha=.075 的 Fade 材质；无需砍掉原窗框或对改变 CAD。
+- **窗外树**：原 Blender FBX root 的 100 倍导入缩放和轴系旋转不应覆盖。修复后五棵树站立，有 2.3–8m 高度断言。窗外仍是低多边形占位，不等于参考图中真实光感或现实城市景观。
+- **真渲染**：Unity `-batchmode -quit`（**不用** `-nographics`）通过 GPU 摄像机生成 SofaFront、SouthWindow、Living 800×560 PNG 和沙发修复前后对比；记录于 `docs/space-studio/qa/v3.3.0/README.md`，供后续做相同机位对比。
+
+### P4 优先路线：朝视觉接近概念效果图前进
+
+1. 整体建筑真实材质应补墙面哑光细节、吊顶与窗帘布料、电视壁柜倒角，而不是继续以大白块替代；固定构件与可移动家具严格分离。
+2. 提升室外植被为具授权 foliage alpha-card/法线贴图和 LODs，并针对南侧实际遮挡/视野距离布置，保证手机平滑滚动。
+3. 用静态墙地面单独 bake 间接照明、LightProbes 覆盖可移动家具，客厅/餐厨局部**烘焙** ReflectionProbe；禁止动态实时 probe 捕获拖慢手机。
+4. Unity 固定 `sofa_front`、`south_window`、`living`，以及真机 `corridor`、`top_n` 的画面验收都需提供具体截图和材质亮度/可见性对比。目标“八成接近效果图”是主观体验目标，不是可由 Editor QA 单独给出通过百分比的客观指标。
+5. 手机上的 3D 探索 FPS、发热、17 个家具移动/重启保存、相机转向和玻璃排序必须完整验收。

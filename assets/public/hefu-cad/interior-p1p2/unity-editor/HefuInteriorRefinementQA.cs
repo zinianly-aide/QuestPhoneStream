@@ -22,6 +22,19 @@ public static class HefuInteriorRefinementQA {
    throw new Exception("HEFU_INTERIOR_QA_DUPLICATE_COLLIDER_"+imported);
   if(renderers[0].bounds.max.y > 1.16f || renderers[0].bounds.min.y < -.02f)
    throw new Exception("HEFU_INTERIOR_QA_VERTICAL_FOOTPRINT_"+imported+" "+renderers[0].bounds);
+  if(imported=="HefuP1_SoftSofa"){
+   // Camera from TV previously saw sofa BACK. Enforce the 180-degree sofa
+   // visual correction while preserving the original Move_Sofa transform.
+   var sourcePrefab=UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(
+    "Assets/Hefu/Models/InteriorRefinement/HefuP1_SoftSofa.fbx");
+   var corrected=Quaternion.AngleAxis(180f,Vector3.up)*sourcePrefab.transform.rotation;
+   if(Quaternion.Angle(corrected,art.rotation)>1.0f)
+    throw new Exception("HEFU_SOFA_SEAT_FRONT_WRONG_DIRECTION");
+   var tv=Find(house,"Hefu_FurnitureDetail_TelevisionAndConsole");
+   if(tv.position.x>=art.position.x)
+    throw new Exception("HEFU_SOFA_TV_NO_LONGER_WEST");
+   Debug.Log("HEFU_SOFA_SEAT_FRONT_QA_PASS facesTVWest=true 180degreeVisualRotation=true");
+  }
   Debug.Log("HEFU_P1_ART_QA_PASS "+imported+" verts="+filter.sharedMesh.vertexCount+
    " materials="+renderers[0].sharedMaterials.Length+" fallbackHidden=true collisionOwnedByCAD=true");
  }

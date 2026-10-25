@@ -1,3 +1,4 @@
+using UnityEditor;
 using System;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -17,7 +18,12 @@ public static class HefuSceneAtmosphereQA {
    if(obj.name.StartsWith("Illustrative_Tree_")){
     trees++;
     if(obj.position.z>=-11f)throw new Exception("HEFU_ATMO_QA_TREE_WRONG_NORTH_SOUTH");
-    if(obj.GetComponentsInChildren<Renderer>(true).Length==0)throw new Exception("HEFU_ATMO_QA_TREE_MESH_MISSING");
+    var rr=obj.GetComponentsInChildren<Renderer>(true);
+    if(rr.Length==0)throw new Exception("HEFU_ATMO_QA_TREE_MESH_MISSING");
+    var bounds=rr[0].bounds;
+    foreach(var r in rr)bounds.Encapsulate(r.bounds);
+    if(bounds.size.y<2.3f||bounds.size.y>8f)
+      throw new Exception("HEFU_ATMO_QA_TREE_IMPORTED_SCALE_WRONG_"+obj.name+"="+bounds.size.y);
    }
    if(obj.name.StartsWith("Illustrative_DistantBuilding_")){
     buildings++;
@@ -37,13 +43,23 @@ public static class HefuSceneAtmosphereQA {
   if(!glass||glass.renderQueue<(int)RenderQueue.Transparent||
      glass.color.a>=.45f||glass.GetFloat("_ZWrite")>0.01f)
    throw new Exception("HEFU_ATMO_QA_KITCHEN_NOT_TRANSPARENT");
-  int windows=0;
+  int windows=0,southVisible=0,southHidden=0;
+  var southMaterial=AssetDatabase.LoadAssetAtPath<Material>(
+   "Assets/Hefu/Generated/Atmosphere/HefuClearSouthWindow.mat");
+  if(!southMaterial || southMaterial.renderQueue < (int)RenderQueue.Transparent ||
+     southMaterial.color.a>.10f)throw new Exception("HEFU_ATMO_QA_SOUTH_GLASS_MATERIAL");
   foreach(var r in house.GetComponentsInChildren<Renderer>(true))
    if(r.name.Contains("CAD_WindowCell_")&&r.name.EndsWith("_glass")){
-    if(r.sharedMaterial!=glass)throw new Exception("HEFU_ATMO_QA_WINDOW_NOT_GLASS_"+r.name);
+    bool south=r.name.StartsWith("21_CAD_")||r.name.StartsWith("22_CAD_")||r.name.StartsWith("23_CAD_")||
+     r.name.StartsWith("27_CAD_")||r.name.StartsWith("28_CAD_")||r.name.StartsWith("29_CAD_");
+    if(r.sharedMaterial!=(south?southMaterial:glass))
+     throw new Exception("HEFU_ATMO_QA_WINDOW_WRONG_GLASS_"+r.name);
+    if(south){if(r.enabled)southVisible++;else southHidden++;}
+    else if(!r.enabled)throw new Exception("HEFU_ATMO_QA_OTHER_WINDOW_HIDDEN_"+r.name);
     windows++;
    }
-  if(windows!=18)throw new Exception("HEFU_ATMO_QA_WINDOWS="+windows);
+  if(windows!=18||southVisible!=2||southHidden!=4)
+    throw new Exception("HEFU_ATMO_QA_WINDOWS="+windows+"/"+southVisible+"/"+southHidden);
   var slider=group.Find("StudySouth_BalconySlidingDoor");
   if(!slider||!slider.GetComponent<HefuSlidingDoor>()||!slider.GetComponent<HefuSlidingDoor>().leaf)
    throw new Exception("HEFU_ATMO_QA_BALCONY_SLIDER_LOST");

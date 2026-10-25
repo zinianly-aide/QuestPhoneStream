@@ -44,6 +44,11 @@ public static class HefuP1FurnitureFinishBuilder {
   instance.name=Name+model;
   instance.transform.SetParent(fallback,false);
   instance.transform.localPosition=Vector3.zero;
+  // Blender's original mesh faces +X, but the TV is WEST (-X): in the
+  // previous phone screenshot we were seeing the sofa BACK from the TV.
+  // Rotate only the sofa model 180 degrees around WORLD UP, not its Move_* root.
+  if(model=="HefuP1_SoftSofa")
+    instance.transform.rotation=Quaternion.AngleAxis(180f,Vector3.up)*instance.transform.rotation;
   // Preserve FBX importer root rotation as well: it converts Blender Z-up
   // to Unity Y-up. Forcing identity transposes sofa length into vertical.
   // FBX import importer intentionally reports root scale=100; preserve imported

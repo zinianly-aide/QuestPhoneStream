@@ -29,12 +29,15 @@ public static class HefuSceneAtmosphereBuilder {
  }
  static Material ClearGlass(){
   var mat=Mat("HefuClearArchitecturalGlass",new Color(.78f,.91f,.95f,.22f),.88f);
-  mat.SetFloat("_Mode",3);
+  // Built-in Standard Fade uses SrcAlpha + OneMinusSrcAlpha;
+  // Transparent/Premultiply uses Src=One, so mixing the two caused
+  // inconsistent opaque-tinted panes on some Android drivers.
+  mat.SetFloat("_Mode",2);
   mat.SetInt("_SrcBlend",(int)BlendMode.SrcAlpha);
   mat.SetInt("_DstBlend",(int)BlendMode.OneMinusSrcAlpha);
   mat.SetInt("_ZWrite",0);
-  mat.DisableKeyword("_ALPHATEST_ON");mat.DisableKeyword("_ALPHABLEND_ON");
-  mat.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+  mat.DisableKeyword("_ALPHATEST_ON");mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+  mat.EnableKeyword("_ALPHABLEND_ON");
   mat.SetOverrideTag("RenderType","Transparent");
   mat.renderQueue=(int)RenderQueue.Transparent;
   EditorUtility.SetDirty(mat);return mat;
@@ -70,13 +73,35 @@ public static class HefuSceneAtmosphereBuilder {
  }
  static void Glass(Transform house){
   var mat=ClearGlass();
-  int windows=0;
+  // CAD south wall contains TWO triple-glazed units (#21–23 and #27–29)
+  // separated by ~8cm. Rendering three blue-tinted panes together made the
+  // window look opaque and hid trees/sky beyond the glass. Preserve all CAD
+  // meshes and colliders, but render ONLY the center sheet of each triple.
+  var south=Mat("HefuClearSouthWindow",new Color(.97f,.99f,1f,.075f),.30f);
+  south.SetFloat("_Mode",2);
+  south.SetInt("_SrcBlend",(int)BlendMode.SrcAlpha);
+  south.SetInt("_DstBlend",(int)BlendMode.OneMinusSrcAlpha);
+  south.SetInt("_ZWrite",0);
+  south.DisableKeyword("_ALPHATEST_ON");south.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+  south.EnableKeyword("_ALPHABLEND_ON");
+  south.SetOverrideTag("RenderType","Transparent");south.renderQueue=(int)RenderQueue.Transparent;
+  EditorUtility.SetDirty(south);
+  int windows=0, southVisible=0, southHidden=0;
   foreach(var r in house.GetComponentsInChildren<Renderer>(true)){
    if(!r.name.Contains("CAD_WindowCell_")||!r.name.EndsWith("_glass"))continue;
-   r.sharedMaterial=mat;r.shadowCastingMode=ShadowCastingMode.Off;r.receiveShadows=false;
+   bool southWindow=r.name.StartsWith("21_CAD_")||r.name.StartsWith("22_CAD_")||r.name.StartsWith("23_CAD_")||
+    r.name.StartsWith("27_CAD_")||r.name.StartsWith("28_CAD_")||r.name.StartsWith("29_CAD_");
+   bool keepSouth=r.name.StartsWith("22_CAD_")||r.name.StartsWith("28_CAD_");
+   r.sharedMaterial=southWindow?south:mat;
+   r.enabled=!southWindow||keepSouth;
+   r.shadowCastingMode=ShadowCastingMode.Off;r.receiveShadows=false;
+   if(southWindow){if(keepSouth)southVisible++;else southHidden++;}
    windows++;
   }
-  if(windows<8)throw new Exception("HEFU_ATMOSPHERE_CAD_WINDOW_COUNT="+windows);
+  if(windows!=18||southVisible!=2||southHidden!=4)
+   throw new Exception("HEFU_SOUTH_GLASS_COUNT_INVALID "+windows+"/"+southVisible+"/"+southHidden);
+  Debug.Log("HEFU_SOUTH_GLASS_CLEAR_PASS southUnits=2 visibleLayers=2 hiddenDuplicateLayers=4"+
+   " singlePaneAlpha=.075 originalCADMeshesPreserved=true");
   // Kitchen door is an openable original doorway on CAD wall 26, NOT the north
   // entry door. Replace its leaf paint with transparent glass, retain hinge,
   // collider and HefuEntryDoor component (selection/opening still works).
@@ -138,8 +163,13 @@ public static class HefuSceneAtmosphereBuilder {
    instance.name="Illustrative_Tree_"+i;
    instance.transform.SetParent(root,false);
    instance.transform.position=locations[i];
-   instance.transform.localScale=Vector3.one*(.86f+(i%3)*.16f);
-   instance.transform.rotation=Quaternion.Euler(0,i*67f,0);
+   // Blender FBX prefab uses import scale 100. Previous scene accidentally
+   // overwrote it with ~1, shrinking trees by ~100x and leaving blue windows.
+   // Always multiply, NEVER replace, the imported prefab scale.
+   instance.transform.localScale=instance.transform.localScale*(.86f+(i%3)*.16f);
+   // Preserve Blender FBX Z-up conversion! Forcing a world yaw alone made
+   // these trees lie on their sides, with their canopy at floor level.
+   instance.transform.rotation=Quaternion.Euler(0,i*67f,0)*instance.transform.rotation;
    foreach(var renderer in instance.GetComponentsInChildren<Renderer>(true)){
     renderer.shadowCastingMode=ShadowCastingMode.Off;
     renderer.receiveShadows=false;
