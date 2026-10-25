@@ -353,3 +353,18 @@ before/after views and independent daily OFF/ON screenshot are at
 `docs/space-studio/qa/m2-material-soft-decor`. Source and assets are under
 `assets/public/hefu-cad/render-upgrade-m2`. Actual mobile gameplay/FPS require
 ADB hardware acceptance.
+
+## 2026-10-25 v3.4.0-m3 mobile Hefu: distinct 128px reflections + quality tiers
+
+`HefuBakedRoomReflections` now uses two **different actual room** Custom
+Cubemaps rendered offline using editor-only camera `RenderToCubemap`; the prior
+64px and attempted 128px `Lightmapping.BakeReflectionProbe` assets were
+byte-identical across rooms and are not used. New opt-in Android Hefu viewer
+quality Battery/Balanced/Quality with AA off/2x/4x, 2/3/4 pixel lights,
+shadow off/9/13m and static reflection off/on/on. The optional measured
+render-loop FPS HUD is sampled from device `Time.unscaledDeltaTime` after app
+startup, not estimated from the Mac Editor. Existing daily/birthday toggle,
+17 furniture IDs, 256px Day+Birthday GI and kitchen/south glass remain intact.
+Visual evidence: `docs/space-studio/qa/m3-quality-reflections`.
+Public source and distinct cubemaps:
+`assets/public/hefu-cad/render-upgrade-m3`. No Quest-specific source changes.

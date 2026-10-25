@@ -202,3 +202,11 @@
 M2 的 Day / Birthday 仍分别用 Unity GPU 烘焙 256px GI 和 46 LightProbes，M2专项 QA、CAD/PBR/玻璃/太阳/沙发回归与 16 次灯光切换通过。五组 M1→M2 同机位 960×640 Metal 实际画面亮度变化均 <1 灰度值，是有意避免靠曝光漂白掩盖材质不足；更清晰的日常软装 ON/OFF 对比已单独输出。
 
 源码/生成资源 `assets/public/hefu-cad/render-upgrade-m2`，照片 `docs/space-studio/qa/m2-material-soft-decor`。仍无法主张达到参考图 80% 写实度，M3 需针对近景真实反射 / 材质细节 / 低中高质量档以及**真实 Android/Quest FPS**推进。不要用 macOS Editor 性能替代真机数值。
+
+## 20. 2026-10-25 M3：真实分房间反射与低/中/高三档画质
+
+反射根因：旧两个 64px EXR 哈希完全相同，Unity `Lightmapping.BakeReflectionProbe()` 实验输出的两个新 128px EXR 也完全相同，不能把仅升级像素作为“局部反射”成果。改为编辑器真实 `Camera.RenderToCubemap` 离线六面场景捕获，得到真正不同的客厅/餐厅 128px RGBA32 贴图；自动测试各面采样 3149 个明显不同的颜色样本。两枚 `ReflectionProbe` 仍然是 Custom + BoxProjection，手机无实时六面抓取或额外渲染相机。
+
+安卓 viewer 新增低 Battery / 中 Balanced（默认）/ 高 Quality 三档。AA Off/2x/4x，阴影 off/9m/13m，pixelLightCount 2/3/4，局部离线反射 on/off 与 1/0 mipmapLimit，目标帧率 45/60/72；增加可选实际运行帧间隔 FPS HUD，独立保存设置，不覆盖 Birthday、M2 Daily decor 或 17 件家具布局。Unity QA 覆盖档位切换、反射内容差异、偏好不被测试改写；CAD/PBR/玻璃/沙发、Day/Birthday 256px GI 和 46 探针、16 次光照切换及屋顶 2.677m 截面回归通过。
+
+保留相同主展示机位的 M2→M3 五组 Unity 对比，三档 Hero 画面见 `docs/space-studio/qa/m3-quality-reflections`；源码 `assets/public/hefu-cad/render-upgrade-m3`。目前默认静态画面整体亮度与 M2 基本相同（预期，因为 M3 不改曝光）；M3 核心收益是**可选 GPU 开销与可验证的房间真实反射**。没有 ADB 真机时不得声称达到某 FPS 或参考图 80% 写实。下一阶段优先接 Android/Quest 真机、帧时与热性能验收和更高细节/导出设置。
