@@ -154,3 +154,13 @@
 自动检查 `HefuWallPBRRegression.Validate` 通过，且复用既有暖色装饰、洛阳季节、厨房/玻璃、沙发与 17 家具的联动测试。960×640 Mac Unity 真实机位渲染及同机位前后对比见 `docs/space-studio/qa/v3.3.3/`；可编辑源码/资源见 `assets/public/hefu-cad/wall-pbr-probes/`。
 
 **未实施与下一阶段**：固定建筑正式烘焙 GI/lightmaps、移动家具 Light Probes、顶面/吊顶在俯视与室内视角的显示策略、真实橱柜圆角/木纹及树木 LOD。当前仍能看出低模感，不能用验证通过冒充“效果图 80%”。下一阶段应优先补齐屋顶/室内 GI 的建模条件和明确的 camera mode 开关，再单独测试手机帧时。
+
+## 14. 2026-10-25 P5 CAD 顶面 + 真实静态 GI（v3.3.4）
+
+从原始真实户型的 `00_客餐厅/过道` 地面向上反向投影 16 个三角面，构建 y=2.677m 朝下的顶面及 18 段同网格檐线。相机眼高低于 2.47m 且位于客餐厅内部时显示顶面；俯视/房外自动隐藏，不改移动根/碰撞/布局存储。
+
+经过多轮实际 Unity 烘焙实验，最终为 18 段不重叠的固定 CAD 墙面（另两段 35/42 原始重合墙保留渲染但不参与 GI）、原地面和顶面启用 ContributeGI（共 20），生成 UV2 贴图并烘焙一张 lightmap 与 46 个 Light Probe；17 件家具保持可移动并启用 BlendProbes。初次出现 11 项 Lightmap UV 重叠，优化 padding 和排除重复 CAD 静态标签后无警告。GPU 使用 Mac M4 的 Progressive Lightmapper。
+
+注意在单进程内直接连续执行 `Prepare→GPU Bake→Android Build` 会发生 Unity `RadeonRaysJobCompositeLightmap` 原生段错误，不能把这种路径发布为正常流程；必须分独立 Unity 进程：Prepare / Bake / QA / ExportPrepared。具体复现、实际光照贴图、固定机位图和性能风险见 `assets/public/hefu-cad/ceiling-gi/README.md` 与 `docs/space-studio/qa/v3.3.4/`。
+
+**未完成**：所有房间独立吊顶、室内摄影级木纹柜体倒角、户外高精度树木、手机 GPU 帧时与动态物理遮挡；Lightmap 是固定 14:30 秋季环境，切换顶面显示不重新计算间接光。即便静态烘焙通过，也不等于达到参考效果图八成，需要实际手机场景截图再验收。

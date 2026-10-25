@@ -266,3 +266,23 @@ Actual Unity Editor render comparisons and caveats:
 `docs/space-studio/qa/v3.3.3/`; public source assets and QA:
 `assets/public/hefu-cad/wall-pbr-probes/`. This is not full scene GI/lightmap
 baking, and cannot yet claim phone FPS or 80% photo-matching without device QA.
+
+## 2026-10-25: v3.3.4 CAD ceiling + baked GI
+
+Opt-in Unity integrated Android versionName `3.3.4` versionCode `11`.
+The dining/living/hall ceiling is generated from **16 original CAD floor
+triangles** at 2.677m, with a pooled crown perimeter. The phone camera
+shows it in an eye-level interior view and automatically hides it from a
+high-angle/top-down floorplan. No furniture changes or new colliders.
+
+A real Unity Metal Progressive GI bake covers 20 static architecture objects,
+with 46 sampled room probes and one small lightmap atlas; furniture remains
+dynamic and obtains lighting from Light Probes. Higher-padding UV2 generation
+and exclusion of two duplicate tiny CAD wall meshes from the GI flags
+eliminated the initial 11 and then 2 overlapping-lightmap-UV warnings.
+
+**Important**: Unity 2022.3 macOS native crash if the bake and Android
+BuildPipeline run within the same process. Do `Prepare`, `Bake`, `QA`,
+`ExportPrepared` in separate editor executions to keep the lightmaps and
+scene synchronized. See `assets/public/hefu-cad/ceiling-gi/README.md` for
+source and exact restrictions. Real phone frame-time is unverified.
