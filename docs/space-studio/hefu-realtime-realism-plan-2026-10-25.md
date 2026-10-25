@@ -136,3 +136,11 @@
 已执行：`HefuLuoyangAutumnRegression.Validate` = 太阳/秋季专项 QA + 原有 6 组 Unity Regression PASS；Unity GPU 使用和 v3.3.0 完全对应的 `south_window`/`living`/`sofa_front` 固定机位输出 800×560 PNG，再生成左右对比图，证据见 `docs/space-studio/qa/v3.3.1/`。
 
 未完成：动态时刻与季节切换 UI、真实天气接入、墙体烘焙 GI、家具 Light Probes、真实室外树木叶片贴图与 LOD、局部 Reflection Probe、安卓实机透明排序/帧时。下一优先任务**先改善叶片几何 + 测量窗台和楼层高度，再在固定建筑与移动家具分离基础上实施静态光照 bake**，而不是继续叠加未经验证的全场后处理。所谓 80% 效果图是主观视觉目标，不能据此声称已经达到。
+
+## 12. 2026-10-25 暖奶油 / 胡桃木 / 墨绿风格局部落地（v3.3.2）
+
+遵循用户给出的《和府 HefuVR》参考风格：不把 AI 效果图当 CAD，保留北入户、东北厨房玻璃门、南窗、冰箱与 17 件原家具的空间关系。实际落地的 P4 轻量软装层 `Hefu_WarmReferenceStyle_v1`：在现有餐桌中心上方布置 2 盏曲面象牙白吊灯 + 黄铜吊杆/顶盘（不加新的实时点光）；南向客厅窗框两侧增加 2 块带程序化亚麻布纹的褶皱窄布帘和细帘杆，不挡中间窗玻璃，不添加碰撞与控制协议；现有 `Style` 的 Neutral/Warm wood 墙面基色改为暖白/暖奶油，Cool gray 和模式切换逻辑不变。
+
+`HefuWarmReferenceStyleQA` 与 `HefuWarmReferenceRegression` 用于确认双吊灯/双布帘位置、材质及几何、17 家具、Style 切换、原六项太阳/玻璃/动线回归。Unity GPU 固定机位对比与脚本存档于 `docs/space-studio/qa/v3.3.2/`、`assets/public/hefu-cad/interior-warm-style/`。
+
+**明确未交付**：物理全局照明和间接反射烘焙、吊灯真实照度分布、制造商家具材质和贴图扫描、室外写实 foliage alpha-card/LOD、设备上主观 80% 视觉验收。下一阶段优先**固定建筑受光与移动家具分离的光照烘焙/Probe 验证**，再按设备性能精修树木纹理；新软装仅是明确可回退的一小步。

@@ -233,3 +233,21 @@ Actual Metal-powered Unity camera comparison at
 `docs/space-studio/qa/v3.3.1/`; hardware Android FPS and WebRTC state remain
 unverified without ADB device connection. Documentation and source assets:
 `assets/public/hefu-cad/atmosphere/`.
+
+## 2026-10-25: v3.3.2 warm interior reference finish
+
+Android Spaces Unity-integrated version `3.3.2`, versionCode `9` (native-only
+unchanged). The real-CAD dining table gets two lightweight ivory/brass pendant
+models. South living window side margins gain two synthetic-textured linen
+side curtains and a light rail; no curtain covers the center glass, no new
+colliders, realtime lights or change to window transparency/door controls.
+`HefuDecorSwitcher` retains all 3 Style choices and makes the default Neutral
+walls a warmer cream to match the user-approved interior moodboard. Sofa,
+walnut coffee table, fridge, 17 movable records, fixed room geometry, v3.3.1
+Luoyang autumn sky and lighting remain intact.
+
+QA / actual Metal editor images:
+`docs/space-studio/qa/v3.3.2/`; public standalone source-pack:
+`assets/public/hefu-cad/interior-warm-style/`. Other user-owned Unity files,
+private local model/library and real photos remain outside this public source
+pack. GPU frame time, GI baking and device screenshot remain pending.
