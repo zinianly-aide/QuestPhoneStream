@@ -210,3 +210,13 @@ M2 的 Day / Birthday 仍分别用 Unity GPU 烘焙 256px GI 和 46 LightProbes�
 安卓 viewer 新增低 Battery / 中 Balanced（默认）/ 高 Quality 三档。AA Off/2x/4x，阴影 off/9m/13m，pixelLightCount 2/3/4，局部离线反射 on/off 与 1/0 mipmapLimit，目标帧率 45/60/72；增加可选实际运行帧间隔 FPS HUD，独立保存设置，不覆盖 Birthday、M2 Daily decor 或 17 件家具布局。Unity QA 覆盖档位切换、反射内容差异、偏好不被测试改写；CAD/PBR/玻璃/沙发、Day/Birthday 256px GI 和 46 探针、16 次光照切换及屋顶 2.677m 截面回归通过。
 
 保留相同主展示机位的 M2→M3 五组 Unity 对比，三档 Hero 画面见 `docs/space-studio/qa/m3-quality-reflections`；源码 `assets/public/hefu-cad/render-upgrade-m3`。目前默认静态画面整体亮度与 M2 基本相同（预期，因为 M3 不改曝光）；M3 核心收益是**可选 GPU 开销与可验证的房间真实反射**。没有 ADB 真机时不得声称达到某 FPS 或参考图 80% 写实。下一阶段优先接 Android/Quest 真机、帧时与热性能验收和更高细节/导出设置。
+
+## 21. 2026-10-25 M4：五机位 2K 展示导出 + 三档真实设备基准测试入口
+
+沿用 M0 的五套实际 1.55m 高机位，M4 App 新增 `Export 5 views`：使用独立的 **2048×1365** 离屏相机逐张抓取纯 Unity 画面（无 GUI），照片保存到应用 `Exhibits/M4_<UTC>`，并尽力通过 Android MediaStore 保存至系统图库 `Pictures/HefuVR`；附 `manifest.csv`，包含精确机位、朝向、FOV、尺寸、画质档、UTC 时间。抓图后恢复原相机观察位置和 CAD 顶面遮挡设置；不写家具存档、不改 17 件家具和其他用户选项。
+
+另新增 `Bench 3 tiers`：分别 1s 预热/6s 采样 Battery、Balanced、Quality 档位，采集真机帧间隔 CPU/render-loop mean FPS / p50、p95、p99、worst frame ms、Mono/总分配内存、设备/GPU 名称，自动保存 `M4Benchmarks/*.csv`。`finally` 恢复用户选中的画质档，不写偏好。该测试只有**在手机启动并主动点击时**才有真实性能数据，不等于 Android GPU Profiler 或温控/功耗测量。无设备在线不得填入任何指标。
+
+使用 Mac Unity 2022.3 Metal 编辑器在**相同五机位**已真实生成五张 2048×1365 无 GUI 渲染图及 `manifest.csv`，再通过原生 Swift AppKit 拼成一张 **3200×1700 实景展示拼版**（非 AI 效果图），证据 `docs/space-studio/qa/m4-presentation-bench/`；可复现源码与海报脚本 `assets/public/hefu-cad/render-upgrade-m4/`。
+
+完成 GI Day/Birthday 256² + 46 probes 重新烘焙。M4 五机位/CSV 算法 QA、M1 CAD/玻璃/沙发、M2 Daily/Birthday、M3 反射/三档画质、双光照切换及原屋顶 2.677m 全部 Editor PASS。Android Unity Library 输出成功，`versionCode=18/versionName=3.4.1-m4`；宿主 Android 单测 **24/24 PASS**、APK 签名及 ZIP 校验 PASS。**没有 ADB 设备，因此 Gallery 实际手机写入、Bench CSV、真实 FPS/GPU/热衰减、Quest 都未验收**；应以真机记录作为下一步的先决条件。

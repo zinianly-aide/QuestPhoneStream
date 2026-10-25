@@ -368,3 +368,22 @@ startup, not estimated from the Mac Editor. Existing daily/birthday toggle,
 Visual evidence: `docs/space-studio/qa/m3-quality-reflections`.
 Public source and distinct cubemaps:
 `assets/public/hefu-cad/render-upgrade-m3`. No Quest-specific source changes.
+
+## 2026-10-25 Android v3.4.1-m4 — M4 5-view 2K export + opt-in 3-tier frame sampler
+
+Adds runtime-only `HefuM4Presentation` to the existing mobile Unity camera:
+`Export 5 views` sequentially renders the same five original M0 physical
+poses at 2048x1365 offscreen, attempts Android Gallery MediaStore, and
+writes an app `Exhibits/M4_<UTC>/manifest.csv`. User camera/orbit, roof
+cutaway, saved 17 movable furniture positions and Birthday/Daily settings
+remain unchanged. `Bench 3 tiers` does a 1s warmup + 6s runtime
+`Time.unscaledDeltaTime` sample at Battery/Balanced/Quality, saves CPU
+frame intervals as mean FPS / p50/p95/p99/max milliseconds and allocated
+memory to `M4Benchmarks/*.csv`, and restores the original tier. This is **not
+GPU timing**; no device was online for actual benchmarks. No Quest project or
+control protocol modified. Actual Unity five-view 2K captures and a 3200x1700
+exhibit board are under `docs/space-studio/qa/m4-presentation-bench/`.
+Public source: `assets/public/hefu-cad/render-upgrade-m4/`.
+Unity QA/M1/M2/M3/GI/Roof all PASS; native Android tests 24/24 PASS,
+Build/Signed APK v3.4.1-m4 PASS. Device installation, gallery and benchmark
+remain pending ADB.

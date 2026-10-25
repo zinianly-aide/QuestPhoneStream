@@ -32,8 +32,8 @@ android {
         targetSdk = 36
         // Bundled Unity furniture demo is an opt-in developer build; native-only
         // CI retains its original package version for stable downstream users.
-        versionCode = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) 17 else 1
-        versionName = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) "3.4.0-m3" else "0.1.0"
+        versionCode = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) 18 else 1
+        versionName = if (System.getenv("QPS_UNITY_LIBRARY_DIR") != null) "3.4.1-m4" else "0.1.0"
         buildConfigField("boolean", "HAS_UNITY_HOME", (System.getenv("QPS_UNITY_LIBRARY_DIR") != null).toString())
     }
 
