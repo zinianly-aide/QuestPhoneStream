@@ -184,3 +184,11 @@
 光源遮挡复查发现落地灯首次被原始 `12_CAD_wall_12` 挡住；随后移至沙发南端靠客厅/电视一侧并新增 `Physics.Raycast` 自动验收。两模式三机位（餐桌、客厅、落地灯）共 6 张 Unity 真实 GPU 截图和 3 张同机位左右对比图存放在 `docs/space-studio/qa/v3.3.6`。源码与双份光照数据见 `assets/public/hefu-cad/visible-lights-dual-gi`。
 
 保持 17 件家具、玻璃、厨房、North Entry、Room Ceiling 和原 XR/控制协议不变。后续重点：安卓真机照度、卡顿/发热、Birthday 切换后 Lightmap/Probe 是否及时更新、剩余柜体细节，以及灯具专业模型。不能因 Editor 测试通过而宣称手机 FPS 或照片级 80% 相似度。
+
+## 18. 2026-10-25 v3.3.7 — 实体光源亮度舒适度 / 更细静态 GI / 低开销模式切换
+
+延续 3.3.6 实体灯具：不增加灯、不改厨房和 CAD，不通过整体滤镜泛白补光；仅提高真实双吊灯下射 Spot / 落地灯内 Point 的强度与覆盖（79° / 4.05m），白天太阳强度微调至 1.13，生日保持局部暖光。Unity Metal 同机位平均 YAVG：Day 餐厅 **105.37→120.12**、Day 客厅 **102.89→133.57**、Birthday 餐厅 **69.78→81.29**。光源均来自场景实体灯，非真实 lux 数值。
+
+光照贴图精度 7→12 texel/m，Direct/Indirect 采样 32/96→48/128，结果两套静态纹理由 **128²→256²**，46 个探针每套不变，未发现 UV 重叠警告。开关模式时一次展开两个 SH 数组和 LightmapData，缓存灯罩材质，跳过同模式重复应用且不反复 Tetrahedralize；Unity 测试连续切换 16 次通过。
+
+对比图和实际源码见 `docs/space-studio/qa/v3.3.7` 与 `assets/public/hefu-cad/light-comfort-v337`。下一阶段继续对照参考效果图改进柜体细节、材质与真实窗外曝光；仍需真机测量手机 GPU 帧率、夜间灯光过渡与温升；系统数据盘仅余约 3GB。

@@ -326,3 +326,15 @@ lamp being hidden behind CAD wall 12. Source+assets:
 `assets/public/hefu-cad/visible-lights-dual-gi/`. Actual Unity fixed-camera
 comparisons: `docs/space-studio/qa/v3.3.6/`. Phone FPS/UI still require
 live device QA.
+
+## 2026-10-25: Android Spaces v3.3.7 — brighter practicals, denser baked GI, cached toggles
+
+`versionName=3.3.7`, `versionCode=14`. Same three physical lamps (two actual
+dining pendant spots plus one living lampshade point), no new detached fills,
+no additional shadow lights. Brighter direct and indirect lighting is baked
+into **two separate 256px lightmaps** and **46 probes per mode**. Dynamic
+`HefuFixtureLighting` caches unflattened SH and LightmapData only once and
+skips same-mode no-op requests; 16 toggle QA PASS. Screenshots and YAVG
+comparisons: `docs/space-studio/qa/v3.3.7/`; source and GI assets:
+`assets/public/hefu-cad/light-comfort-v337/`. Hardware phone FPS and switch
+latency are still unverified until ADB connects.
