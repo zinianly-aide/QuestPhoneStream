@@ -338,3 +338,18 @@ skips same-mode no-op requests; 16 toggle QA PASS. Screenshots and YAVG
 comparisons: `docs/space-studio/qa/v3.3.7/`; source and GI assets:
 `assets/public/hefu-cad/light-comfort-v337/`. Hardware phone FPS and switch
 latency are still unverified until ADB connects.
+
+## 2026-10-25 Android Spaces v3.3.9-m2 — PBR material + independent daily soft decor
+
+Unity Built-in remains. M1 south window, CAD layout, kitchen swing, camera
+presets and original Android control/session layer preserved. Existing tile,
+wood, olive leather, ivory veneer and brushed-brass materials had their
+roughness/normal/metal workflow aligned (real existing texture maps reused).
+A new daily soft decor switch toggles **two pooled visual meshes** (ceramic
+sideboard planter and linen throw carried by Move_Sofa), independently from
+Birthday and the saved 17 furniture layouts, with no colliders or new lights.
+New Day/Birthday GPU GI bakes kept 256px atlas+46 probes each; 5 fixed-camera
+before/after views and independent daily OFF/ON screenshot are at
+`docs/space-studio/qa/m2-material-soft-decor`. Source and assets are under
+`assets/public/hefu-cad/render-upgrade-m2`. Actual mobile gameplay/FPS require
+ADB hardware acceptance.

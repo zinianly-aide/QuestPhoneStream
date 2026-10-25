@@ -192,3 +192,13 @@
 光照贴图精度 7→12 texel/m，Direct/Indirect 采样 32/96→48/128，结果两套静态纹理由 **128²→256²**，46 个探针每套不变，未发现 UV 重叠警告。开关模式时一次展开两个 SH 数组和 LightmapData，缓存灯罩材质，跳过同模式重复应用且不反复 Tetrahedralize；Unity 测试连续切换 16 次通过。
 
 对比图和实际源码见 `docs/space-studio/qa/v3.3.7` 与 `assets/public/hefu-cad/light-comfort-v337`。下一阶段继续对照参考效果图改进柜体细节、材质与真实窗外曝光；仍需真机测量手机 GPU 帧率、夜间灯光过渡与温升；系统数据盘仅余约 3GB。
+
+## 19. 2026-10-25 M2：PBR 细节材质 + 日常软装独立开关
+
+基于真实 Unity 2022 Built-in（非 URP）完成 M2 小步提交。保留 0.78m 地砖实际 UV、48cm 木纹、原始 Blender 沙发及 3mm 柜门倒角。统一地砖 Gloss .34 / Normal .22、胡桃木 Gloss .29 / Normal .21、沙发皮革 Gloss .32 / Normal .30、象牙白门板 Gloss .28、拉丝黄铜 Metal .76 / Gloss .55，窗户使用仍可透视的 Standard 透明材质且不写深度；未增加昂贵的动态后处理。
+
+新增可独立开关 Daily decor：餐边柜真实 Worktop 锚定的小型陶瓷绿植，沙发可移动根下的折叠亚麻毯，材质与几何统一压成两个视觉 MeshRenderer；无新增碰撞、灯光、家具 ID、真实户型位移。手机新增 `Daily decor ON/OFF` 控件，使用独立 PlayerPrefs，不能影响原 Birthday ON/OFF、暖灯和 17 个家具布局存档。
+
+M2 的 Day / Birthday 仍分别用 Unity GPU 烘焙 256px GI 和 46 LightProbes，M2专项 QA、CAD/PBR/玻璃/太阳/沙发回归与 16 次灯光切换通过。五组 M1→M2 同机位 960×640 Metal 实际画面亮度变化均 <1 灰度值，是有意避免靠曝光漂白掩盖材质不足；更清晰的日常软装 ON/OFF 对比已单独输出。
+
+源码/生成资源 `assets/public/hefu-cad/render-upgrade-m2`，照片 `docs/space-studio/qa/m2-material-soft-decor`。仍无法主张达到参考图 80% 写实度，M3 需针对近景真实反射 / 材质细节 / 低中高质量档以及**真实 Android/Quest FPS**推进。不要用 macOS Editor 性能替代真机数值。
