@@ -174,3 +174,13 @@
 保留供应商厨房/餐边柜尺寸和原门板/碰撞体，在餐边柜及五个已放置柜体根节点下，共对 **60 块门板生成约 3mm 倒角前面**并整合到 6 个网格中；针对厨房东墙水槽立面使用 -X 朝向，不会误放到北墙；餐边柜胡桃木开放格/台面 **8 个表面**按 0.48m 真尺度 UV 投影并使用原本已经授权/本地的木纹及 normal 图，奶油柜门贴图程序化生成可复现；不使用整幅效果图贴图。`HefuExposureCabinetQA` + `HefuRoofGiQA` + 老 `HefuWallPBRRegression` 全部通过，旧 QA 灯光范围从 4.6m 调整为 5.6m，仍检查无新增实时阴影灯。源码/真实 GPU 对比证据见 `assets/public/hefu-cad/daylight-cabinet-pbr/` 与 `docs/space-studio/qa/v3.3.5/`。
 
 后续优先：手机实机曝光/帧时间、厨卫柜体实体边缘圆角与五金、真实反射和窗外树叶 alpha-card 材质，夜间照明模式与昼夜调节需要独立设计而不是暗室靠拉高 Gamma 修复。Mac 端系统数据盘仍约剩 3.4GiB，原始 CAD 和 XR 未修改。
+
+## 17. 2026-10-25 v3.3.6 三盏有形灯具 + 日间/生日双重烘焙
+
+用户提出的 6 项均落地：复用餐桌两盏奶油色黄铜吊灯，客厅新建落地灯；灯罩和灯芯材质开启 `_EMISSION`；两盏向下 72° Spotlight 真正安装在吊灯下缘，落地灯的 PointLight 位于实体灯罩内，删除原 2 个悬空补光点。阳光仍是唯一带实时阴影的主要光源。
+
+通过独立 Mac Unity GPU 进程，分别烘焙 Day 和 Birthday 两套真实 128×128 Lightmap + 每套 46 个 SH LightProbe；手机使用现有 Birthday ON / Day ambience / Night ambience 控件原子切换烘焙纹理、探针、灯罩 Emission、灯光强度及太阳和环境亮度，不需要在手机上实时烘焙。
+
+光源遮挡复查发现落地灯首次被原始 `12_CAD_wall_12` 挡住；随后移至沙发南端靠客厅/电视一侧并新增 `Physics.Raycast` 自动验收。两模式三机位（餐桌、客厅、落地灯）共 6 张 Unity 真实 GPU 截图和 3 张同机位左右对比图存放在 `docs/space-studio/qa/v3.3.6`。源码与双份光照数据见 `assets/public/hefu-cad/visible-lights-dual-gi`。
+
+保持 17 件家具、玻璃、厨房、North Entry、Room Ceiling 和原 XR/控制协议不变。后续重点：安卓真机照度、卡顿/发热、Birthday 切换后 Lightmap/Probe 是否及时更新、剩余柜体细节，以及灯具专业模型。不能因 Editor 测试通过而宣称手机 FPS 或照片级 80% 相似度。

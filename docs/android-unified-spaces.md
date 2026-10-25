@@ -310,3 +310,19 @@ Actual Unity GPU fixed-view dining/living luminance rises from YAVG
 `assets/public/hefu-cad/daylight-cabinet-pbr/`. This is an 8-bit image
 statistic, not a measured lux or photo-reconstruction score. ADB phone test
 remains required.
+
+## 2026-10-25: Android Spaces v3.3.6 — lights visibly originate in fixtures
+
+Integrated Unity versionName `3.3.6` / versionCode `13`. The original 2 ivory
+pendants now contain two downward SpotLights and emissive underside panels;
+a brass/ivory floor lamp with an emissive fabric shade contains the living
+PointLight. Previous 2 detached ambient point fills are deleted during scene
+generation. Only the original sun casts realtime shadows; pixelLightCount=4.
+
+Existing Birthday ON/OFF and Day/Night ambience controls swap 2 separately
+baked 128px lightmaps and 46 LightProbe SH coefficients per mode, plus emissive
+materials and physical light power. A raycast regression prevents the floor
+lamp being hidden behind CAD wall 12. Source+assets:
+`assets/public/hefu-cad/visible-lights-dual-gi/`. Actual Unity fixed-camera
+comparisons: `docs/space-studio/qa/v3.3.6/`. Phone FPS/UI still require
+live device QA.
