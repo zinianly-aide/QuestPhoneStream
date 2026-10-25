@@ -215,3 +215,21 @@ Editor rendered the three test viewpoints plus sofa before/after comparison,
 see `docs/space-studio/qa/v3.3.0/`. These Editor renderings alone cannot
 establish similarity to the approved effect reference or mobile GPU performance;
 phone live rendering still must be tested.
+
+## 2026-10-25: Android Spaces v3.3.1 — Luoyang autumn sun and environment
+
+Opt-in Unity-enabled build versionName `3.3.1`, versionCode `8` (native-only CI
+version remains `0.1.0` / 1). HefuVR now uses a NOAA-style solar position
+approximation for Luoyang, China (34.6836N 112.4536E, UTC+8), **design date
+2026-10-25 14:30**: altitude ~33.4°, azimuth ~220.9° from north clockwise.
+The existing single directional shadow caster enters from SW through south
+windows; autumn-tinted equirect skybox, warm ambient fog, five color-varied
+Blender foliage trees and one synthetic grass/soil outside ground renderer
+replace prior cool, bare placeholder scenery. No custom geolocation, exact
+real-world skyline, live weather, runtime time slider or baked GI in this version.
+
+HefuLuoyangAutumnQA and all six prior Unity editor regression gates pass.
+Actual Metal-powered Unity camera comparison at
+`docs/space-studio/qa/v3.3.1/`; hardware Android FPS and WebRTC state remain
+unverified without ADB device connection. Documentation and source assets:
+`assets/public/hefu-cad/atmosphere/`.

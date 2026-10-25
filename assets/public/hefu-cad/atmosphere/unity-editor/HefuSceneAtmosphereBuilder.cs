@@ -14,7 +14,7 @@ namespace HefuVR.Editor {
 public static class HefuSceneAtmosphereBuilder {
  public const string RootName="Hefu_OutdoorPlaceholder_v1";
  const string MatDir="Assets/Hefu/Generated/Atmosphere/";
- const string SkyTexture="Assets/Hefu/Textures/OutdoorPreview/Illustrative_DaylightSky.png";
+ const string SkyTexture="Assets/Hefu/Textures/OutdoorPreview/Illustrative_LuoyangAutumnSky.png";
  const string ModelDir="Assets/Hefu/Models/OutdoorPreview/";
 
  static Material Mat(string name,Color color,float smooth=0.45f){
@@ -59,16 +59,16 @@ public static class HefuSceneAtmosphereBuilder {
    sky=new Material(shader);AssetDatabase.CreateAsset(sky,path);
   }
   sky.SetTexture("_MainTex",texture);
-  sky.SetFloat("_Exposure",.89f);
+  sky.SetFloat("_Exposure",1.02f);
   sky.SetFloat("_Rotation",0f);
   RenderSettings.skybox=sky;
   RenderSettings.ambientMode=AmbientMode.Flat;
-  RenderSettings.ambientLight=new Color(.67f,.675f,.665f);
+  RenderSettings.ambientLight=new Color(.70f,.677f,.622f);
   RenderSettings.fog=true;
-  RenderSettings.fogColor=new Color(.76f,.79f,.79f);
+  RenderSettings.fogColor=new Color(.76f,.745f,.69f);
   RenderSettings.fogMode=FogMode.Linear;
-  RenderSettings.fogStartDistance=20f;
-  RenderSettings.fogEndDistance=65f;
+  RenderSettings.fogStartDistance=18f;
+  RenderSettings.fogEndDistance=62f;
   EditorUtility.SetDirty(sky);
  }
  static void Glass(Transform house){
@@ -139,8 +139,8 @@ public static class HefuSceneAtmosphereBuilder {
   var root=new GameObject(RootName).transform;
   root.SetParent(house,false);
   root.position=Vector3.zero;
-  var distant=Mat("HefuExteriorHazeBuildings",new Color(.55f,.62f,.64f),.11f);
-  var far=Mat("HefuExteriorFarBuildings",new Color(.70f,.75f,.75f),.14f);
+  var distant=Mat("HefuExteriorHazeBuildings",new Color(.59f,.59f,.55f),.11f);
+  var far=Mat("HefuExteriorFarBuildings",new Color(.73f,.70f,.62f),.14f);
   // Buildings at least ~25m SOUTH of south windows. Horizon is illustrative.
   float[] xx={-20.8f,-17.5f,-14.4f,-11.9f,-8.0f,-4.0f,-.5f,3.0f,6.5f};
   float[] hh={7f,9.3f,6.2f,11f,8.4f,10f,5.4f,8f,7.2f};
@@ -149,6 +149,17 @@ public static class HefuSceneAtmosphereBuilder {
    Box(root,"Illustrative_DistantBuilding_"+i,new Vector3(xx[i],h*.5f,-40f-i%3*3),
       new Vector3(2.1f+(i%3)*.32f,h,1.2f),i%2==0?far:distant);
   }
+  // Shallow, synthetic late-autumn ground beyond the south-facing windows.
+  // The inside CAD flooring and balcony tiles remain untouched. One renderer,
+  // no collider, no realtime shadow map pass: mobile-safe horizon depth cue.
+  var earth=Mat("HefuAutumnEarthGround",Color.white,.04f);
+  const string earthPath="Assets/Hefu/Textures/OutdoorPreview/Illustrative_AutumnGround.png";
+  earth.mainTexture=AssetDatabase.LoadAssetAtPath<Texture2D>(earthPath);
+  if(!earth.mainTexture)throw new Exception("HEFU_AUTUMN_GROUND_TEXTURE_MISSING");
+  earth.mainTextureScale=new Vector2(16f,12f);
+  EditorUtility.SetDirty(earth);
+  Box(root,"Illustrative_AutumnGround",new Vector3(-7.0f,-.16f,-38f),
+      new Vector3(86f,.05f,53f),earth);
   // Blender 4.5 low-poly tree assets. Limited to 5 without realtime shadows,
   // external to south glazing Z≈-10.0; no colliders/navigation obstacles.
   Vector3[] locations={
@@ -170,10 +181,30 @@ public static class HefuSceneAtmosphereBuilder {
    // Preserve Blender FBX Z-up conversion! Forcing a world yaw alone made
    // these trees lie on their sides, with their canopy at floor level.
    instance.transform.rotation=Quaternion.Euler(0,i*67f,0)*instance.transform.rotation;
+   // Stable autumn foliage variation: material-slot recoloring retains the
+   // original Blender geometry and trunk material, without photos/downloads.
+   // Some trees remain olive-green, others show yellow/ochre/bronze leaves.
+   Color[] autumn={
+    new Color(.37f,.43f,.25f),new Color(.58f,.48f,.23f),
+    new Color(.73f,.55f,.26f),new Color(.48f,.30f,.18f),
+    new Color(.29f,.38f,.24f),new Color(.69f,.41f,.22f)};
+   int foliageSlots=0;
    foreach(var renderer in instance.GetComponentsInChildren<Renderer>(true)){
+    var original=renderer.sharedMaterials;
+    var replacements=new Material[original.Length];
+    for(int slot=0;slot<original.Length;slot++){
+     var current=original[slot];
+     if(current && current.name.Contains("Foliage_")){
+      int variant=(slot+i*2)%autumn.Length;
+      replacements[slot]=Mat("LuoyangAutumnFoliage_"+variant,autumn[variant],.12f);
+      foliageSlots++;
+     }else replacements[slot]=current;
+    }
+    renderer.sharedMaterials=replacements;
     renderer.shadowCastingMode=ShadowCastingMode.Off;
     renderer.receiveShadows=false;
    }
+   if(foliageSlots<4)throw new Exception("HEFU_LUOYANG_AUTUMN_FOLIAGE_MISSING_TREE_"+i+"="+foliageSlots);
    foreach(var c in instance.GetComponentsInChildren<Collider>(true))UnityEngine.Object.DestroyImmediate(c);
   }
   Debug.Log("HEFU_ATMOSPHERE_OUTDOOR_PASS illustrativeTrees=5 distantBuildings=9 southZ<-13 noColliders=true");
@@ -183,16 +214,23 @@ public static class HefuSceneAtmosphereBuilder {
   if(!sun)throw new Exception("HEFU_ATMOSPHERE_SUN_NOT_FOUND");
   var s=sun.GetComponent<Light>();
   if(!s||s.type!=LightType.Directional)throw new Exception("HEFU_ATMOSPHERE_SUN_INVALID");
-  // Southern windows get daylight entering toward north (+Z), not arbitrary
-  // effect-image direction. Shadow map only for one directional light.
-  sun.transform.rotation=Quaternion.LookRotation(new Vector3(.15f,-.74f,.57f).normalized);
-  s.color=new Color(1f,.951f,.868f);
-  s.intensity=.87f;
+  // The south-facing windows see a late-October LUOYANG afternoon sun,
+  // not an artist-guessed 3D vector. Azimuth measured clockwise from north;
+  // Unity +X is east, +Z is north; afternoon azimuth >180 gives negative
+  // world X (sun to the west) and negative Z (sun to the south).
+  var astronomy=HefuLuoyangSolar.Default();
+  if(astronomy.elevation<=0)throw new Exception("HEFU_LUOYANG_AUTUMN_SUN_BELOW_HORIZON");
+  sun.transform.rotation=Quaternion.LookRotation(-astronomy.toSun);
+  s.color=new Color(1f,.906f,.764f);
+  s.intensity=.91f;
   s.shadows=LightShadows.Soft;
-  s.shadowStrength=.48f;
+  s.shadowStrength=.58f;
   QualitySettings.shadowDistance=11f;
   QualitySettings.shadowResolution=ShadowResolution.Medium;
   QualitySettings.pixelLightCount=2;
+  Debug.Log("HEFU_LUOYANG_AUTUMN_SUN_PASS year=2026 month=10 day=25 hour=14.5 CST elevation="+
+   astronomy.elevation.ToString("F2")+" azimuth="+astronomy.azimuth.ToString("F2")+
+   " coordinates=34.6836N,112.4536E physicalSolarDirection=true weatherSimulated=true");
   Debug.Log("HEFU_ATMOSPHERE_LIGHT_PASS southDaylight=true oneShadowedSun=true ambient=warm skybox=illustrative");
  }
  public static void Apply(Transform house){
