@@ -251,3 +251,18 @@ QA / actual Metal editor images:
 `assets/public/hefu-cad/interior-warm-style/`. Other user-owned Unity files,
 private local model/library and real photos remain outside this public source
 pack. GPU frame time, GI baking and device screenshot remain pending.
+
+## 2026-10-25: v3.3.3 wall PBR and offline room reflection
+
+Version `3.3.3`, versionCode `10` for Unity-integrated Android. Fixes the
+source of flat wall shading: **20 imported CAD wall meshes lacked UVs**. Adds
+local wall-face UV projection at metre scale, low-contrast plaster PBR colour
+and normal, one combined 107-segment baseboard mesh and 2 offline 64px
+baked box-reflection maps (Custom mode; no runtime capture). No changes to
+source CAD vertices/physics, kitchen doors, 17 furniture root transforms,
+Style switcher or original outdoor Luoyang autumn lighting.
+
+Actual Unity Editor render comparisons and caveats:
+`docs/space-studio/qa/v3.3.3/`; public source assets and QA:
+`assets/public/hefu-cad/wall-pbr-probes/`. This is not full scene GI/lightmap
+baking, and cannot yet claim phone FPS or 80% photo-matching without device QA.

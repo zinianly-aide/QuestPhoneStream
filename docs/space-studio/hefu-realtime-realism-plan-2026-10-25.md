@@ -144,3 +144,13 @@
 `HefuWarmReferenceStyleQA` 与 `HefuWarmReferenceRegression` 用于确认双吊灯/双布帘位置、材质及几何、17 家具、Style 切换、原六项太阳/玻璃/动线回归。Unity GPU 固定机位对比与脚本存档于 `docs/space-studio/qa/v3.3.2/`、`assets/public/hefu-cad/interior-warm-style/`。
 
 **明确未交付**：物理全局照明和间接反射烘焙、吊灯真实照度分布、制造商家具材质和贴图扫描、室外写实 foliage alpha-card/LOD、设备上主观 80% 视觉验收。下一阶段优先**固定建筑受光与移动家具分离的光照烘焙/Probe 验证**，再按设备性能精修树木纹理；新软装仅是明确可回退的一小步。
+
+## 13. 2026-10-25 白模感根因修复 — 墙面 UV / 踢脚线 / 烘焙反射（v3.3.3）
+
+实际调查发现 Unity **20 段 CAD 墙体的 Mesh.uv 全为 0 长度**，是大量墙面只能显示纯色、无法正确铺贴墙漆颗粒与法线的直接根因。保留真实 CAD 墙体位置、MeshCollider 与现有 Style 三档切换，只在生成 Mobile 场景的 MeshFilter 上分配独立 UV 网格资产（1m 世界尺度平铺），使用程序化哑光奶油乳胶漆 BaseColor/NormalMap，金属度 0、平滑度 .18。
+
+沿实际 CAD 墙面贴地的三角面边生成 **107 段踢脚线**，合成单个 mesh 与材质，避免在房门处手工猜测一整条饰条，没有额外碰撞体或灯光。另外成功在 Mac Unity Editor 进行两次反射探针烘焙，生成客厅/餐厅各一个 64px Cubemap（`Custom` box reflection，手机不实时捕获），确认为真实 3D 场景截取、不是假 HDRI 或静态 GI。
+
+自动检查 `HefuWallPBRRegression.Validate` 通过，且复用既有暖色装饰、洛阳季节、厨房/玻璃、沙发与 17 家具的联动测试。960×640 Mac Unity 真实机位渲染及同机位前后对比见 `docs/space-studio/qa/v3.3.3/`；可编辑源码/资源见 `assets/public/hefu-cad/wall-pbr-probes/`。
+
+**未实施与下一阶段**：固定建筑正式烘焙 GI/lightmaps、移动家具 Light Probes、顶面/吊顶在俯视与室内视角的显示策略、真实橱柜圆角/木纹及树木 LOD。当前仍能看出低模感，不能用验证通过冒充“效果图 80%”。下一阶段应优先补齐屋顶/室内 GI 的建模条件和明确的 camera mode 开关，再单独测试手机帧时。
