@@ -50,3 +50,31 @@ Scenes are created under Assets/Hefu/Scenes/M5GiAoExperiments and lightmap setti
 - M5-A/M5-B snapshots are scene-specific artifacts retained locally on the SSD, not checked into this public GitHub repository.
 - No changes to main branch, headset protocol, private scene files or unrelated pending voice controls.
 - Next: visually inspect corner close-ups, benchmark GPU memory and dynamic contact shadows, decide whether 30 texels/m and AO refinement provide visible gains before trialing 40.
+
+## M5-C: dense light probes + procedural contact blobs (2026-11-05)
+
+EXPERIMENTAL PATCH; not promoted to a production or Quest scene.
+
+Source files:
+- unity-editor/HefuM5DenseLightProbeLayout.cs: duplicates the GI20 NoAO scene, preserves the original 46 probes and creates 256 probes near renderable furniture (levels 0.22/0.78/1.55m). Independent Lightmapping.Bake is required.
+- unity-editor/HefuM5BlobContactShadows.cs: duplicates the baked dense scene, attaches one 128px feathered transparent quad to each of the 14 renderable movable furniture roots; the 3 empty furniture roots remain empty. All 14 use a shared mesh, material and texture; no collider, static GI, or shadow map.
+- unity-runtime/HefuM5BlobShadowToggle.cs: exposes Apply(bool) and does not affect PlayerPrefs, moving furniture IDs or save/load.
+- unity-editor/HefuM5DenseContactCapture.cs: five fixed M4 camera poses, 2048x1365, with blob OFF and ON.
+
+In a separate, isolated HefuVR Built-in Unity 2022.3 project, copy editor scripts into Assets/Hefu/Editor/ and the runtime script into Assets/Hefu/Scripts/. Execute these editor entry points in separate Unity processes:
+1. HefuVR.Editor.HefuM5DenseLightProbeLayout.StageDense
+2. HefuVR.Editor.HefuM5DenseLightProbeLayout.BakeDense
+3. HefuVR.Editor.HefuM5BlobContactShadows.Stage
+4. HefuVR.Editor.HefuM5BlobContactShadows.QA
+5. HefuVR.Editor.HefuM5DenseContactCapture.Run
+
+Actual local results:
+- Dense stage PASS (46 -> 256 probes, 14 renderable / 17 movable roots).
+- Dense bake PASS (6.4 seconds, 1 x 512px atlas, 256 baked probes, new LightingData).
+- Blob stage and toggle QA PASS. The first 81%-width patch was mostly hidden by furniture, so we also tested an expanded 1.42x patch with y=0.016m; the final source width is 1.15x the AABB footprint (0.81 x 1.42). This is visually subtle.
+- Ten 2K Unity screenshots of the same baked scene with blob on/off. Wide candidate A/B SSIM: Hero 0.999999, Entry 0.999995, Dining 0.999984, BirthdayWall 1.0, Balcony 1.0. This is NOT evidence of a significant realism improvement; shadows remain largely occluded at low camera angles.
+- The existing M4 Day/Birthday runtime SH arrays each have only 46 probes. A 256-probe scene must NOT be shipped until both presets have been rebaked with matching probe counts and switch-tested.
+- No Quest hardware connected. No phone GPU/FPS/thermal data. Reflection probe 256px recapture is a later independent test, not part of this patch.
+- No private model, screenshot, LightingData or full Unity project is uploaded to GitHub; local artifacts remain in /Volumes/ssd/HefuVR-BiRP-M5-ABTest-20261025/ABTestReports/M5_GI_AO/DenseContact/.
+
+Revert: use the old M5_GI20_NoAO scene, or disable HefuM5BlobShadowToggle.Apply(false) within the experimental dense+blob scene.
